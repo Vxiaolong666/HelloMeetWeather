@@ -21,9 +21,13 @@ internal object SceneResponseParser {
 
     fun marineUrl(city: City) =
         "https://marine-api.open-meteo.com/v1/marine?latitude=${city.latitude}&longitude=${city.longitude}" +
-            "&hourly=wave_height,wave_direction,wave_period,wind_wave_height,wind_wave_direction,wind_wave_period," +
-            "swell_wave_height,swell_wave_direction,swell_wave_period,sea_surface_temperature," +
-            "ocean_current_velocity,ocean_current_direction,sea_level_height_msl" +
+            "&hourly=wave_height,wave_direction,wave_period,wave_peak_period," +
+            "wind_wave_height,wind_wave_direction,wind_wave_period,wind_wave_peak_period," +
+            "swell_wave_height,swell_wave_direction,swell_wave_period,swell_wave_peak_period," +
+            "secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction," +
+            "tertiary_swell_wave_height,tertiary_swell_wave_period,tertiary_swell_wave_direction," +
+            "invert_barometer_height," +
+            "sea_surface_temperature,ocean_current_velocity,ocean_current_direction,sea_level_height_msl" +
             "&forecast_days=7&timezone=auto&cell_selection=sea&timeformat=unixtime&length_unit=metric"
 
     fun sky(raw: String, city: City, fetched: Long, now: Long, includeStars: Boolean = true): SkyPhotographyForecast? = parse(raw) { r ->
@@ -101,6 +105,17 @@ internal object SceneResponseParser {
             windWavePeriodSeconds = r.value("wind_wave_period", i, 0.0..100.0),
             windWaveDirectionDeg = r.value("wind_wave_direction", i, 0.0..360.0),
             swellDirectionDeg = r.value("swell_wave_direction", i, 0.0..360.0),
+            // 峰值周期 / 次级、三级涌浪 / 倒置气压计——部分模型不提供，缺失为 null
+            wavePeakPeriodSeconds = r.value("wave_peak_period", i, 0.0..100.0),
+            windWavePeakPeriodSeconds = r.value("wind_wave_peak_period", i, 0.0..100.0),
+            swellWavePeakPeriodSeconds = r.value("swell_wave_peak_period", i, 0.0..100.0),
+            secondarySwellHeightM = r.value("secondary_swell_wave_height", i, 0.0..40.0),
+            secondarySwellPeriodSeconds = r.value("secondary_swell_wave_period", i, 0.0..100.0),
+            secondarySwellDirectionDeg = r.value("secondary_swell_wave_direction", i, 0.0..360.0),
+            tertiarySwellHeightM = r.value("tertiary_swell_wave_height", i, 0.0..40.0),
+            tertiarySwellPeriodSeconds = r.value("tertiary_swell_wave_period", i, 0.0..100.0),
+            tertiarySwellDirectionDeg = r.value("tertiary_swell_wave_direction", i, 0.0..360.0),
+            invertBarometerHeightM = r.value("invert_barometer_height", i, -30.0..30.0),
         ))
     }
 

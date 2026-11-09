@@ -289,12 +289,8 @@ fun Modifier.zhishengDialogPanel(
     val palette = LocalZhishengPalette.current
     val chrome = LocalZhishengChrome.current
     val fill = containerColor ?: palette.surface
-    if (isPhosphorVista) {
-        // Official DialogContent Liquid Glass for every Phosphor/Vista dialog, including those
-        // that don't pass glass=true (update dialog, provider setup, ...). Never gate this on
-        // the page's CompositionLocal: a Dialog is a separate window and does not reliably
-        // receive it, which made dialogs silently fall back to a flat panel.
-        return settingsGlassDialog(chrome.dialogShape)
+    if (isPhosphorVista && (glass || LocalHomeSurfaceStyle.current == HomeSurfaceStyle.FRAGRANCE_GLASS)) {
+        return homeGlass(chrome.dialogShape, palette.isLight, compact = false, selected = false)
     }
     return if (isPhosphorVista) {
         clip(chrome.dialogShape)

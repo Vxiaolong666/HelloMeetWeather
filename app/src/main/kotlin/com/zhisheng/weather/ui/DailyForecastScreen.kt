@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,8 +28,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
@@ -41,6 +44,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +59,7 @@ import com.zhisheng.weather.model.City
 import com.zhisheng.weather.model.DailyWeather
 import com.zhisheng.weather.model.WeatherCondition
 import com.zhisheng.weather.model.YesterdayInfo
+import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.components.WeatherIcon
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import com.zhisheng.weather.ui.theme.ZhishengBg
@@ -126,11 +131,13 @@ fun DailyForecastScreen(
     utcOffsetSeconds: Int?,
     onBack: () -> Unit,
     hourly: List<com.zhisheng.weather.model.HourlyWeather> = emptyList(),
+    initialDateMillis: Long? = null,
 ) {
     val nowMillis = weatherPresentationTime()
     val visibleDays = days.take(15)
     if (isPhosphorVista) {
-        VistaForecastScreen(city, visibleDays, yesterday, tempUnit, windUnit, utcOffsetSeconds, onBack, hourly = hourly)
+        VistaForecastScreen(city, visibleDays, yesterday, tempUnit, windUnit, utcOffsetSeconds, onBack,
+            hourly = hourly, initialDateMillis = initialDateMillis)
         return
     }
     val trackDays = listOfNotNull(yesterdayForecastDay(yesterday, utcOffsetSeconds, nowMillis)) + visibleDays
@@ -138,7 +145,10 @@ fun DailyForecastScreen(
     val sectionTitle = if (visibleDays.size >= 15) "未来十五日" else "未来${visibleDays.size}日"
     // 经典工作台与新主题详情页同逻辑：默认选中最接近今天的一天，
     // 点选任意一列都停在同一个“当日详情”面板上，字段集与 Vista 页一致。
-    var selectedMillis by rememberSaveable(city?.locationKey) { mutableStateOf<Long?>(null) }
+    var selectedMillis by rememberSaveable(city?.locationKey, initialDateMillis) {
+        mutableStateOf(initialDateMillis)
+    }
+    var vertical by rememberSaveable { mutableStateOf(false) }
     val selectedDay = trackDays.firstOrNull { it.dateMillis == selectedMillis }
         ?: trackDays.firstOrNull { forecastTemporalLabel(it.dateMillis, utcOffsetSeconds, nowMillis) == "今天" }
         ?: trackDays.firstOrNull()
@@ -150,6 +160,7 @@ fun DailyForecastScreen(
             .navigationBarsPadding(),
     ) {
         FeaturePageHeader(pageTitle, "FORECAST ARRAY", onBack)
+        ForecastViewToggle(vertical) { vertical = it }
         if (visibleDays.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
                 TerminalPanel(Modifier.fillMaxWidth()) {
@@ -166,10 +177,39 @@ fun DailyForecastScreen(
         }
 
         ForecastMeta(city, visibleDays.size, tempUnit)
+        if (!vertical) selectedDay?.let { day ->
+            val trackIndex = trackDays.indexOfFirst { it.dateMillis == day.dateMillis }
+            val prevDate = trackDays.getOrNull(trackIndex - 1)?.dateMillis
+            val nextDate = trackDays.getOrNull(trackIndex + 1)?.dateMillis
+            TerminalPanel(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                ForecastDateHeader(
+                    dateLabel = "${forecastTemporalLabel(day.dateMillis, utcOffsetSeconds)} · ${forecastDateLabel(day.dateMillis, utcOffsetSeconds)} · ${day.weatherText?.takeIf { it.isNotBlank() } ?: day.condition?.label ?: "天气预报"}",
+                    canPrev = prevDate != null,
+                    canNext = nextDate != null,
+                    onPrev = { prevDate?.let { selectedMillis = it } },
+                    onNext = { nextDate?.let { selectedMillis = it } },
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
+        }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f),
             contentPadding = PaddingValues(bottom = 24.dp),
         ) {
+            if (vertical) {
+                item {
+                    ForecastVerticalList(
+                        days = trackDays,
+                        selectedMillis = selectedDay?.dateMillis,
+                        tempUnit = tempUnit,
+                        windUnit = windUnit,
+                        utcOffsetSeconds = utcOffsetSeconds,
+                        hourly = hourly,
+                        onSelect = { millis -> millis?.let { selectedMillis = it } },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+            } else {
             item { FeatureSectionTitle(1, sectionTitle, "DAY / NIGHT / RANGE") }
             item {
                 TerminalPanel(
@@ -183,23 +223,28 @@ fun DailyForecastScreen(
                 }
             }
             selectedDay?.let { day ->
-                item {
-                    TerminalPanel(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Column(Modifier.padding(14.dp)) {
-                            ForecastHourlyTemperature(forecastHoursForDate(hourly, day.dateMillis, utcOffsetSeconds), tempUnit, utcOffsetSeconds)
+                val trackIndex = trackDays.indexOfFirst { it.dateMillis == day.dateMillis }
+                val prevDate = trackDays.getOrNull(trackIndex - 1)?.dateMillis
+                val nextDate = trackDays.getOrNull(trackIndex + 1)?.dateMillis
+                val dayHours = forecastHoursForDate(hourly, day.dateMillis, utcOffsetSeconds)
+                if (forecastHasHourlyTemperatures(dayHours)) {
+                    item {
+                        TerminalPanel(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Column(Modifier.padding(14.dp)) {
+                                ForecastHourlyTemperature(dayHours, tempUnit, utcOffsetSeconds)
+                            }
                         }
                     }
                 }
                 item { FeatureSectionTitle(2, "当日详情", "DAY DETAIL") }
                 item {
                     TerminalPanel(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                            Text(
-                                "${forecastTemporalLabel(day.dateMillis, utcOffsetSeconds)} · ${forecastDateLabel(day.dateMillis, utcOffsetSeconds)} · ${day.weatherText?.takeIf { it.isNotBlank() } ?: day.condition?.label ?: "天气预报"}",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = ZhishengText,
-                            )
-                            Spacer(Modifier.height(6.dp))
+                        Column(
+                            Modifier.padding(horizontal = 14.dp, vertical = 12.dp).swipeAdjacentDays(
+                                onPrev = { prevDate?.let { selectedMillis = it } },
+                                onNext = { nextDate?.let { selectedMillis = it } },
+                            ),
+                        ) {
                             val facts = vistaForecastFacts(day, windUnit)
                             if (facts.isEmpty()) {
                                 Text("暂无当日详情", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
@@ -209,6 +254,8 @@ fun DailyForecastScreen(
                                     Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
+                                    PhosphorIcon(forecastFactIcon(label), null, Modifier.size(13.dp), ZhishengTextTertiary)
+                                    Spacer(Modifier.width(5.dp))
                                     Text(label, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
                                     Spacer(Modifier.weight(1f))
                                     Text(value, style = MaterialTheme.typography.labelLarge, color = ZhishengText)
@@ -224,6 +271,7 @@ fun DailyForecastScreen(
                     digest = buildForecastDigest(visibleDays, tempUnit, utcOffsetSeconds, city?.locationKey.orEmpty(), nowMillis),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 )
+            }
             }
         }
     }
@@ -339,6 +387,15 @@ private fun ForecastWorkbench(
     val minimum = (converted.minOrNull() ?: 0.0) - 1.0
     val maximum = (converted.maxOrNull() ?: minimum + 1.0) + 1.0
     val span = (maximum - minimum).coerceAtLeast(1.0)
+    val density = LocalDensity.current
+    // 选中日期变化（点选列、首页跳转、左右滑动切换）时，把该列带回可视区。
+    LaunchedEffect(selectedMillis) {
+        val index = days.indexOfFirst { it.dateMillis == selectedMillis }
+        if (index >= 0) {
+            val columnPx = with(density) { columnWidth.toPx() }
+            scrollState.animateScrollTo((columnPx * index - columnPx * 1.2f).toInt().coerceAtLeast(0))
+        }
+    }
 
     fun yOffset(value: Double): Dp {
         val ratio = ((value - minimum) / span).toFloat().coerceIn(0f, 1f)
@@ -622,6 +679,80 @@ internal fun forecastTemperatureRangeLabel(day: DailyWeather, tempUnit: String):
     val low = day.low?.takeIf(Double::isFinite) ?: return null
     val range = kotlin.math.abs(convertTemperature(high, tempUnit) - convertTemperature(low, tempUnit))
     return "温差 ${kotlin.math.round(range).toInt()}°"
+}
+
+/** 逐日要素图标：标签文案与 [vistaForecastFacts] 保持一致。 */
+internal fun forecastFactIcon(label: String): Int = when {
+    label.startsWith("阵风") -> R.drawable.ph_wind
+    label.startsWith("风向") || label.startsWith("风") -> R.drawable.ph_wind
+    label.startsWith("降水概率") -> R.drawable.ph_umbrella
+    label.startsWith("降水量") -> R.drawable.ph_cloud_rain
+    label.startsWith("空气") || label.startsWith("AQI") -> R.drawable.ph_leaf
+    label.startsWith("湿度") -> R.drawable.ph_drop
+    label.startsWith("云量") -> R.drawable.ph_cloud
+    label.startsWith("紫外") -> R.drawable.ph_sun
+    label.startsWith("日出") -> R.drawable.ph_sun
+    label.startsWith("日落") || label.startsWith("月") -> R.drawable.ph_moon_stars
+    else -> R.drawable.ph_info
+}
+
+/** 当日详情区左右滑动切换前一天 / 后一天；56dp 阈值避免与纵向滚动误触。 */
+@Composable
+internal fun Modifier.swipeAdjacentDays(onPrev: () -> Unit, onNext: () -> Unit): Modifier {
+    val threshold = with(LocalDensity.current) { 56.dp.toPx() }
+    var dragged by remember { mutableStateOf(0f) }
+    return this.pointerInput(onPrev, onNext) {
+        detectHorizontalDragGestures(
+            onDragStart = { dragged = 0f },
+            onHorizontalDrag = { change, amount ->
+                change.consume()
+                dragged += amount
+            },
+            onDragEnd = {
+                if (dragged <= -threshold) onNext() else if (dragged >= threshold) onPrev()
+                dragged = 0f
+            },
+            onDragCancel = { dragged = 0f },
+        )
+    }
+}
+
+/** 前一天 / 后一天切换条：滑动之外的显式入口，同时给出可读标签。 */
+@Composable
+internal fun ForecastDaySwitch(
+    canPrev: Boolean,
+    canNext: Boolean,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier
+                .clickable(enabled = canPrev, role = Role.Button, onClickLabel = "前一天", onClick = onPrev)
+                .alpha(if (canPrev) 1f else 0.3f)
+                .padding(vertical = 6.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            PhosphorIcon(R.drawable.ph_arrow_left, null, Modifier.size(14.dp), ZhishengCyan)
+            Text("前一天", style = MaterialTheme.typography.labelSmall, color = ZhishengCyan)
+        }
+        Spacer(Modifier.weight(1f))
+        Text("左右滑动切换日期", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
+        Spacer(Modifier.weight(1f))
+        Row(
+            Modifier
+                .clickable(enabled = canNext, role = Role.Button, onClickLabel = "后一天", onClick = onNext)
+                .alpha(if (canNext) 1f else 0.3f)
+                .padding(vertical = 6.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("后一天", style = MaterialTheme.typography.labelSmall, color = ZhishengCyan)
+            PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(14.dp), ZhishengCyan)
+        }
+    }
 }
 
 internal data class ForecastDigest(

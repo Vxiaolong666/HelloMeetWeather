@@ -49,6 +49,8 @@ data class DisplayPrefs(
     val showSpacetime: Boolean = true,
     val showSkyPhotography: Boolean = true,
     val showCoastWeather: Boolean = com.zhisheng.weather.data.ReleaseFeatures.coastalWeather,
+    val showFeatures: Boolean = true,
+    val showOutfit: Boolean = true,
     val windUnit: String = "kmh",
     val pressureUnit: String = "hpa",
     val scanlines: Boolean = false,
@@ -205,6 +207,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         prefs.copy(showSkyPhotography = show)
     }.combine(SettingsRepository.showCoastWeather) { prefs, show ->
         prefs.copy(showCoastWeather = show)
+    }.combine(SettingsRepository.showFeatures) { prefs, show ->
+        prefs.copy(showFeatures = show)
+    }.combine(SettingsRepository.showOutfit) { prefs, show ->
+        prefs.copy(showOutfit = show)
     }.combine(
         combine(
             SettingsRepository.windUnit,

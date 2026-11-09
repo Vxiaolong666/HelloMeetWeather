@@ -173,7 +173,9 @@ object OpenMeteoApi {
         try {
             val obj = getJsonObject(
                 "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=$lat&longitude=$lon" +
-                    "&current=pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone" +
+                    "&current=pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone," +
+                    "carbon_dioxide,ammonia,methane,aerosol_optical_depth,dust,uv_index,european_aqi,us_aqi," +
+                    "alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen" +
                     "&hourly=pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone" +
                     "&forecast_days=2&timezone=auto"
             ) ?: return@withContext null
@@ -284,6 +286,20 @@ object OpenMeteoApi {
             currentNo2 = current?.primDouble("nitrogen_dioxide"),
             currentSo2 = current?.primDouble("sulphur_dioxide"),
             currentO3 = current?.primDouble("ozone"),
+            currentEuAqi = current?.primDouble("european_aqi"),
+            currentUsAqi = current?.primDouble("us_aqi"),
+            currentCo2 = current?.primDouble("carbon_dioxide"),
+            currentAmmonia = current?.primDouble("ammonia"),
+            currentMethane = current?.primDouble("methane"),
+            currentAod = current?.primDouble("aerosol_optical_depth"),
+            currentDust = current?.primDouble("dust"),
+            currentUv = current?.primDouble("uv_index"),
+            currentAlderPollen = current?.primDouble("alder_pollen"),
+            currentBirchPollen = current?.primDouble("birch_pollen"),
+            currentGrassPollen = current?.primDouble("grass_pollen"),
+            currentMugwortPollen = current?.primDouble("mugwort_pollen"),
+            currentOlivePollen = current?.primDouble("olive_pollen"),
+            currentRagweedPollen = current?.primDouble("ragweed_pollen"),
             hourlyTimeMillis = hourly?.arrOf("time").epochs(offset),
             hourlyPm25 = hourly?.arrOf("pm2_5").doubles(),
             hourlyPm10 = hourly?.arrOf("pm10").doubles(),
@@ -444,6 +460,21 @@ internal data class OmAirQuality(
     val currentNo2: Double?,
     val currentSo2: Double?,
     val currentO3: Double?,
+    // —— 扩展指标（当前快照；氨/花粉为 CAMS 欧洲域，国内为 null） ——
+    val currentEuAqi: Double? = null,
+    val currentUsAqi: Double? = null,
+    val currentCo2: Double? = null,
+    val currentAmmonia: Double? = null,
+    val currentMethane: Double? = null,
+    val currentAod: Double? = null,
+    val currentDust: Double? = null,
+    val currentUv: Double? = null,
+    val currentAlderPollen: Double? = null,
+    val currentBirchPollen: Double? = null,
+    val currentGrassPollen: Double? = null,
+    val currentMugwortPollen: Double? = null,
+    val currentOlivePollen: Double? = null,
+    val currentRagweedPollen: Double? = null,
     val hourlyTimeMillis: List<Long>,
     val hourlyPm25: List<Double?>,
     val hourlyPm10: List<Double?>,

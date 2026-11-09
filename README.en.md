@@ -216,7 +216,7 @@ Version 0.1.0 is a major update to home interaction, weather effects, data provi
 - With two or more saved cities, long-press the breathing light at the bottom to open the city deck. After the haptic pulse, keep holding, slide left or right, and release on the centered city
 - Push the open deck upward until the second haptic pulse to pin it, then release your thumb, browse, and tap a city
 - Reorder home weather modules in Settings, or restore the default order with one action
-- A three-page update guide appears once on first launch. Open it again by tapping Settings → About → Version
+- A three-page update guide appears once on first launch, and again after each version change
 
 ### Weather effects and interface
 

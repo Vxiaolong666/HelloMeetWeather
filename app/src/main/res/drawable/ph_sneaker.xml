@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phosphor Icons style sneaker; see THIRD_PARTY_NOTICES.md -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M28,158c26,0 42,-16 60,-34 12,-12 22,-16 36,-16h54c16,0 26,10 34,24l16,28v20H28z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M20,180h216v20H20z" />
+</vector>

@@ -1,10 +1,13 @@
 package com.zhisheng.weather.ui.home
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -13,6 +16,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -151,7 +156,12 @@ internal fun AtlasNightBar(stars: StarForecast?, zone: String) {
 }
 
 @Composable
-internal fun AtlasTideChart(coast: CoastalForecast?, height: Dp = 76.dp, selected: MarinePoint? = null) {
+internal fun AtlasTideChart(
+    coast: CoastalForecast?,
+    height: Dp = 76.dp,
+    selected: MarinePoint? = null,
+    onSelect: ((MarinePoint) -> Unit)? = null,
+) {
     val palette = LocalZhishengPalette.current
     val points = remember(coast?.points) { coastalDisplayPoints(coast?.points.orEmpty()) }
     val segments = remember(points) { tideSegments(points) }
@@ -162,33 +172,96 @@ internal fun AtlasTideChart(coast: CoastalForecast?, height: Dp = 76.dp, selecte
     }
     val low = values.min() - .08; val high = values.max() + .08
     val first = points.first().timeMillis; val last = points.last().timeMillis
+    val interactive = onSelect != null
     Column {
-        Canvas(Modifier.fillMaxWidth().height(height).semantics {
-            contentDescription = "模型潮位曲线，${values.min()}至${values.max()}米；缺测断线，非测站潮汐"
-        }) {
-            fun at(p: MarinePoint) = Offset(size.width * atlasTimeFraction(p.timeMillis, first, last),
-                size.height * (1 - ((p.seaLevelM!! - low) / (high - low)).toFloat()))
-            for (i in 1..3) drawLine(palette.cardBorder, Offset(0f, size.height * i / 4), Offset(size.width, size.height * i / 4), 1.dp.toPx())
-            points.filter { it.seaLevelM?.isFinite() == true }.forEach { drawCircle(palette.cyan, 2.dp.toPx(), at(it)) }
-            segments.forEach { (a, b) ->
-                val aa = at(a); val bb = at(b)
-                val fill = Path().apply { moveTo(aa.x, size.height); lineTo(aa.x, aa.y); lineTo(bb.x, bb.y); lineTo(bb.x, size.height); close() }
-                drawPath(fill, palette.cyan.copy(alpha = .10f))
-                drawLine(palette.cyan, aa, bb, 2.dp.toPx(), StrokeCap.Round)
+        BoxWithConstraints(Modifier.fillMaxWidth().height(height)) {
+            val chartWidth = maxWidth
+            val gesture = if (onSelect == null) Modifier else Modifier
+                .pointerInput(points) {
+                    detectTapGestures { position ->
+                        nearestTidePoint(points, position.x, size.width)?.let(onSelect)
+                    }
+                }
+                .pointerInput(points) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { position ->
+                            nearestTidePoint(points, position.x, this.size.width)?.let(onSelect)
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            change.consume()
+                            nearestTidePoint(points, change.position.x, this.size.width)?.let(onSelect)
+                        },
+                    )
+                }
+            Canvas(Modifier.fillMaxSize().then(gesture).semantics {
+                contentDescription = "模型潮位曲线，${values.min()}至${values.max()}米；缺测断线，非测站潮汐" +
+                    if (interactive) "；可左右拖动或点按查看逐时潮位" else ""
+            }) {
+                fun at(p: MarinePoint) = Offset(size.width * atlasTimeFraction(p.timeMillis, first, last),
+                    size.height * (1 - ((p.seaLevelM!! - low) / (high - low)).toFloat()))
+                for (i in 1..3) drawLine(palette.cardBorder, Offset(0f, size.height * i / 4), Offset(size.width, size.height * i / 4), 1.dp.toPx())
+                points.filter { it.seaLevelM?.isFinite() == true }.forEach { drawCircle(palette.cyan, 2.dp.toPx(), at(it)) }
+                segments.forEach { (a, b) ->
+                    val aa = at(a); val bb = at(b)
+                    val fill = Path().apply { moveTo(aa.x, size.height); lineTo(aa.x, aa.y); lineTo(bb.x, bb.y); lineTo(bb.x, size.height); close() }
+                    drawPath(fill, palette.cyan.copy(alpha = .10f))
+                    drawLine(palette.cyan, aa, bb, 2.dp.toPx(), StrokeCap.Round)
+                }
+                selected?.let {
+                    val xx = size.width * atlasTimeFraction(it.timeMillis, first, last)
+                    drawLine(palette.textSecondary, Offset(xx, 0f), Offset(xx, size.height), 1.dp.toPx())
+                    if (it.seaLevelM?.isFinite() == true) drawCircle(palette.text, 4.dp.toPx(), at(it))
+                }
+                listOfNotNull(coast?.nextHigh, coast?.nextLow).filter { it.timeMillis in first..last }.forEach { turning ->
+                    val point = at(MarinePoint(turning.timeMillis, turning.heightM))
+                    drawCircle(palette.card, 5.dp.toPx(), point)
+                    drawCircle(palette.orange, 3.dp.toPx(), point)
+                }
             }
-            selected?.let {
-                val xx = size.width * atlasTimeFraction(it.timeMillis, first, last)
-                drawLine(palette.textSecondary, Offset(xx, 0f), Offset(xx, size.height), 1.dp.toPx())
-                if (it.seaLevelM?.isFinite() == true) drawCircle(palette.text, 4.dp.toPx(), at(it))
-            }
-            listOfNotNull(coast?.nextHigh, coast?.nextLow).filter { it.timeMillis in first..last }.forEach { turning ->
-                val point = at(MarinePoint(turning.timeMillis, turning.heightM))
-                drawCircle(palette.card, 5.dp.toPx(), point)
-                drawCircle(palette.orange, 3.dp.toPx(), point)
+            // 详情弹窗才标注具体数值：首页瓦片高度只有 68dp，加标注会挤成一团。
+            if (interactive) {
+                listOfNotNull(coast?.nextHigh, coast?.nextLow)
+                    .filter { it.timeMillis in first..last }
+                    .forEach { turning ->
+                        val x = chartWidth * atlasTimeFraction(turning.timeMillis, first, last)
+                        Text(
+                            atlasNumber(turning.heightM, "m"),
+                            modifier = Modifier.align(Alignment.TopStart)
+                                .offset(x = (x - 16.dp).coerceIn(0.dp, (chartWidth - 34.dp).coerceAtLeast(0.dp)), y = 2.dp),
+                            color = palette.orange,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                        )
+                    }
+                selected?.takeIf { it.seaLevelM?.isFinite() == true }?.let { point ->
+                    val x = chartWidth * atlasTimeFraction(point.timeMillis, first, last)
+                    Text(
+                        atlasNumber(point.seaLevelM, "m"),
+                        modifier = Modifier.align(Alignment.TopStart)
+                            .offset(x = (x - 18.dp).coerceIn(0.dp, (chartWidth - 38.dp).coerceAtLeast(0.dp)), y = 0.dp),
+                        color = palette.cyan,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                }
             }
         }
         AtlasAxis(atlasClock(first, coast!!.zoneId), "模型潮位 / m", atlasTideEndLabel(first, last, coast.zoneId))
     }
+}
+
+/** 把图表横向坐标折算成时间，再取最近的有效潮位点。 */
+private fun nearestTidePoint(points: List<MarinePoint>, x: Float, width: Int): MarinePoint? {
+    if (points.isEmpty() || width <= 0) return null
+    val first = points.first().timeMillis
+    val last = points.last().timeMillis
+    if (last <= first) return null
+    val fraction = (x / width).coerceIn(0f, 1f)
+    val target = first + ((last - first) * fraction).toLong()
+    return points.asSequence()
+        .filter { it.seaLevelM?.isFinite() == true }
+        .minByOrNull { kotlin.math.abs(it.timeMillis - target) }
 }
 
 @Composable

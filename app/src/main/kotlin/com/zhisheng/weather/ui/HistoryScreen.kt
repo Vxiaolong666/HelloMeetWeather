@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +36,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,17 +54,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhisheng.weather.R
 import com.zhisheng.weather.data.HistoricalWeatherRepository
 import com.zhisheng.weather.model.City
 import com.zhisheng.weather.model.DailyWeather
@@ -66,6 +81,7 @@ import com.zhisheng.weather.model.WeatherData
 import com.zhisheng.weather.model.cityDate
 import com.zhisheng.weather.model.cityZone
 import com.zhisheng.weather.model.compareWithHistorical
+import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.components.WeatherIcon
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import com.zhisheng.weather.ui.theme.ZhishengBg
@@ -86,8 +102,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.delay
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
@@ -106,7 +124,10 @@ private sealed interface RecentWeekState {
     data class Error(val message: String, val hint: String = "检查网络后可以重新读取") : RecentWeekState
 }
 
-private enum class HistoryView { RECENT_WEEK, SAME_DAY }
+private enum class HistoryView { RECENT_WEEK, SAME_DAY, MANUAL }
+
+private val historyTabs = listOf("过去7天", "往年同日", "手动查询")
+private val historyTabCodes = listOf("RECENT LOG", "YEAR TRACE", "MANUAL QUERY")
 
 private data class HistoryLoadProgress(
     val date: LocalDate,
@@ -164,7 +185,7 @@ fun HistoryScreen(
     var recentState by remember(city?.locationKey, today, retry) { mutableStateOf<RecentWeekState>(RecentWeekState.Loading) }
 
     LaunchedEffect(city?.locationKey, selectedDate, years, retry, view) {
-        if (view != HistoryView.SAME_DAY) return@LaunchedEffect
+        if (view == HistoryView.RECENT_WEEK) return@LaunchedEffect
         if (city == null) {
             state = HistoryScreenState.Error("先在主页选择一座城市", "回主页选中城市后再进来")
             return@LaunchedEffect
@@ -208,10 +229,17 @@ fun HistoryScreen(
 
     Column(
         modifier = Modifier.fillMaxSize().zhishengScreen()
-            .statusBarsPadding().navigationBarsPadding(),
+            .statusBarsPadding().navigationBarsPadding()
+            // 详情页叠在首页之上：吞掉空白区域的点击，避免穿透到下层首页瓦片
+            // （曾出现点手动查询区域误开「星空拍摄」）。子项点击仍优先处理。
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {},
     ) {
-        if (isPhosphorVista) WeatherFeatureNavigation("天气回看", city?.displayName, onBack, listOf("过去7天", "往年同日"),
-            if (view == HistoryView.RECENT_WEEK) 0 else 1) { viewName = (if (it == 0) HistoryView.RECENT_WEEK else HistoryView.SAME_DAY).name }
+        if (isPhosphorVista) WeatherFeatureNavigation("天气回看", city?.displayName, onBack, historyTabs, view.ordinal) {
+            viewName = HistoryView.entries.getOrNull(it)?.name ?: HistoryView.RECENT_WEEK.name
+        }
         else {
             FeaturePageHeader("天气回看", "WEATHER MEMORY", onBack)
             HistoryViewToggle(view) { viewName = it.name }
@@ -234,48 +262,201 @@ fun HistoryScreen(
                 )
             }
         } else {
-            when (val current = state) {
-                is HistoryScreenState.Loading -> HistoryLoading(current.completed, current.total)
-                is HistoryScreenState.Error -> FeatureErrorState(
-                    title = current.message,
-                    action = "重新读取",
-                    hint = current.hint,
-                    onAction = { retry++ },
+            Column(Modifier.fillMaxSize()) {
+                if (view == HistoryView.MANUAL) {
+                    ManualDateQuery(
+                        initialDate = selectedDate,
+                        today = today,
+                        onQuery = {
+                            selectedEpochDay = it.toEpochDay()
+                            retry++
+                        },
+                    )
+                }
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    when (val current = state) {
+                        is HistoryScreenState.Loading -> HistoryLoading(current.completed, current.total)
+                        is HistoryScreenState.Error -> FeatureErrorState(
+                            title = current.message,
+                            action = "重新读取",
+                            hint = current.hint,
+                            onAction = { retry++ },
+                        )
+                        is HistoryScreenState.Ready -> HistoryContent(
+                            city = city!!,
+                            weather = weather,
+                            review = current.review,
+                            tempUnit = tempUnit,
+                            windUnit = windUnit,
+                            years = years,
+                            today = today,
+                            backgroundProgress = backgroundProgress,
+                            reloadFailure = reloadFailure,
+                            onDateChange = { selectedEpochDay = it.toEpochDay() },
+                            onYearsChange = { years = it },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 手动查询：输入 yyyy-MM-dd，校验后按该日期读取往年同日记录。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ManualDateQuery(
+    initialDate: LocalDate,
+    today: LocalDate,
+    onQuery: (LocalDate) -> Unit,
+) {
+    var text by rememberSaveable(initialDate) { mutableStateOf(initialDate.toString()) }
+    var hint by remember { mutableStateOf<String?>(null) }
+    var showPicker by remember { mutableStateOf(false) }
+    val todayUtcMillis = remember(today) { today.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }
+    val initialUtcMillis = remember(initialDate) { initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }
+
+    fun applyDate(date: LocalDate) {
+        if (date.isAfter(today)) {
+            hint = "只能查询今天及以前的日期"
+            return
+        }
+        text = date.toString()
+        hint = null
+        onQuery(date)
+    }
+
+    fun submit() {
+        val parsed = runCatching { LocalDate.parse(text.trim()) }.getOrNull()
+        if (parsed == null) hint = "格式应为 yyyy-MM-dd，例如 2024-07-15"
+        else applyDate(parsed)
+    }
+
+    if (showPicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = initialUtcMillis.coerceAtMost(todayUtcMillis),
+            yearRange = 1900..today.year,
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean = utcTimeMillis <= todayUtcMillis
+            },
+        )
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        applyDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
+                    }
+                    showPicker = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) { Text("取消") }
+            },
+        ) {
+            DatePicker(
+                state = pickerState,
+                showModeToggle = false,
+            )
+        }
+    }
+
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
+            .then(if (isPhosphorVista) Modifier.zhishengPanel() else Modifier.zhishengCompactPanel())
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("手动查询某一天", style = MaterialTheme.typography.labelLarge, color = ZhishengTextSecondary)
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                Modifier.weight(1f)
+                    .background(ZhishengSurface, RoundedCornerShape(10.dp))
+                    .border(1.dp, ZhishengCardBorder, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 11.dp),
+            ) {
+                if (text.isEmpty()) {
+                    Text("2024-07-15", color = ZhishengTextTertiary, style = MaterialTheme.typography.bodyLarge)
+                }
+                BasicTextField(
+                    value = text,
+                    onValueChange = {
+                        text = it.take(10)
+                        hint = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = ZhishengText),
+                    cursorBrush = SolidColor(ZhishengMint),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
                 )
-                is HistoryScreenState.Ready -> HistoryContent(
-                    city = city!!,
-                    weather = weather,
-                    review = current.review,
-                    tempUnit = tempUnit,
-                    windUnit = windUnit,
-                    years = years,
-                    today = today,
-                    backgroundProgress = backgroundProgress,
-                    reloadFailure = reloadFailure,
-                    onDateChange = { selectedEpochDay = it.toEpochDay() },
-                    onYearsChange = { years = it },
+            }
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ZhishengMint.copy(alpha = 0.12f))
+                    .border(1.dp, ZhishengMint.copy(alpha = 0.40f), RoundedCornerShape(10.dp))
+                    .clickable(role = Role.Button, onClickLabel = "打开日历选择日期") { showPicker = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                PhosphorIcon(R.drawable.ph_calendar, null, Modifier.size(20.dp), ZhishengMint)
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                "点日历选日期，或直接输入 yyyy-MM-dd",
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.labelSmall,
+                color = ZhishengTextTertiary,
+            )
+            Box(
+                Modifier
+                    .clickable(role = Role.Button, onClickLabel = "查询该日期") { submit() }
+                    .background(ZhishengMint, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 18.dp, vertical = 9.dp),
+            ) {
+                Text(
+                    "查询",
+                    color = ZhishengBg,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
                 )
             }
         }
+        hint?.let { Text(it, color = ZhishengOrange, style = MaterialTheme.typography.labelSmall) }
+        Text(
+            "结果与「往年同日」一致，只是改为手动指定日期。",
+            color = ZhishengTextTertiary,
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 
 @Composable
 private fun HistoryViewToggle(selected: HistoryView, onSelect: (HistoryView) -> Unit) {
     if (isPhosphorVista) {
-        WeatherFeatureTabs(listOf("过去7天", "往年同日"), if (selected == HistoryView.RECENT_WEEK) 0 else 1) { onSelect(if (it == 0) HistoryView.RECENT_WEEK else HistoryView.SAME_DAY) }
+        WeatherFeatureTabs(historyTabs, selected.ordinal) { onSelect(HistoryView.entries[it]) }
         return
     }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 9.dp)
             .heightIn(min = 52.dp).selectableGroup().then(if (isPhosphorVista) Modifier.zhishengCompactPanel() else Modifier.background(ZhishengSurface).border(1.dp, ZhishengCardBorder)),
     ) {
-        HistoryViewChoice("过去7天", "RECENT LOG", selected == HistoryView.RECENT_WEEK, Modifier.weight(1f)) {
-            onSelect(HistoryView.RECENT_WEEK)
-        }
-        if (!isPhosphorVista) Box(Modifier.width(1.dp).height(52.dp).background(ZhishengCardBorder))
-        HistoryViewChoice("往年同日", "YEAR TRACE", selected == HistoryView.SAME_DAY, Modifier.weight(1f)) {
-            onSelect(HistoryView.SAME_DAY)
+        HistoryView.entries.forEachIndexed { index, entry ->
+            if (index > 0) Box(Modifier.width(1.dp).height(52.dp).background(ZhishengCardBorder))
+            HistoryViewChoice(historyTabs[index], historyTabCodes[index], selected == entry, Modifier.weight(1f)) {
+                onSelect(entry)
+            }
         }
     }
 }

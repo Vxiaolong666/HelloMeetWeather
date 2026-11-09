@@ -195,6 +195,21 @@ data class AqiInfo(
     val suggest: String? = null,
     val estimated: Boolean = false,
     val estimationNote: String? = null,
+    // —— Open-Meteo 空气质量扩展（当前快照；氨/花粉为 CAMS 欧洲域，国内为 null） ——
+    val europeanAqi: String? = null,
+    val usAqi: String? = null,
+    val co2: String? = null,
+    val ammonia: String? = null,
+    val methane: String? = null,
+    val aerosolOpticalDepth: String? = null,
+    val dust: String? = null,
+    val uvIndex: String? = null,
+    val alderPollen: String? = null,
+    val birchPollen: String? = null,
+    val grassPollen: String? = null,
+    val mugwortPollen: String? = null,
+    val olivePollen: String? = null,
+    val ragweedPollen: String? = null,
 )
 
 @Serializable

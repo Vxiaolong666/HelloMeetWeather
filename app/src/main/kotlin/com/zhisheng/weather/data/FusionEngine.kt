@@ -425,7 +425,7 @@ object FusionEngine {
                 pollutantUnits = fromSource.pollutantUnits.ifEmpty { WeatherRepository.CHINA_POLLUTANT_UNITS }
                     .let { units -> if (fromSource.co == null && coDisplay(om?.currentCo) != null)
                         units + ("co" to "mg/m³") else units },
-            )
+            ).withOmAirExtensions(om)
         }
         if (om == null) return null
         val estimate = currentAqiEstimate(om)
@@ -446,6 +446,30 @@ object FusionEngine {
             co = coDisplay(om.currentCo),
             pollutantUnits = WeatherRepository.CHINA_POLLUTANT_UNITS,
             suggest = value?.let(::localAqiSuggest),
+        ).withOmAirExtensions(om)
+    }
+
+    /** 把 Open-Meteo 的扩展指标（EU/US AQI、CO₂、甲烷、气溶胶、沙尘、UV、花粉）合并进 AQI 展示对象。 */
+    private fun AqiInfo.withOmAirExtensions(om: OmAirQuality?): AqiInfo {
+        om ?: return this
+        fun fmt(v: Double?, scale: Int = 0): String? = v
+            ?.takeIf { it.isFinite() && it >= 0.0 }
+            ?.let { java.math.BigDecimal.valueOf(it).setScale(scale, java.math.RoundingMode.HALF_EVEN).toPlainString() }
+        return copy(
+            europeanAqi = europeanAqi ?: fmt(om.currentEuAqi, 0),
+            usAqi = usAqi ?: fmt(om.currentUsAqi, 0),
+            co2 = co2 ?: fmt(om.currentCo2, 0),
+            ammonia = ammonia ?: fmt(om.currentAmmonia, 1),
+            methane = methane ?: fmt(om.currentMethane, 0),
+            aerosolOpticalDepth = aerosolOpticalDepth ?: fmt(om.currentAod, 2),
+            dust = dust ?: fmt(om.currentDust, 0),
+            uvIndex = uvIndex ?: fmt(om.currentUv, 1),
+            alderPollen = alderPollen ?: fmt(om.currentAlderPollen, 0),
+            birchPollen = birchPollen ?: fmt(om.currentBirchPollen, 0),
+            grassPollen = grassPollen ?: fmt(om.currentGrassPollen, 0),
+            mugwortPollen = mugwortPollen ?: fmt(om.currentMugwortPollen, 0),
+            olivePollen = olivePollen ?: fmt(om.currentOlivePollen, 0),
+            ragweedPollen = ragweedPollen ?: fmt(om.currentRagweedPollen, 0),
         )
     }
 

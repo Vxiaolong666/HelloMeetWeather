@@ -17,6 +17,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.hoverable
@@ -769,20 +770,18 @@ private fun StepIntro(title: String, body: String) {
 
 @Composable
 private fun TerminalCommand(command: String) {
+    // 由命令提示符改为带图标的圆角信息条：保留原文案，去掉等宽终端观感。
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ZhishengCard)
-            .border(1.dp, ZhishengCardBorder)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .background(ZhishengCardBorder.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
+            .border(1.dp, ZhishengCardBorder.copy(alpha = 0.42f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("$", color = ZhishengMint, style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            command,
-            color = ZhishengText,
-            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = ZhishengMono),
-        )
+        PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(14.dp), ZhishengMint)
+        Spacer(Modifier.width(10.dp))
+        Text(command, color = ZhishengText, style = MaterialTheme.typography.bodyMedium)
     }
     Spacer(Modifier.height(16.dp))
 }

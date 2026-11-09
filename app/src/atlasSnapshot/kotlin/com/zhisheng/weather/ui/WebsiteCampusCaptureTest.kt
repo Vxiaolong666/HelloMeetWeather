@@ -199,7 +199,7 @@ class WebsiteCampusCaptureTest {
         }
         for (section in listOf(0, 2)) screen("campus-settings-$section") {
             CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides owner) {
-                SettingsScreen({}, {}, false, null, {}, "XIAOMI", emptyList(), tsinghua.displayName, false, {}, {}, null, initialSection = section)
+                SettingsScreen({}, {}, false, null, {}, "XIAOMI", emptyList(), tsinghua.displayName, false, {}, initialSection = section)
             }
         }
     }

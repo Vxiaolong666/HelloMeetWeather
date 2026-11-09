@@ -23,11 +23,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -236,8 +238,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import java.util.Locale
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 // ═══════════════════════════════════════════════════════════
 // 枳生天气 · 磷光数据终端主屏
@@ -260,6 +265,8 @@ internal enum class VistaHomeBlock {
     TYPHOON,
     INDICES,
     YESTERDAY,
+    FEATURES,
+    OUTFIT,
 }
 
 internal fun vistaHomeBlocks(
@@ -277,6 +284,8 @@ internal fun vistaHomeBlocks(
             HomeModule.INDICES -> VistaHomeBlock.INDICES
             HomeModule.YESTERDAY -> VistaHomeBlock.YESTERDAY
             HomeModule.TYPHOON -> VistaHomeBlock.TYPHOON
+            HomeModule.FEATURES -> VistaHomeBlock.FEATURES
+            HomeModule.OUTFIT -> VistaHomeBlock.OUTFIT
         }
     } ?: VistaHomeBlock.entries
     return (listOf(VistaHomeBlock.METADATA, VistaHomeBlock.HERO, VistaHomeBlock.ALERTS) +
@@ -294,10 +303,13 @@ fun HomeScreen(
     onHistoryClick: () -> Unit,
     onRadarClick: () -> Unit,
     onDailyForecastClick: () -> Unit,
+    onOpenDailyDay: (Long) -> Unit = {},
     onPrecipitationClick: () -> Unit = {},
     onHourlyClick: () -> Unit = {},
     onTyphoonClick: () -> Unit,
     onAirQualityClick: () -> Unit = {},
+    onYesterdayClick: () -> Unit = {},
+    onFeatureHubClick: () -> Unit = {},
     dismissCitiesRequest: Int = 0,
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -478,9 +490,12 @@ fun HomeScreen(
                             indicator = { CityPageIndicator(uiState.cities, city, pager) },
                             onHistoryClick = { openCityDetail(onHistoryClick) }, onRadarClick = { openCityDetail(onRadarClick) },
                             onDailyForecastClick = { openCityDetail(onDailyForecastClick) },
+                            onOpenDailyDay = { millis -> openCityDetail { onOpenDailyDay(millis) } },
                             onPrecipitationClick = { openCityDetail(onPrecipitationClick) }, onHourlyClick = { openCityDetail(onHourlyClick) },
                             onTyphoonClick = { openCityDetail(onTyphoonClick) },
                             onAirQualityClick = { openCityDetail(onAirQualityClick) },
+                            onYesterdayClick = { openCityDetail(onYesterdayClick) },
+                            onFeatureHubClick = { openCityDetail(onFeatureHubClick) },
                         )
                     }
                 }
@@ -519,7 +534,8 @@ fun HomeScreen(
                 // 长按成立后立即显现；左右滑动并松手即可切换，向上推则锁定卡组。
                 active = cityDeckVisible && !cityDeckPinned,
                 scrolling = weatherContentScrolling && !cityDeckVisible,
-                enabled = uiState.weather != null || uiState.cities.size > 1,
+                // 只有一个城市时没有可切换目标，隐藏底部「长按」胶囊。
+                enabled = uiState.cities.size > 1,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -618,7 +634,9 @@ internal fun HomeCityPage(
     indicator: @Composable () -> Unit,
     onHistoryClick: () -> Unit, onRadarClick: () -> Unit, onDailyForecastClick: () -> Unit,
     onPrecipitationClick: () -> Unit, onHourlyClick: () -> Unit, onTyphoonClick: () -> Unit,
-    onAirQualityClick: () -> Unit,
+    onAirQualityClick: () -> Unit, onYesterdayClick: () -> Unit,
+    onFeatureHubClick: () -> Unit = {},
+    onOpenDailyDay: (Long) -> Unit = {},
 ) {
     val chrome = LocalZhishengChrome.current
     val density = LocalDensity.current
@@ -686,7 +704,9 @@ internal fun HomeCityPage(
                     onHistoryClick = onHistoryClick, onRadarClick = onRadarClick,
                     onDailyForecastClick = onDailyForecastClick, onPrecipitationClick = onPrecipitationClick,
                     onHourlyClick = onHourlyClick, onTyphoonClick = onTyphoonClick,
-                    onAirQualityClick = onAirQualityClick,
+                    onAirQualityClick = onAirQualityClick, onYesterdayClick = onYesterdayClick,
+                    onFeatureHubClick = onFeatureHubClick,
+                    onOpenDailyDay = onOpenDailyDay,
                 )
                 else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(
                     top = bodyInset + 48.dp, start = 28.dp, end = 28.dp, bottom = 48.dp)) {
@@ -1262,10 +1282,13 @@ private fun WeatherContent(
     onHistoryClick: () -> Unit = {},
     onRadarClick: () -> Unit = {},
     onDailyForecastClick: () -> Unit = {},
+    onOpenDailyDay: (Long) -> Unit = {},
     onPrecipitationClick: () -> Unit = {},
     onHourlyClick: () -> Unit = {},
     onTyphoonClick: () -> Unit = {},
     onAirQualityClick: () -> Unit = {},
+    onYesterdayClick: () -> Unit = {},
+    onFeatureHubClick: () -> Unit = {},
 ) {
     val heroEntry = LocalCityChromeEntry.current
     // 入场动画总开关：状态提升到 LazyColumn 之上，只驱动一次交错入场（v0.0.1 修复快滑闪卡）
@@ -1295,6 +1318,8 @@ private fun WeatherContent(
     // 台风路径使用独立国内权威数据源，不能再被当前天气供应商是否附带
     // typhoon 字段决定入口是否出现。用户关闭模块时才隐藏。
     val showTy = showTyphoon && com.zhisheng.weather.data.ReleaseFeatures.typhoon
+    val showFeatures = prefs.showFeatures
+    val showOutfit = prefs.showOutfit && data.current?.let { outfitRecommendation(it, unit) } != null
     val showAtlas = if (isPhosphorVista) prefs.showSpacetime || vistaScenePages(sceneWeather, prefs).isNotEmpty()
     else prefs.showSpacetime || prefs.showSkyPhotography || prefs.showCoastWeather
     val vista = isPhosphorVista
@@ -1311,6 +1336,8 @@ private fun WeatherContent(
         if (showAtlas) add(VistaHomeBlock.ATLAS)
         if (showIndices) add(VistaHomeBlock.INDICES)
         if (showYesterday) add(VistaHomeBlock.YESTERDAY)
+        if (showFeatures) add(VistaHomeBlock.FEATURES)
+        if (showOutfit) add(VistaHomeBlock.OUTFIT)
     }, prefs.moduleOrder)
 
     CompositionLocalProvider(LocalHomeSurfaceStyle provides prefs.homeSurfaceStyle) {
@@ -1356,12 +1383,19 @@ private fun WeatherContent(
                             data.utcOffsetSeconds,
                             m,
                             onDailyForecastClick,
+                            onOpenDailyDay,
                         )
                         HomeModule.TELEMETRY -> data.current?.let { TelemetryGrid(it, todayDaily, unit, prefs, m, city, data.utcOffsetSeconds) }
                         HomeModule.AQI -> data.aqi?.let { AqiCard(it, m, onClick = onAirQualityClick) }
                         HomeModule.INDICES -> IndicesRow(data, prefs.lifeIndexMetrics, m, unit)
-                        HomeModule.YESTERDAY -> data.yesterday?.let { YesterdayCard(it, todayDaily, unit, prefs.windUnit, m) }
+                        HomeModule.YESTERDAY -> data.yesterday?.let {
+                            YesterdayCard(it, todayDaily, unit, prefs.windUnit, m, onClick = onYesterdayClick)
+                        }
                         HomeModule.TYPHOON -> TyphoonCard(data.typhoons, m, onTyphoonClick)
+                        HomeModule.FEATURES -> FeatureCard(m, onClick = onFeatureHubClick)
+                        HomeModule.OUTFIT -> data.current?.let { cur ->
+                            OutfitCard(cur, unit, m, city?.displayName, prefs.windUnit, data.hourly)
+                        }
                     }
                 }
                 }
@@ -1399,6 +1433,8 @@ private fun WeatherContent(
                     VistaHomeBlock.ATLAS -> emitModule(HomeModule.SPACETIME)
                     VistaHomeBlock.INDICES -> emitModule(HomeModule.INDICES)
                     VistaHomeBlock.YESTERDAY -> emitModule(HomeModule.YESTERDAY)
+                    VistaHomeBlock.FEATURES -> emitModule(HomeModule.FEATURES)
+                    VistaHomeBlock.OUTFIT -> emitModule(HomeModule.OUTFIT)
                 }
             }
         } else {
@@ -1423,6 +1459,8 @@ private fun WeatherContent(
                     HomeModule.INDICES -> showIndices
                     HomeModule.YESTERDAY -> showYesterday
                     HomeModule.TYPHOON -> showTy
+                    HomeModule.FEATURES -> showFeatures
+                    HomeModule.OUTFIT -> showOutfit
                 }
                 if (visible) addHomeModule(module)
             }
@@ -1443,7 +1481,9 @@ private fun HomeModule.isPrimaryHomeModule(): Boolean = when (this) {
     HomeModule.AQI,
     HomeModule.INDICES,
     HomeModule.YESTERDAY,
-    HomeModule.TYPHOON
+    HomeModule.TYPHOON,
+    HomeModule.FEATURES,
+    HomeModule.OUTFIT
     -> false
 }
 
@@ -2825,7 +2865,11 @@ private fun DailyCompactPreview(
                         textAlign = TextAlign.End,
                     )
                 }
-                if (expandedMillis == d.dateMillis) {
+                AnimatedVisibility(
+                    expandedMillis == d.dateMillis,
+                    enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                    exit = fadeOut(tween(120)) + shrinkVertically(tween(180)),
+                ) {
                     DailyExpanded(d, windUnit)
                 }
             }
@@ -3072,9 +3116,10 @@ internal fun DailySection(
     utcOffsetSeconds: Int?,
     modifier: Modifier,
     onView15Days: () -> Unit,
+    onOpenDay: (Long) -> Unit = {},
 ) {
     if (isPhosphorVista) {
-        VistaDailyOverview(daily, unit, windUnit, utcOffsetSeconds, modifier, onView15Days)
+        VistaDailyOverview(daily, unit, windUnit, utcOffsetSeconds, modifier, onView15Days, onOpenDay)
         return
     }
     val lows = daily.mapNotNull { conv(it.low, unit) }
@@ -3085,8 +3130,8 @@ internal fun DailySection(
     // 日期 + 天气文字 + 两端温度 + 温度条，改为两行排版，避免截断。
     val enlarged = LocalDensity.current.fontScale > 1.2f ||
         androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 360 || unit == "f"
-    var expandedMillis by remember { mutableStateOf<Long?>(null) }
     val visibleDays = daily.take(5)
+    var expandedMillis by remember { mutableStateOf<Long?>(null) }
     val detailDayCount = daily.take(15).size
     val detailLabel = if (detailDayCount >= 15) "查看近15日天气" else "查看未来${detailDayCount}日天气"
 
@@ -3231,8 +3276,30 @@ internal fun DailySection(
                             textAlign = TextAlign.End,
                         )
                     }
-                    if (expanded) {
-                        DailyExpanded(d, windUnit)
+                    AnimatedVisibility(
+                        expanded,
+                        enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                        exit = fadeOut(tween(120)) + shrinkVertically(tween(180)),
+                    ) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(role = Role.Button, onClickLabel = "查看该日完整详情") { onOpenDay(d.dateMillis) },
+                        ) {
+                            DailyExpanded(d, windUnit)
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "查看该日完整详情",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = ZhishengMint,
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(12.dp), ZhishengMint)
+                            }
+                        }
                     }
                 }
                 if (index < visibleDays.lastIndex) {
@@ -3268,6 +3335,7 @@ internal fun DailySection(
 internal fun VistaDailyOverview(
     daily: List<DailyWeather>, unit: String, windUnit: String, utcOffsetSeconds: Int?,
     modifier: Modifier, onMore: () -> Unit,
+    onOpenDay: (Long) -> Unit = {},
 ) {
     val days = daily.take(5)
     val lows = days.mapNotNull { conv(it.low, unit) }
@@ -3302,10 +3370,25 @@ internal fun VistaDailyOverview(
                         }
                     }
                     if (enlarged) Text("最低 ${Fmt.temp(day.low, unit) ?: "—"}°  最高 ${Fmt.temp(day.high, unit) ?: "—"}°", style = MaterialTheme.typography.bodyMedium, color = ZhishengText)
-                    AnimatedVisibility(open, enter = fadeIn(tween(200)), exit = fadeOut(tween(120))) {
-                        Column {
-                        Text(Fmt.dayOfMonth(day.dateMillis, utcOffsetSeconds), style = MaterialTheme.typography.bodySmall, color = ZhishengTextTertiary)
-                        DailyExpanded(day, windUnit)
+                    AnimatedVisibility(
+                        open,
+                        enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                        exit = fadeOut(tween(120)) + shrinkVertically(tween(180)),
+                    ) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .vistaClick("查看该日完整详情") { onOpenDay(day.dateMillis) },
+                        ) {
+                            DailyExpanded(day, windUnit)
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("查看该日完整详情", style = MaterialTheme.typography.labelMedium, color = ZhishengMint)
+                                Spacer(Modifier.width(4.dp))
+                                PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(12.dp), ZhishengMint)
+                            }
                         }
                     }
                 }
@@ -3322,90 +3405,111 @@ internal fun VistaDailyOverview(
     }
 }
 
+/** 单条详情要素：图标 + 标签 + 值；[tint] 仅用于需要语义色的项（如 AQI）。 */
+private data class DailyFact(
+    val icon: Int,
+    val label: String,
+    val value: String,
+    val tint: Color? = null,
+)
+
+/**
+ * 当日详情：要素按「气象 / 日月」两组、两列对齐展示，每条都带 Phosphor 图标支撑；
+ * 字段集与「多天天气」页 vistaForecastFacts 对齐，入口不同也不会少信息。
+ * 天气文案只在行内展示一次，这里不再重复。
+ */
 @Composable
 private fun DailyExpanded(d: DailyWeather, windUnit: String) {
-    Column(Modifier.padding(start = 56.dp, top = 2.dp, bottom = 6.dp, end = 4.dp)) {
-        d.weatherText?.takeIf { it.isNotBlank() }?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = ZhishengMint)
-            Spacer(Modifier.height(4.dp))
-        }
-        if (d.windSpeed != null || d.windDirectionDeg != null) {
-            Text(
-                dailyWindLabel(d, windUnit),
-                style = MaterialTheme.typography.labelSmall,
-                color = ZhishengTextTertiary,
-            )
-            Spacer(Modifier.height(4.dp))
-        }
-        d.aqi?.let {
-            Text("AQI $it", style = MaterialTheme.typography.labelSmall, color = aqiColor(it))
-            Spacer(Modifier.height(4.dp))
-        }
-        // 与“多天天气”页 vistaForecastFacts 同一字段集：首页展开也要能看到
-        // 阵风、湿度、云量和紫外线，不因入口不同而少信息。
-        d.windGust?.takeIf { it.isFinite() && it >= 0 }?.let { gust ->
-            Fmt.wind(gust, windUnit)?.let { gustText ->
-                Text("阵风 $gustText", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
-                Spacer(Modifier.height(4.dp))
-            }
-        }
-        val humidCloudParts = buildList {
-            d.humidity?.takeIf { it.isFinite() && it in 0.0..100.0 }?.let { add("湿度 ${it.toInt()}%") }
-            d.cloudCover?.takeIf { it.isFinite() && it in 0.0..100.0 }?.let { add("云量 ${it.toInt()}%") }
-        }
-        if (humidCloudParts.isNotEmpty()) {
-            Text(
-                humidCloudParts.joinToString("   "),
-                style = MaterialTheme.typography.labelSmall,
-                color = ZhishengTextTertiary,
-            )
-            Spacer(Modifier.height(4.dp))
-        }
-        d.uvIndex?.takeIf { it >= 0 }?.let { uv ->
-            Text("紫外线指数 $uv", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
-            Spacer(Modifier.height(4.dp))
-        }
-        Row {
-            d.sunrise?.let {
-                Text("日出 $it", style = MaterialTheme.typography.labelSmall, color = ZhishengOrange)
-                Spacer(Modifier.width(14.dp))
-            }
-            d.sunset?.let {
-                Text("日落 $it", style = MaterialTheme.typography.labelSmall, color = ZhishengOrange)
-            }
-        }
-        Fmt.probability(d.precipProbability)?.let { probability ->
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "降水概率 $probability",
-                style = MaterialTheme.typography.labelSmall,
-                color = ZhishengCyan,
-            )
-        }
+    val palette = LocalZhishengPalette.current
+    val aqiTint: Color? = if (d.aqi != null) aqiColor(d.aqi) else null
+    val weatherFacts: List<DailyFact> = buildList {
+        val direction = com.zhisheng.weather.data.WeatherRepository.windDirection(d.windDirectionDeg)
+        val speed = d.windSpeed?.takeIf { it.isFinite() && it >= 0 }?.let { Fmt.wind(it, windUnit) }
+        listOfNotNull(direction, speed).takeIf { it.isNotEmpty() }
+            ?.let { add(DailyFact(R.drawable.ph_wind, "风", it.joinToString(" · "))) }
+        d.windGust?.takeIf { it.isFinite() && it >= 0 }?.let { Fmt.wind(it, windUnit) }
+            ?.let { add(DailyFact(R.drawable.ph_wind, "阵风", it)) }
+        d.aqi?.takeIf { it in 0..1000 }
+            ?.let { add(DailyFact(R.drawable.ph_leaf, "AQI", it.toString(), aqiTint)) }
+        d.humidity?.takeIf { it.isFinite() && it in 0.0..100.0 }
+            ?.let { add(DailyFact(R.drawable.ph_drop, "湿度", "${it.toInt()}%")) }
+        d.cloudCover?.takeIf { it.isFinite() && it in 0.0..100.0 }
+            ?.let { add(DailyFact(R.drawable.ph_cloud, "云量", "${it.toInt()}%")) }
+        d.uvIndex?.takeIf { it >= 0 }
+            ?.let { add(DailyFact(R.drawable.ph_sun, "紫外线", it.toString())) }
+        Fmt.probability(d.precipProbability)
+            ?.let { add(DailyFact(R.drawable.ph_umbrella, "降水概率", it)) }
         d.precipMm?.takeIf { it > 0.0 }?.let { mm ->
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "降水 ${if (mm == Math.floor(mm)) mm.toInt().toString() else String.format(java.util.Locale.US, "%.1f", mm)} mm",
-                style = MaterialTheme.typography.labelSmall,
-                color = ZhishengCyan,
-            )
+            add(DailyFact(R.drawable.ph_cloud_rain, "降水量",
+                String.format(java.util.Locale.US, "%.1f mm", mm)))
         }
-        if (d.moonPhase != null || d.moonrise != null || d.moonset != null) {
-            Spacer(Modifier.height(4.dp))
-            Row {
-                Text(
-                    "月相 ${Fmt.moonPhaseZh(d.moonPhase) ?: "--"}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ZhishengCyan,
-                )
-                Spacer(Modifier.width(14.dp))
-                d.moonrise?.let {
-                    Text("月出 $it", style = MaterialTheme.typography.labelSmall, color = ZhishengCyan)
-                    Spacer(Modifier.width(14.dp))
+    }
+    val skyFacts: List<DailyFact> = buildList {
+        d.sunrise?.takeIf(String::isNotBlank)
+            ?.let { add(DailyFact(R.drawable.ph_sun, "日出", it)) }
+        d.sunset?.takeIf(String::isNotBlank)
+            ?.let { add(DailyFact(R.drawable.ph_moon_stars, "日落", it)) }
+        Fmt.moonPhaseZh(d.moonPhase)
+            ?.let { add(DailyFact(R.drawable.ph_moon_stars, "月相", it)) }
+        d.moonrise?.takeIf(String::isNotBlank)
+            ?.let { add(DailyFact(R.drawable.ph_moon_stars, "月出", it)) }
+        d.moonset?.takeIf(String::isNotBlank)
+            ?.let { add(DailyFact(R.drawable.ph_moon_stars, "月落", it)) }
+    }
+    if (weatherFacts.isEmpty() && skyFacts.isEmpty()) return
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 10.dp)
+            .zhishengCompactPanel(
+                containerColor = palette.cardBorder.copy(alpha = if (palette.isLight) 0.16f else 0.12f),
+                borderColor = Color.Transparent,
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        if (weatherFacts.isNotEmpty()) DailyFactGrid(weatherFacts)
+        if (weatherFacts.isNotEmpty() && skyFacts.isNotEmpty()) {
+            HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.45f), thickness = 1.dp)
+        }
+        if (skyFacts.isNotEmpty()) DailyFactGrid(skyFacts)
+    }
+}
+
+/** 两列「图标 + 标签 + 右对齐值」网格；AQI 的图标与数值使用等级色。 */
+@Composable
+private fun DailyFactGrid(facts: List<DailyFact>) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        facts.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                row.forEach { fact ->
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        PhosphorIcon(
+                            fact.icon,
+                            null,
+                            Modifier.size(14.dp),
+                            fact.tint ?: ZhishengTextTertiary,
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            fact.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ZhishengTextTertiary,
+                            maxLines = 1,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            fact.value,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = fact.tint ?: ZhishengText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.End,
+                        )
+                    }
                 }
-                d.moonset?.let {
-                    Text("月落 $it", style = MaterialTheme.typography.labelSmall, color = ZhishengCyan)
-                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -4015,7 +4119,7 @@ internal fun IndicesRow(data: WeatherData, selected: Set<LifeIndexMetric>, modif
                             Column(Modifier.weight(1f).clickable { advice = item }.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(item.name, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
-                                    PhosphorIcon(lifeIndexIcon(item.en), null, Modifier.size(18.dp), ZhishengTextTertiary)
+                                    PhosphorIcon(lifeIndexIcon(item.en), null, Modifier.size(18.dp), ZhishengTextSecondary)
                                 }
                                 Text(item.value, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
                                     color = when (item.positive) { true -> ZhishengMint; false -> ZhishengOrange; null -> ZhishengText })
@@ -4094,7 +4198,7 @@ private fun LifeIndexCard(item: LifeIndexUi, modifier: Modifier = Modifier) {
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(width = 3.dp, height = 8.dp).background(ZhishengOrange))
+            PhosphorIcon(lifeIndexIcon(item.en), null, Modifier.size(13.dp), ZhishengOrange)
             Spacer(Modifier.width(6.dp))
             Text(
                 item.name,
@@ -4136,9 +4240,19 @@ private fun LifeIndexCard(item: LifeIndexUi, modifier: Modifier = Modifier) {
 
 // —— 昨日复盘 ——
 @Composable
-private fun YesterdayCard(y: YesterdayInfo, today: DailyWeather?, unit: String, windUnit: String, modifier: Modifier) {
+private fun YesterdayCard(
+    y: YesterdayInfo,
+    today: DailyWeather?,
+    unit: String,
+    windUnit: String,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     if (isPhosphorVista) {
-        HudCard(modifier.fillMaxWidth()) {
+        HudCard(
+            modifier.fillMaxWidth()
+                .clickable(role = Role.Button, onClickLabel = "查看昨日天气详情", onClick = onClick),
+        ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("${Fmt.temp(y.high, unit) ?: "—"}° / ${Fmt.temp(y.low, unit) ?: "—"}°",
@@ -4161,7 +4275,10 @@ private fun YesterdayCard(y: YesterdayInfo, today: DailyWeather?, unit: String, 
         }
         return
     }
-    HudCard(modifier = modifier.fillMaxWidth()) {
+    HudCard(
+        modifier = modifier.fillMaxWidth()
+            .clickable(role = Role.Button, onClickLabel = "查看昨日天气详情", onClick = onClick),
+    ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (y.condition != null) {
@@ -4198,65 +4315,253 @@ private fun YesterdayCard(y: YesterdayInfo, today: DailyWeather?, unit: String, 
 }
 
 // —— 台风 ——
+private val TyphoonAccentLight = Color(0xFF1C6FA8)
+private val TyphoonAccentDark = Color(0xFF74C4FF)
+
+/** 台风入口卡：漩涡图标 + 大标题 + 能力标签 + 底部行动入口，整卡可点。 */
 @Composable
 private fun TyphoonCard(typhoons: List<TyphoonInfo>, modifier: Modifier, onClick: () -> Unit) {
-    HudCard(
-        modifier = modifier.fillMaxWidth()
-            .clickable(role = Role.Button, onClickLabel = "查看台风路径", onClick = onClick),
+    val palette = LocalZhishengPalette.current
+    val chrome = LocalZhishengChrome.current
+    val shape = RoundedCornerShape(24.dp)
+    val cardColor = if (palette.isLight) Color.White else palette.card
+    val accent = if (palette.isLight) TyphoonAccentLight else TyphoonAccentDark
+    val active = typhoons.firstOrNull()
+    val region = "西北太平洋 · 南海"
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = if (isPhosphorVista) chrome.pagePadding else 16.dp)
+            .clip(shape)
+            .background(cardColor)
+            .border(1.dp, palette.cardBorder.copy(alpha = 0.65f), shape)
+            .clickable(role = Role.Button, onClickLabel = "打开台风路径", onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 22.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Column {
-            if (typhoons.isEmpty()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("西北太平洋台风路径", style = MaterialTheme.typography.titleSmall, color = ZhishengText)
-                        Text(
-                            if (isPhosphorVista) "查看台风位置和未来路径" else "实况节点 · 强度变化 · 多机构预报",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ZhishengTextTertiary,
-                        )
-                    }
-                    Text("查看  →", style = MaterialTheme.typography.labelMedium, color = ZhishengMint, fontWeight = FontWeight.Bold)
-                }
-            }
-            typhoons.forEach { t ->
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            t.type ?: "TY",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = ZhishengOrange,
-                            modifier = Modifier.width(34.dp),
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(t.name ?: "", style = MaterialTheme.typography.titleSmall, color = ZhishengText)
-                        Spacer(Modifier.width(8.dp))
-                        t.ename?.let {
-                            Text(it, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
-                        }
-                        Spacer(Modifier.weight(1f))
-                        t.windSpeed?.let {
-                            Text("${it.roundToInt()}m/s", style = MaterialTheme.typography.labelMedium, color = ZhishengCyan)
-                        }
-                    }
-                    typhoonPointLabel(t)?.let { label ->
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ZhishengTextTertiary,
-                            modifier = Modifier.padding(start = 34.dp, top = 2.dp),
-                        )
-                    }
-                }
-            }
-            if (typhoons.isNotEmpty()) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            TyphoonSwirlIcon(Modifier.size(56.dp))
+            Text(
+                "台风追踪",
+                style = MaterialTheme.typography.headlineSmall,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = palette.text,
+            )
+        }
+        Text(
+            if (active == null) region
+            else "$region · ${active.name?.takeIf { it.isNotBlank() } ?: active.id ?: "台风"} 活动中",
+            style = MaterialTheme.typography.bodyMedium,
+            color = palette.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+            listOf("实况路径", "预报走势", "风圈范围").forEach { label ->
                 Text(
-                    "查看实时路径与官方预报  →",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ZhishengMint,
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.text,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.align(Alignment.End).padding(top = 5.dp),
                 )
             }
+        }
+        HorizontalDivider(thickness = 1.dp, color = palette.cardBorder.copy(alpha = 0.7f))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "打开台风路径",
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                color = accent,
+                fontWeight = FontWeight.Bold,
+            )
+            PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(22.dp), accent)
+        }
+    }
+}
+
+/** 蓝色渐变台风漩涡：三条螺旋臂 + 中心风眼。 */
+@Composable
+private fun TyphoonSwirlIcon(modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension / 2f
+        drawCircle(
+            Brush.radialGradient(listOf(Color(0xFFF1F9FF), Color(0xFFD6ECFF)), center = center, radius = radius),
+            radius = radius,
+            center = center,
+        )
+        val blues = listOf(Color(0xFF9AD7FA), Color(0xFF2C8DDE), Color(0xFF1567C2), Color(0xFF74C3F4))
+        repeat(3) { arm ->
+            val path = Path()
+            val start = arm * 2f * PI.toFloat() / 3f
+            var first = true
+            for (i in 0..48) {
+                val t = i / 48f
+                val angle = start + t * PI.toFloat() * 1.5f
+                val r = radius * (0.12f + 0.70f * t)
+                val x = center.x + r * cos(angle)
+                val y = center.y + r * sin(angle)
+                if (first) {
+                    path.moveTo(x, y)
+                    first = false
+                } else path.lineTo(x, y)
+            }
+            drawPath(
+                path,
+                Brush.sweepGradient(blues, center = center),
+                style = Stroke(width = radius * 0.34f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+        }
+        drawCircle(Color.White, radius = radius * 0.13f, center = center)
+    }
+}
+
+/** 特色功能入口卡：卫星辐射 / 洪水风险 / 预报扩展字段 / 海拔（点击进入独立页）。 */
+@Composable
+private fun FeatureCard(modifier: Modifier, onClick: () -> Unit = {}) {
+    HudCard(
+        modifier = modifier.fillMaxWidth()
+            .clickable(role = Role.Button, onClickLabel = "查看特色功能", onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(vertical = 2.dp),
+        ) {
+            Icon(
+                painterResource(R.drawable.ph_sparkle),
+                contentDescription = null,
+                tint = ZhishengOrange,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("特色功能", style = MaterialTheme.typography.titleSmall, color = ZhishengText)
+                Text(
+                    "卫星辐射 · 洪水风险 · 预报扩展字段 · 海拔",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ZhishengTextTertiary,
+                )
+            }
+            Text(
+                "查看  →",
+                style = MaterialTheme.typography.labelMedium,
+                color = ZhishengMint,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+/**
+ * 穿搭建议卡：插画 + 四项搭配 + 体感温度；点「搭配一下」打开搭配弹层。
+ * 数据仅需预报接口的 apparent_temperature / weather_code / wind_speed_10m / relative_humidity_2m。
+ */
+@Composable
+internal fun OutfitCard(
+    cur: CurrentWeather,
+    unit: String,
+    modifier: Modifier,
+    cityName: String? = null,
+    windUnit: String = "kmh",
+    hourly: List<HourlyWeather> = emptyList(),
+) {
+    val outfit = remember(cur, unit) { outfitRecommendation(cur, unit) } ?: return
+    val palette = LocalZhishengPalette.current
+    var showSheet by remember { mutableStateOf(false) }
+    val style = outfitStyleFor(outfit.palette)
+    val pieces = listOf(
+        Triple(R.drawable.ph_t_shirt, "上身", outfit.top),
+        Triple(R.drawable.ph_t_shirt, "外搭", outfit.outer),
+        Triple(R.drawable.ph_pants, "下装", outfit.bottom),
+        Triple(R.drawable.ph_sneaker, "鞋履", outfit.shoes),
+    )
+    HudCard(modifier = modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        outfit.headline,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = ZhishengText,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(outfit.advice, style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        outfit.feelLabel,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.mint,
+                    )
+                    Text("体感", style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutfitFigure(style, Modifier.weight(1f).height(240.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pieces.forEach { (icon, label, value) ->
+                        OutfitCardPiece(icon, label, value, Modifier.fillMaxWidth())
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(palette.mint.copy(alpha = .12f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Text(outfit.tag, style = MaterialTheme.typography.labelSmall, color = palette.mint)
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(outfit.palette, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
+                Spacer(Modifier.weight(1f))
+                Row(
+                    Modifier.clickable(role = Role.Button, onClickLabel = "搭配一下") { showSheet = true },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        "搭配一下",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = palette.mint,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    PhosphorIcon(R.drawable.ph_arrow_up_right, null, Modifier.size(16.dp), palette.mint)
+                }
+            }
+        }
+    }
+    if (showSheet) {
+        OutfitStylingSheet(cur, unit, windUnit, cityName, hourly) { showSheet = false }
+    }
+}
+
+@Composable
+private fun OutfitCardPiece(icon: Int, label: String, value: String, modifier: Modifier) {
+    val palette = LocalZhishengPalette.current
+    Row(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.surface.copy(alpha = 0.75f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        PhosphorIcon(icon, null, Modifier.size(20.dp), palette.textSecondary)
+        Column {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
+            Text(
+                value,
+                style = MaterialTheme.typography.titleSmall,
+                color = palette.text,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -4267,11 +4572,7 @@ internal fun hourlyWindLabel(hour: HourlyWeather): String? {
     return listOfNotNull(direction, force).takeIf { it.isNotEmpty() }?.joinToString(" ")
 }
 
-internal fun dailyWindLabel(day: DailyWeather, windUnit: String): String {
-    val direction = com.zhisheng.weather.data.WeatherRepository.windDirection(day.windDirectionDeg)
-    val speed = day.windSpeed?.let { Fmt.wind(it, windUnit) }
-    return "风 " + listOfNotNull(direction, speed).joinToString(" · ")
-}
+
 
 internal fun yesterdayDetailLabels(yesterday: YesterdayInfo, windUnit: String): List<String> = buildList {
     val start = yesterday.weatherStart?.takeIf { it != WeatherCondition.UNKNOWN }

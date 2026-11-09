@@ -234,7 +234,6 @@ class VistaTakeoverSnapshotTest(private val light: Boolean, private val width: I
         }
     }
     @Test fun releaseSettings() = settingsFixture(2)
-    @Test fun beta7About() = settingsFixture(3)
     private fun settingsFixture(section: Int, style: InterfaceStyle = InterfaceStyle.PHOSPHOR_VISTA) {
         val fixture = androidx.datastore.preferences.core.preferencesOf(
             androidx.datastore.preferences.core.booleanPreferencesKey("vista_soft_glow") to true,
@@ -252,7 +251,7 @@ class VistaTakeoverSnapshotTest(private val light: Boolean, private val width: I
         }
         render(style = style) {
             androidx.compose.runtime.CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides owner) {
-                com.zhisheng.weather.ui.SettingsScreen({}, {}, false, null, {}, "XIAOMI", emptyList(), "金昌市", false, {}, {}, null, initialSection = section)
+                com.zhisheng.weather.ui.SettingsScreen({}, {}, false, null, {}, "XIAOMI", emptyList(), "金昌市", false, {}, initialSection = section)
             }
         }
     }

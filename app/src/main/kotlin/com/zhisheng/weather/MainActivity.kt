@@ -89,6 +89,7 @@ import com.zhisheng.weather.ui.DailyForecastScreen
 import com.zhisheng.weather.ui.RadarScreen
 import com.zhisheng.weather.ui.TyphoonScreen
 import com.zhisheng.weather.ui.AirQualityScreen
+import com.zhisheng.weather.ui.FeatureHubScreen
 import com.zhisheng.weather.ui.NearbyCityAqi
 import com.zhisheng.weather.ui.UpdateOpeningHandledKey
 import com.zhisheng.weather.ui.UpdateOpeningOverlay
@@ -184,6 +185,8 @@ class MainActivity : ComponentActivity() {
                 // 三星 / realme 会比小米更积极恢复任务状态；若保存 SEARCH，横向冷启动会误回城市选择页。
                 // 冷启动统一回主页（横放时由 standbyActive 展示气象时钟）；快捷方式仍由 command 明确跳转。
                 var screen by rememberSaveable { mutableStateOf(AppScreen.HOME) }
+                // 从首页五日卡片进入时携带的日期；null 表示按默认（今天）选中。
+                var forecastDate by rememberSaveable { mutableStateOf<Long?>(null) }
                 var cityPickedRequest by rememberSaveable { mutableIntStateOf(0) }
                 val initialLocationSetupRequired: Boolean? by remember {
                     CityRepository.initialLocationSetupRequired.catch { error ->
@@ -496,11 +499,20 @@ class MainActivity : ComponentActivity() {
                             onSettingsClick = { screen = AppScreen.SETTINGS },
                             onHistoryClick = { screen = AppScreen.HISTORY },
                             onRadarClick = { if (ReleaseFeatures.radar) screen = AppScreen.RADAR },
-                            onDailyForecastClick = { screen = AppScreen.DAILY_FORECAST },
+                            onDailyForecastClick = {
+                                forecastDate = null
+                                screen = AppScreen.DAILY_FORECAST
+                            },
+                            onOpenDailyDay = { millis ->
+                                forecastDate = millis
+                                screen = AppScreen.DAILY_DAY_DETAIL
+                            },
                             onPrecipitationClick = { screen = AppScreen.PRECIPITATION },
                             onHourlyClick = { screen = AppScreen.HOURLY_DETAIL },
                             onTyphoonClick = { if (ReleaseFeatures.typhoon) screen = AppScreen.TYPHOON },
                             onAirQualityClick = { screen = AppScreen.AIR_QUALITY },
+                            onYesterdayClick = { screen = AppScreen.YESTERDAY_DETAIL },
+                            onFeatureHubClick = { screen = AppScreen.FEATURES },
                         )
                         }
                         val overlayVisible = screen != AppScreen.HOME
@@ -544,20 +556,12 @@ class MainActivity : ComponentActivity() {
                                                 .distinct()
                                         }.orEmpty(),
                                         activeCityName = uiState.selectedCity?.name,
+                                        activeCityLatitude = uiState.selectedCity?.latitude,
+                                        activeCityLongitude = uiState.selectedCity?.longitude,
                                         sourceLoading = uiState.loading,
                                         onAtmosphereLab = { if (ReleaseFeatures.weatherAtmosphere) screen = AppScreen.ATMOSPHERE_LAB },
-                                        onShowWhatsNew = showNotes@ {
-                                            if (!hostResumed) return@showNotes
-                                            // 设置页手动重看更新说明时不重复打断用户。
-                                            startupPromptsSuppressed = false
-                                            if (openingSpec == null && systemAnimationsEnabled()) {
-                                                openingHandedOff = false
-                                                openingSpec = updateOpeningSpec(BuildConfig.VERSION_NAME,
-                                                    previousNotesVersion, upgrade = false)
-                                            }
-                                            showWhatsNew = true
-                                        },
-                                        availableUpdate = availableUpdate,
+                                        onManageProviders = { screen = AppScreen.PROVIDER_ACCESS },
+                                        onOpenWeatherSource = { screen = AppScreen.WEATHER_SOURCE },
                                     )
                                     AnimatedVisibility(
                                         visible = overlayScreen == AppScreen.ATMOSPHERE_LAB,
@@ -571,6 +575,14 @@ class MainActivity : ComponentActivity() {
                                     }
                                     }
                                     AppScreen.ATMOSPHERE_LAB -> Unit
+                                    AppScreen.PROVIDER_ACCESS -> com.zhisheng.weather.ui.ProviderAccessScreen(
+                                        onBack = { screen = AppScreen.SETTINGS },
+                                    )
+                                    AppScreen.WEATHER_SOURCE -> com.zhisheng.weather.ui.WeatherSourceScreen(
+                                        weather = uiState.weather,
+                                        onManageProviders = { screen = AppScreen.PROVIDER_ACCESS },
+                                        onBack = { screen = AppScreen.SETTINGS },
+                                    )
                                     AppScreen.DAILY_FORECAST -> DailyForecastScreen(
                                         city = uiState.selectedCity,
                                         days = uiState.weather?.currentAndFutureDaily(weatherPresentationTime()).orEmpty(),
@@ -580,6 +592,20 @@ class MainActivity : ComponentActivity() {
                                         utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
                                         onBack = { screen = AppScreen.HOME },
                                         hourly = uiState.weather?.hourly.orEmpty(),
+                                        initialDateMillis = forecastDate,
+                                    )
+                                    AppScreen.DAILY_DAY_DETAIL -> com.zhisheng.weather.ui.DailyDayDetailScreen(
+                                        city = uiState.selectedCity,
+                                        days = uiState.weather?.currentAndFutureDaily(weatherPresentationTime()).orEmpty(),
+                                        yesterday = uiState.weather?.yesterday,
+                                        dateMillis = forecastDate
+                                            ?: uiState.weather?.todayDaily(weatherPresentationTime())?.dateMillis
+                                            ?: weatherPresentationTime(),
+                                        tempUnit = uiState.tempUnit,
+                                        windUnit = uiState.prefs.windUnit,
+                                        utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
+                                        hourly = uiState.weather?.hourly.orEmpty(),
+                                        onBack = { screen = AppScreen.HOME },
                                     )
                                     AppScreen.PRECIPITATION -> com.zhisheng.weather.ui.PrecipitationDetailScreen(
                                         data = uiState.weather ?: com.zhisheng.weather.model.WeatherData(),
@@ -623,6 +649,21 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         }.take(5),
+                                        onBack = { screen = AppScreen.HOME },
+                                    )
+                                    AppScreen.FEATURES -> FeatureHubScreen(
+                                        cityName = uiState.selectedCity?.displayName,
+                                        latitude = uiState.selectedCity?.latitude ?: 0.0,
+                                        longitude = uiState.selectedCity?.longitude ?: 0.0,
+                                        onBack = { screen = AppScreen.HOME },
+                                    )
+                                    AppScreen.YESTERDAY_DETAIL -> com.zhisheng.weather.ui.YesterdayDetailScreen(
+                                        yesterday = uiState.weather?.yesterday,
+                                        today = uiState.weather?.todayDaily(weatherPresentationTime()),
+                                        cityName = uiState.selectedCity?.displayName,
+                                        tempUnit = uiState.tempUnit,
+                                        windUnit = uiState.prefs.windUnit,
+                                        utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
                                         onBack = { screen = AppScreen.HOME },
                                     )
                                     AppScreen.SEARCH -> SearchScreen(

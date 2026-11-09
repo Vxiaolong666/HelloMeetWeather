@@ -14,7 +14,6 @@ class WhatsNewDialogTest {
         val projectDir = File(requireNotNull(System.getProperty("user.dir")))
         val dialog = File(projectDir, "src/main/kotlin/com/zhisheng/weather/ui/WhatsNewDialog.kt").readText()
         val activity = File(projectDir, "src/main/kotlin/com/zhisheng/weather/MainActivity.kt").readText()
-        val settings = File(projectDir, "src/main/kotlin/com/zhisheng/weather/ui/SettingsScreen.kt").readText()
 
         assertTrue(dialog.contains(".verticalScroll(scroll)"))
         assertFalse(dialog.contains("Modifier.weight(1f),\n                ) { currentPage"))
@@ -27,8 +26,6 @@ class WhatsNewDialogTest {
         }
         assertTrue(activity.contains("shouldShowWhatsNew()"))
         assertTrue(activity.contains("markWhatsNewSeen()"))
-        assertTrue(settings.contains("更新说明"))
-        assertTrue(settings.contains("检查更新"))
     }
 
     @Test fun `categories preserve every release note without duplication`() {

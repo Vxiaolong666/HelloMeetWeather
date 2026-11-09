@@ -64,6 +64,17 @@ data class CoastalForecast(
     val windWavePeriodSeconds: Double? = null,
     val windWaveDirectionDeg: Double? = null,
     val swellDirectionDeg: Double? = null,
+    // —— 海洋扩展（峰值周期/次级涌浪依赖模型，可能为空） ——
+    val wavePeakPeriodSeconds: Double? = null,
+    val windWavePeakPeriodSeconds: Double? = null,
+    val swellWavePeakPeriodSeconds: Double? = null,
+    val secondarySwellHeightM: Double? = null,
+    val secondarySwellPeriodSeconds: Double? = null,
+    val secondarySwellDirectionDeg: Double? = null,
+    val tertiarySwellHeightM: Double? = null,
+    val tertiarySwellPeriodSeconds: Double? = null,
+    val tertiarySwellDirectionDeg: Double? = null,
+    val invertBarometerHeightM: Double? = null,
 )
 
 enum class TideTrend(val label: String) { RISING("潮位上升"), FALLING("潮位下降"), STEADY("潮位变化较小"), UNKNOWN("潮位趋势暂缺") }

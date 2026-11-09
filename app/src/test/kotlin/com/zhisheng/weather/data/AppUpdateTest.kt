@@ -229,10 +229,6 @@ class AppUpdateTest {
 
     @Test
     fun updateCheckOffersVersionChoicesWithoutAutomaticDownload() {
-        val settings = sequenceOf(
-            File("src/main/kotlin/com/zhisheng/weather/ui/SettingsScreen.kt"),
-            File("app/src/main/kotlin/com/zhisheng/weather/ui/SettingsScreen.kt"),
-        ).first { it.isFile }.readText()
         val activity = sequenceOf(
             File("src/main/kotlin/com/zhisheng/weather/MainActivity.kt"),
             File("app/src/main/kotlin/com/zhisheng/weather/MainActivity.kt"),
@@ -246,9 +242,6 @@ class AppUpdateTest {
             File("app/src/main/AndroidManifest.xml"),
         ).first { it.isFile }.readText()
 
-        assertTrue(settings.contains("检查更新"))
-        assertTrue(settings.contains("attention = availableUpdate != null"))
-        assertTrue(settings.contains("可忽略此版本或延后 3 天"))
         assertTrue(dialog.contains("不会自动下载"))
         assertTrue(activity.contains("for (attempt in 0..2)"))
         assertTrue(activity.contains("AppUpdate.check(refresh = true)"))
@@ -259,7 +252,6 @@ class AppUpdateTest {
         assertTrue(dialog.contains("AppUpdate.canSelfUpdate()"))
         assertTrue(dialog.contains("不能由公共版直接覆盖"))
         assertTrue(dialog.contains("pageActionLabel"))
-        assertTrue(settings.contains("downloadOnOpen = true"))
         assertTrue(dialog.contains("[ 立即更新 ]"))
         assertTrue(activity.contains("AppUpdate.check()"))
     }

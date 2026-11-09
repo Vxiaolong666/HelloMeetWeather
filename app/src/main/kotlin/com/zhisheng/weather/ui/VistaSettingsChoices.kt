@@ -38,30 +38,21 @@ internal fun VistaSettingsChoices(options: List<Pair<String, String>>, current: 
         val minimum = maxOf(72f, 24f + markWidth + longest * 13f * fontScale)
         val columns = if (singleRow) options.size else ((maxWidth.value - 8f) / minimum).toInt()
             .coerceIn(1, minOf(options.size, maxColumns.coerceAtLeast(1)))
-        val containerShape = RoundedCornerShape(16.dp)
-        Column(Modifier.fillMaxWidth().selectableGroup()
-            .then(if (glass) Modifier.settingsLiquidGlass(
-                shape = containerShape,
-                surfaceColor = if (palette.isLight) Color(0xFF345269).copy(alpha = .06f)
-                    else Color.White.copy(alpha = .06f),
-                refraction = 6.dp, blurRadius = 4.dp, highlightAlpha = 0.28f)
-                else Modifier.clip(containerShape).background(
-                    lerp(palette.card, palette.textSecondary, if (palette.isLight) 0.07f else 0.10f)))
+        Column(Modifier.fillMaxWidth().selectableGroup().clip(RoundedCornerShape(16.dp))
+            .background(if (glass) {
+                if (palette.isLight) Color(0xFF345269).copy(alpha = .055f) else Color.White.copy(alpha = .045f)
+            }
+                else lerp(palette.card, palette.textSecondary, if (palette.isLight) 0.07f else 0.10f))
             .padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             options.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     row.forEach { (label, value) ->
                         val selected = value == current
-                        val optionShape = RoundedCornerShape(12.dp)
-                        Box(Modifier.weight(1f).heightIn(min = 48.dp)
-                            .then(if (selected && glass) Modifier.settingsLiquidGlass(
-                                shape = optionShape,
-                                surfaceColor = Color.White.copy(alpha = if (palette.isLight) .52f else .16f),
-                                refraction = 5.dp, blurRadius = 3.dp, highlightAlpha = 0.6f)
-                                else Modifier.clip(optionShape).background(if (selected) {
-                                    if (glass) Color.White.copy(alpha = if (palette.isLight) .46f else .12f)
-                                    else lerp(palette.card, palette.mint, if (palette.isLight) 0.04f else 0.10f)
-                                } else Color.Transparent))
+                        Box(Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
+                            .background(if (selected) {
+                                if (glass) Color.White.copy(alpha = if (palette.isLight) .46f else .12f)
+                                else lerp(palette.card, palette.mint, if (palette.isLight) 0.04f else 0.10f)
+                            } else Color.Transparent)
                             .selectable(selected, role = Role.RadioButton) { onPick(value) }
                             .padding(horizontal = if (singleRow) 3.dp else 8.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
                             Row(modifier = if (showSelectionMark) Modifier.fillMaxWidth() else Modifier,

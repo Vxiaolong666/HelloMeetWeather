@@ -15,16 +15,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.Backdrop
@@ -42,35 +52,19 @@ import com.zhisheng.weather.ui.theme.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** Settings bottom tabs rebuilt on the official Liquid Glass (Backdrop) catalog pattern:
- *  `BackdropDemoScaffold` captures ONLY the page background with `layerBackdrop()`, and
- *  `LiquidBottomTabs` draws a capsule glass body plus a moving lens over that backdrop.
- *
- *  The scrolling settings content is deliberately NOT part of the backdrop. Sampling a layer
- *  that is itself being recorded nests a RenderNode inside itself (crash), and any transparent
- *  gap in a content layer lets raw list text show through the glass. An opaque background
- *  backdrop keeps the bar fully covered. */
+/** One physical gesture owner: touch drives the lens directly, release commits the page.
+ *  The glass body and the moving lens are rendered with the Liquid Glass (Backdrop) library. */
 @Composable
-internal fun VistaSettingsIsland(
-    selected: Int,
-    onSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-    backdrop: Backdrop? = null,
-) {
-    val labels = listOf("数据", "首页", "外观", "关于")
-    val icons = listOf(R.drawable.ph_database, R.drawable.ph_sun, R.drawable.ph_sparkle, R.drawable.ph_info)
+internal fun VistaSettingsIsland(selected: Int, onSelected: (Int) -> Unit, modifier: Modifier = Modifier,
+    backdrop: GraphicsLayer? = null, background: GraphicsLayer? = null,
+    backdropOrigin: Offset = Offset.Zero, belowBarInsetPx: Float = 0f) {
+    val labels = listOf("数据", "首页", "外观")
+    val icons = listOf(R.drawable.ph_database, R.drawable.ph_sun, R.drawable.ph_sparkle)
     val haptic = LocalHapticFeedback.current
     val selection by rememberUpdatedState(selected)
     val commit by rememberUpdatedState(onSelected)
     val palette = LocalZhishengPalette.current
     val isLight = palette.isLight
-    val fallbackBackdrop = remember { emptyBackdrop() }
-    val pageBackdrop = backdrop ?: fallbackBackdrop
-    // Keep the wash thin: the refracted page content must stay visible through the glass.
-    // A heavy white overlay is what makes a Liquid Glass bar look like an opaque frosted slab.
-    val containerColor = if (isLight) Color.White.copy(alpha = 0.14f)
-        else Color(0xFF18232E).copy(alpha = 0.18f)
-
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val itemWidth = maxWidth / labels.size
         val itemPixels = with(LocalDensity.current) { itemWidth.toPx() }.coerceAtLeast(1f)
@@ -93,6 +87,22 @@ internal fun VistaSettingsIsland(
         val previewIndex by remember(itemPixels) { derivedStateOf { (touchPosition ?: settlingPosition.value).roundToInt().coerceIn(labels.indices) } }
         val shape = RoundedCornerShape(31.dp)
         val lensShape = RoundedCornerShape(30.dp)
+
+        // The sampled settings screen, exposed to the library as a Backdrop offset to this bar.
+        // The content column runs edge-to-edge behind the translucent navigation bar, so the lens
+        // rim would otherwise pull the content-layer region below the bar into the glass. Stop the
+        // content sampling at the bar's own bottom edge and fall back to the plain page background
+        // underneath it. The page still displays the full content layer (SettingsScreen).
+        val screenBackdrop = backdrop?.let { layer ->
+            remember(layer, background, backdropOrigin, belowBarInsetPx) {
+                OffsetScreenBackdrop(layer, background, backdropOrigin, belowBarInsetPx)
+            }
+        }
+        val effectiveBackdrop = screenBackdrop ?: remember { emptyBackdrop() }
+        // The tab labels are drawn exactly once, on top of the glass. Refracting a second, hidden
+        // copy of them through the lens produced duplicated/overlapping glyphs while dragging.
+        // Transparent glass body (previous-session look).
+        val containerColor = if (isLight) Color(0xFFEAF5FB).copy(alpha = 0.42f) else Color(0xFF18232E).copy(alpha = 0.58f)
 
         Box(Modifier.fillMaxWidth().height(62.dp)
             .pointerInput(itemPixels) {
@@ -142,21 +152,24 @@ internal fun VistaSettingsIsland(
                     }
                 }
             }
-            // Glass body — official LiquidBottomTabs material: vibrancy, 8dp blur, 24dp lens.
+            // Glass body: transparent liquid glass (previous-session look). The refraction source
+            // stops at the bar's bottom edge, so only the content directly behind the glass is
+            // refracted; below it the lens reads the page background instead.
             .drawBackdrop(
-                backdrop = pageBackdrop,
+                backdrop = effectiveBackdrop,
                 shape = { shape },
                 effects = {
                     vibrancy()
-                    blur(8f.dp.toPx())
-                    lens(24f.dp.toPx(), 24f.dp.toPx())
+                    blur(14f.dp.toPx())
+                    lens(22f.dp.toPx(), 22f.dp.toPx())
                 },
                 shadow = { Shadow(radius = 12f.dp, color = Color(0xFF425C70).copy(alpha = 0.5f), alpha = 0.32f) },
                 onDrawSurface = { drawRect(containerColor) },
             )
         ) {
-            // Moving lens — official: pressure-driven lens with dispersion, specular highlight,
-            // drop shadow and inner shadow. Only the opaque page backdrop is refracted.
+            // Moving lens tab: refracts only the page behind it. Labels are painted once above the
+            // glass, so dragging cannot create a duplicated copy of the icon and text.
+            // At rest it keeps a visible highlight rim + inner shadow so the active tab stays obvious.
             Box(Modifier.width(itemWidth).fillMaxHeight().graphicsLayer {
                 translationX = position() * itemPixels
                 translationY = lift.value
@@ -164,26 +177,83 @@ internal fun VistaSettingsIsland(
                 scaleY = 1f + pressure.value * 0.025f - elasticStretch.value * 0.32f
             }.padding(horizontal = 5.dp, vertical = 5.dp)
                 .drawBackdrop(
-                    backdrop = pageBackdrop,
+                    backdrop = effectiveBackdrop,
                     shape = { lensShape },
                     effects = {
-                        val progress = pressure.value
-                        lens(10f.dp.toPx() * progress, 14f.dp.toPx() * progress,
+                        lens(12f.dp.toPx() * pressure.value, 14f.dp.toPx() * pressure.value,
                             chromaticAberration = true)
                     },
-                    highlight = { Highlight.Default.copy(alpha = 0.3f + 0.5f * pressure.value) },
+                    highlight = { Highlight.Default.copy(alpha = 0.3f + 0.4f * pressure.value) },
                     shadow = { Shadow(radius = 6f.dp + 8f.dp * pressure.value, color = Color.Black.copy(alpha = 0.4f), alpha = 0.1f + 0.3f * pressure.value) },
                     innerShadow = { InnerShadow(radius = 6f.dp + 6f.dp * pressure.value, alpha = 0.16f + 0.46f * pressure.value) },
                     onDrawSurface = {
-                        val tint = if (isLight) Color.White.copy(0.08f) else Color.Black.copy(0.08f)
-                        drawRect(tint, alpha = 1f - pressure.value * 0.5f)
+                        val tint = if (isLight) Color.Black.copy(0.06f) else Color.White.copy(0.05f)
+                        drawRect(tint, alpha = 1f - pressure.value * 0.6f)
                     },
                 )
             )
-            // Exactly one label layer. The catalog's hidden tinted copy is intentionally omitted:
-            // refracting a second copy of the glyphs produced overlapping text while dragging.
-            IslandTabRow(labels, icons, selection, previewIndex, position, { pressure.value }, commit,
-                interactive = true, modifier = Modifier.fillMaxSize().selectableGroup())
+            // Visible, interactive labels — the only label layer.
+            IslandTabRow(labels, icons, selection, previewIndex, position, { pressure.value }, commit, interactive = true,
+                modifier = Modifier.fillMaxSize().selectableGroup())
+        }
+    }
+}
+
+/** Draws a pre-recorded [GraphicsLayer] (the settings screen) translated so that the pixel
+ *  under this element's root position is aligned with the element — the Backdrop library
+ *  supplies each element's own [coordinates], so the container and the moving lens each
+ *  sample the correct region of the screen.
+ *
+ *  [background] fills the whole sampled layer first, so every rim (and a lens dragged to any
+ *  tab) always has opaque pixels to refract instead of showing the raw page through the glass.
+ *  Only the content layer above the floating bar's bottom edge is drawn on top of it:
+ *  [belowBarInset] is the distance from the screen bottom to that edge (system navigation bar
+ *  plus the bar's bottom gap). Below it the settings content never enters the refraction. */
+private class OffsetScreenBackdrop(
+    private val layer: GraphicsLayer,
+    private val background: GraphicsLayer?,
+    private val origin: Offset,
+    private val belowBarInset: Float,
+) : Backdrop {
+    override val isCoordinatesDependent: Boolean = true
+    override fun DrawScope.drawBackdrop(
+        density: Density,
+        coordinates: LayoutCoordinates?,
+        layerBlock: (GraphicsLayerScope.() -> Unit)?,
+    ) {
+        val here = coordinates?.let { runCatching { it.positionInRoot() }.getOrNull() } ?: return
+        val offset = origin - here
+        // The sampled screen layer may be recycled on a theme change; draw what we can, never crash.
+        try {
+            translate(offset.x, offset.y) {
+                val layerWidth = layer.size.width.toFloat()
+                val layerHeight = layer.size.height.toFloat()
+                if (layerWidth <= 0f || layerHeight <= 0f) return@translate
+                // Opaque page background first, over the layer's *whole* width. The default
+                // clipRect bounds (0..size.width) are element-local, but the sampled layer is
+                // translated by the element's root offset; clipping to them emptied the backdrop
+                // as soon as the lens moved right, and left the left rim without pixels. Both
+                // made the raw page content show through the glass.
+                val bg = background
+                if (bg != null) {
+                    val bgWidth = bg.size.width.toFloat()
+                    clipRect(left = -bgWidth, top = 0f, right = layerWidth, bottom = layerHeight) {
+                        // Mirror the background's right edge into the left padding strip.
+                        if (bgWidth > 0f) translate(-bgWidth, 0f) { drawLayer(bg) }
+                        drawLayer(bg)
+                    }
+                }
+                // Content layer only above the bar's bottom edge; below it the page background
+                // stays visible so the content under the navigation bar is never refracted.
+                val clipBottom = (layerHeight - belowBarInset).coerceIn(0f, layerHeight)
+                if (clipBottom > 0f) {
+                    clipRect(left = 0f, top = 0f, right = layerWidth, bottom = clipBottom) {
+                        drawLayer(layer)
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("Backdrop", "screen layer unavailable", t)
         }
     }
 }
@@ -228,3 +298,4 @@ private fun IslandTabRow(
         }
     }
 }
+

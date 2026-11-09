@@ -27,6 +27,7 @@ import com.zhisheng.weather.data.*
 import com.zhisheng.weather.model.City
 import com.zhisheng.weather.model.WeatherData
 import com.zhisheng.weather.ui.theme.zhishengDialogPanel
+import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.components.WeatherOverlayDialog
 import androidx.compose.ui.graphics.Color
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
@@ -90,6 +91,8 @@ internal fun WeatherModuleSettingsContent(
                     if (stacked) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                PhosphorIcon(weatherModuleIcon(module), null, Modifier.size(15.dp), palette.textSecondary)
+                                Spacer(Modifier.width(6.dp))
                                 Text(module.cn, Modifier.weight(1f), color = palette.text, style = titleStyle,
                                     fontWeight = FontWeight.Medium)
                                 Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp).rotate(-90f), tint = palette.textSecondary)
@@ -100,6 +103,7 @@ internal fun WeatherModuleSettingsContent(
                         }
                     } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PhosphorIcon(weatherModuleIcon(module), null, Modifier.size(17.dp), palette.textSecondary)
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(module.cn, color = palette.text, style = titleStyle, fontWeight = FontWeight.Medium)
                             SourceSummary()

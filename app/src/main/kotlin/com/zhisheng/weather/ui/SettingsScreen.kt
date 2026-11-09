@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.snap
@@ -47,7 +48,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,8 +59,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -71,6 +73,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.Color
@@ -82,6 +87,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.selected
@@ -91,11 +97,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import com.zhisheng.weather.R
 import com.zhisheng.weather.data.AccentTone
 import com.zhisheng.weather.data.AppLanguage
 import com.zhisheng.weather.data.AppIconManager
 import com.zhisheng.weather.data.AppIconStyle
-import com.zhisheng.weather.data.AppUpdateInfo
 import com.zhisheng.weather.data.AmbienceLevel
 import com.zhisheng.weather.data.CaiyunApi
 import com.zhisheng.weather.data.HomeModule
@@ -133,14 +140,8 @@ import com.zhisheng.weather.ui.theme.zhishengCompactPanel
 import com.zhisheng.weather.ui.theme.zhishengOverlayColor
 import com.zhisheng.weather.ui.theme.LocalZhishengChrome
 import com.zhisheng.weather.ui.theme.LocalHomeSurfaceStyle
+import com.zhisheng.weather.ui.theme.glassScrollHeader
 import com.zhisheng.weather.ui.theme.isPhosphorVista
-import com.zhisheng.weather.ui.theme.LocalSettingsGlass
-import com.zhisheng.weather.ui.theme.LocalZhishengPalette
-import com.zhisheng.weather.ui.theme.SettingsGlassCircleButton
-import com.zhisheng.weather.ui.theme.SettingsGlassScope
-import com.zhisheng.weather.ui.theme.settingsGlassTopBar
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.zhisheng.weather.ui.components.HomeBackdrop
 import com.zhisheng.weather.ui.components.LocalHomeBackdrop
 import kotlinx.coroutines.launch
@@ -148,7 +149,7 @@ import kotlinx.coroutines.launch
 // ═══════════════════════════════════════════════════════════
 
 // 设置（v0.1.0）
-// 数据与位置 → 首页内容 → 外观与设备 → 关于枳生
+// 数据与位置 → 首页内容 → 外观与设备
 // ═══════════════════════════════════════════════════════════
 
 @Composable
@@ -163,28 +164,16 @@ fun SettingsScreen(
     activeCityName: String?,
     sourceLoading: Boolean,
     onAtmosphereLab: () -> Unit,
-    onShowWhatsNew: () -> Unit,
-    availableUpdate: AppUpdateInfo?,
     initialSection: Int = 0,
     activeWeather: com.zhisheng.weather.model.WeatherData? = null,
+    activeCityLatitude: Double? = null,
+    activeCityLongitude: Double? = null,
+    onManageProviders: () -> Unit = {},
+    onOpenWeatherSource: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var showStatisticsInfo by remember { mutableStateOf(false) }
     var showLivingSkyPreview by rememberSaveable { mutableStateOf(false) }
-    if (showStatisticsInfo) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showStatisticsInfo = false },
-            containerColor = zhishengOverlayColor(),
-            title = { Text("设备与版本统计说明", color = ZhishengText) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text("首次使用或版本变更时，向枳生天气自有服务器发送本应用专用的设备标识摘要与版本号，用于设备去重和版本分布，帮助安排更新。不包含机型、位置、天气 Key 或页面操作；摘要可关联同一设备，不属于完全匿名数据。\n\n该开关同时控制公告回执：发送公告获取、展示与已读状态，用于统计安装数；回执使用按公告区分的独立随机标识，不与设备摘要、位置或诊断关联。关闭后停止发送，已有记录保留。", color = ZhishengTextSecondary)
-                }
-            },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = { showStatisticsInfo = false }) { Text("知道了", color = ZhishengMint) } },
-        )
-    }
 
     val tempUnit by SettingsRepository.tempUnit.collectAsState(initial = "c")
     val windUnit by SettingsRepository.windUnit.collectAsState(initial = "kmh")
@@ -197,18 +186,9 @@ fun SettingsScreen(
     val scanlines by SettingsRepository.scanlines.collectAsState(initial = true)
     val softGlow by SettingsRepository.softGlow.collectAsState(initial = false)
     val softGlowLevel by SettingsRepository.softGlowLevel.collectAsState(initial = com.zhisheng.weather.data.SoftGlowLevel.FLOWING)
-    val usageStatistics by SettingsRepository.usageStatistics.collectAsState(initial = false)
-    val serviceDiagnostics by SettingsRepository.serviceDiagnostics.collectAsState(initial = false)
-    var showServiceDiagnostics by remember { mutableStateOf(false) }
-    var showServicePrivacy by remember { mutableStateOf(false) }
-    if (showServiceDiagnostics) ServiceDiagnosticsDialog(serviceDiagnostics) { showServiceDiagnostics = false }
-    if (showServicePrivacy) ServicePrivacyDialog { showServicePrivacy = false }
     val locationEnabled by SettingsRepository.locationEnabled.collectAsState(initial = false)
     val preciseLocationEnabled by SettingsRepository.preciseLocationEnabled.collectAsState(initial = false)
     val preciseLocationPermissionAsked by SettingsRepository.preciseLocationPermissionAsked.collectAsState(initial = false)
-    val sharedPlace by SecretStore.sharedPlaceFlow.collectAsState(initial = SecretStore.sharedPlaceRuntime)
-    var showSharedPlaceInfo by remember { mutableStateOf(false) }
-    if (showSharedPlaceInfo) SharedPlaceConsentDialog(sharedPlace) { showSharedPlaceInfo = false }
     val showAqi by SettingsRepository.showAqi.collectAsState(initial = true)
     val showIndices by SettingsRepository.showIndices.collectAsState(initial = true)
     val showYesterday by SettingsRepository.showYesterday.collectAsState(initial = true)
@@ -217,6 +197,8 @@ fun SettingsScreen(
     val showSpacetime by SettingsRepository.showSpacetime.collectAsState(initial = true)
     val showSkyPhotography by SettingsRepository.showSkyPhotography.collectAsState(initial = true)
     val showCoastWeather by SettingsRepository.showCoastWeather.collectAsState(initial = true)
+    val showFeatures by SettingsRepository.showFeatures.collectAsState(initial = true)
+    val showOutfit by SettingsRepository.showOutfit.collectAsState(initial = true)
     val keepScreenOn by SettingsRepository.keepScreenOn.collectAsState(initial = false)
     val standbyBurnInProtection by SettingsRepository.standbyBurnInProtection.collectAsState(initial = true)
     val landscapeStandby by SettingsRepository.landscapeStandby.collectAsState(initial = true)
@@ -235,43 +217,23 @@ fun SettingsScreen(
     val homeSurfaceStyle by SettingsRepository.homeSurfaceStyle.collectAsState(initial = HomeSurfaceStyle.FRAGRANCE_GLASS)
     val appLanguage by SettingsRepository.appLanguage.collectAsState(initial = AppLanguage.CHINESE)
     val moduleOrder by SettingsRepository.moduleOrder.collectAsState(initial = HomeModule.defaultOrder)
-    val qwRt by SecretStore.qwRuntimeFlow.collectAsState(initial = SecretStore.qwRuntime)
-    val caiyunRt by SecretStore.caiyunRuntimeFlow.collectAsState(initial = SecretStore.caiyunRuntime)
-    val amapRt by SecretStore.amapRuntimeFlow.collectAsState(initial = SecretStore.amapRuntime)
-    val baiduRt by SecretStore.baiduRuntimeFlow.collectAsState(initial = SecretStore.baiduRuntime)
-    val seniverseRt by SecretStore.seniverseRuntimeFlow.collectAsState(initial = SecretStore.seniverseRuntime)
-    val mojiRt by SecretStore.mojiRuntimeFlow.collectAsState(initial = SecretStore.mojiRuntime)
-
     var permDenied by remember { mutableStateOf(false) }
-    // 0.0.9-debug 修复：原为普通 remember，Activity 配置变更重建时向导弹窗
-    // 静默消失，而保留的 ProviderSetupViewModel 仍停在中间步骤——重开后旧步骤
-    // 残留、验证态悬空。saveable 让弹窗随重建恢复，配合向导内的 DisposableEffect
-    // 取消验证与 FocusRequester 步进守卫，重建路径闭环。
-    var wizard by rememberSaveable { mutableStateOf<ProviderWizardKind?>(null) }
-    var showAppUpdate by remember { mutableStateOf(false) }
-    var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
-    var showSourceManager by rememberSaveable { mutableStateOf(false) }
-    var sourceManagerModules by rememberSaveable { mutableStateOf(false) }
-    var showSourceComparison by remember { mutableStateOf(false) }
-    val comparisonCity by com.zhisheng.weather.data.CityRepository.selectedCity.collectAsState(initial = null)
-    var moduleOrderExpanded by rememberSaveable { mutableStateOf(false) }
-    var telemetryItemsExpanded by rememberSaveable { mutableStateOf(false) }
-    var lifeIndexItemsExpanded by rememberSaveable { mutableStateOf(false) }
+    var showModuleOrderDialog by rememberSaveable { mutableStateOf(false) }
+    var showTelemetryDialog by rememberSaveable { mutableStateOf(false) }
+    var showLifeIndexDialog by rememberSaveable { mutableStateOf(false) }
     val dataScrollState = rememberScrollState()
     val homeScrollState = rememberScrollState()
     val appearanceScrollState = rememberScrollState()
-    val aboutScrollState = rememberScrollState()
     val configuration = LocalConfiguration.current
     val landscapeLayout = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val chrome = LocalZhishengChrome.current
-    var landscapeSection by rememberSaveable { mutableIntStateOf(initialSection.coerceIn(0, 3)) }
-    // 两主题都使用四页分栏：经典终端此前是单页长滚动，与新版设置岛相比
+    var landscapeSection by rememberSaveable { mutableIntStateOf(initialSection.coerceIn(0, 2)) }
+    // 两主题都使用三页分栏：经典终端此前是单页长滚动，与新版设置岛相比
     // 找不到内容、也拿不到底部切换；现在统一分页，外观按主题各自适配。
     val scrollState = when (landscapeSection) {
         0 -> dataScrollState
         1 -> homeScrollState
-        2 -> appearanceScrollState
-        else -> aboutScrollState
+        else -> appearanceScrollState
     }
 
     // 权限申请器：只在用户点「定位当前城市」时触发，App 启动/刷新绝不调用
@@ -294,21 +256,25 @@ fun SettingsScreen(
     // page with the fragrance-glass material so cards, panels, background and header all match
     // the frosted bar (independent of the home-surface preference).
     val glassHeader = isFloatingGlass
+    val glassBlendDistance = with(LocalDensity.current) { 48.dp.toPx() }
     val sampleSettingsBackground = isFloatingGlass
     val floatingContentInset = maxOf(112.dp,
         82.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+    // Distance from the screen bottom to the floating bar's bottom edge: system nav bar + gap.
+    // The bar's refraction source must stop there so it never reads the content layer below it.
     val islandBottomGap = 12.dp
-    // Official BackdropDemoScaffold pattern: capture the WHOLE page (background + cards + text)
-    // with layerBackdrop(), then let the header and bottom tabs — which live OUTSIDE the captured
-    // subtree — refract it. A backdrop containing real content is what makes glass look transparent
-    // instead of a flat frosted colour. Glass controls INSIDE the captured subtree use an
-    // independent field, so recording the page can never sample itself and nest a RenderNode.
+    val belowIslandInsetPx = WindowInsets.navigationBars.getBottom(LocalDensity.current).toFloat() +
+        with(LocalDensity.current) { islandBottomGap.toPx() }
+    // The settings content column runs edge-to-edge behind the translucent navigation bar
+    // (portrait adds no navigationBarsPadding to the column). This recorded layer is also what
+    // the page itself draws and what the top header samples, so it must stay complete: clipping
+    // the recording would erase the content-layer region below the navigation bar from the
+    // screen as well. Only the floating bottom bar restricts what it refracts (VistaSettingsIsland).
+    // Discard retained sampled pixels when the theme changes.
     val glassTheme = com.zhisheng.weather.ui.theme.LocalZhishengPalette.current.isLight
+    val glassSource = androidx.compose.runtime.key(glassTheme) { rememberGraphicsLayer() }
     val settingsBackground = androidx.compose.runtime.key(glassTheme) { rememberGraphicsLayer() }
-    val pageBackdrop = rememberLayerBackdrop()
     var glassOrigin by remember { mutableStateOf(Offset.Zero) }
-    val settingsGlassScope = remember(pageBackdrop) { SettingsGlassScope(pageBackdrop) }
-    CompositionLocalProvider(LocalSettingsGlass provides settingsGlassScope) {
     Box(Modifier.fillMaxSize().onGloballyPositioned { glassOrigin = it.positionInRoot() }) {
     if (sampleSettingsBackground) Box(Modifier.fillMaxSize()
         .drawWithContent {
@@ -317,14 +283,18 @@ fun SettingsScreen(
         }.zhishengScreen())
     CompositionLocalProvider(LocalHomeBackdrop provides if (sampleSettingsBackground)
         HomeBackdrop(settingsBackground, glassOrigin, androidx.compose.ui.platform.LocalView.current) else null) {
-    // Force the fragrance-glass material on the settings content so cards, panels and background
-    // use the same frosted Liquid Glass as the floating bar, even when the home surface prefers
-    // the classic material.
-    CompositionLocalProvider(LocalHomeSurfaceStyle provides HomeSurfaceStyle.FRAGRANCE_GLASS) {
+    // 设置页材质跟随「首页材质」偏好：选「无界香氛」时卡片回到磨砂质感，
+    // 不再整页强制流光玻璃，避免折射与重影在长列表里叠加。
+    CompositionLocalProvider(LocalHomeSurfaceStyle provides homeSurfaceStyle) {
     Column(
-        modifier = Modifier.fillMaxSize()
-            .layerBackdrop(pageBackdrop)
-            .zhishengScreen()
+        modifier = Modifier.fillMaxSize().drawWithContent {
+                if (isFloatingGlass) {
+                    // Record the full content layer once. The display and the top header read the
+                    // complete layer; the floating bar clips its own refraction source instead.
+                    glassSource.record { this@drawWithContent.drawContent() }
+                    drawLayer(glassSource)
+                } else drawContent()
+            }.zhishengScreen()
             .statusBarsPadding()
             .then(if (!landscapeLayout) Modifier else Modifier.navigationBarsPadding()),
     ) {
@@ -390,7 +360,7 @@ fun SettingsScreen(
             InlineGroupLabel("天气数据")
             CardBox {
                 InfoRow("天气来源", if (source == SourcePref.AUTO) "自动选择" else source.cn,
-                    onClick = { sourceManagerModules = false; showSourceManager = true })
+                    onClick = onOpenWeatherSource)
                 Text("${if (sourceLoading) "天气更新中" else sourceName(activeSource)?.let { "当前使用 $it" } ?: "等待天气数据"} · 可按模块设置",
                     fontSize = 12.sp, lineHeight = 18.sp, color = ZhishengTextSecondary,
                     modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 16.dp))
@@ -427,16 +397,6 @@ fun SettingsScreen(
                         scope.launch { SettingsRepository.setPreciseLocationEnabled(!preciseLocationEnabled) }
                     }
                     SettingsDivider()
-                    ToggleRow(
-                        "枳生天气位置服务",
-                        if (sharedPlace.enabled) "已开启" else "帮助改善天气定位体验",
-                        sharedPlace.enabled,
-                        onInfo = { showSharedPlaceInfo = true },
-                    ) {
-                        if (sharedPlace.enabled) scope.launch { SecretStore.setSharedPlaceConsent(false) }
-                        else showSharedPlaceInfo = true
-                    }
-                    SettingsDivider()
                     ActionRow(
                         label = if (locating) "定位中 ..." else "⌖ 立即重新定位",
                         enabled = !locating,
@@ -451,6 +411,25 @@ fun SettingsScreen(
                         }
                         if (permissionReady) onLocate()
                         else permLauncher.launch(LocationSource.requestedPermissions(preciseLocationEnabled))
+                    }
+                    // 立即重新定位下方展示当前地点与精确经纬度，便于核对定位结果。
+                    if (activeCityName != null || (activeCityLatitude != null && activeCityLongitude != null)) {
+                        SettingsDivider()
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text(
+                                activeCityName ?: "当前位置",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = ZhishengText,
+                            )
+                            if (activeCityLatitude != null && activeCityLongitude != null) {
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    coordinateLabel(activeCityLatitude, activeCityLongitude),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ZhishengTextTertiary,
+                                )
+                            }
+                        }
                     }
                     locateMessage?.let { msg ->
                         SettingsDivider()
@@ -490,88 +469,20 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
             InlineGroupLabel("数据接入", "自有服务凭据保存在本机")
             CardBox {
-                // 高级选项只在启用时展开，常用设置保持在前。
                 ToggleRow(
                     "开发者模式",
                     if (developerMode) "已开启 · 管理个人天气与地理服务" else "配置自有天气与地理服务凭据",
                     developerMode,
                 ) {
-                    if (developerMode) developerToolsExpanded = false
                     scope.launch { SettingsRepository.setDeveloperMode(!developerMode) }
                 }
                 if (!isPhosphorVista || developerMode) {
-                SettingsDivider()
-                ActionRow(
-                    label = if (developerToolsExpanded) {
-                        "> 收起接入管理"
-                    } else {
-                        "> 管理自有服务接入"
-                    },
-                    enabled = developerMode,
-                    color = ZhishengCyan,
-                ) { developerToolsExpanded = !developerToolsExpanded }
-                if (developerToolsExpanded && developerMode) {
-                    SettingsDivider()
-                    InlineGroupLabel("接入管理", "凭据只保存在本机")
                     SettingsDivider()
                     ActionRow(
-                        label = if (caiyunRt.ready) "> 彩云天气 · 已配置 · 重新配置" else "> 彩云天气 · 接入",
-                        enabled = true,
+                        label = "> 管理自有服务接入",
+                        enabled = developerMode,
                         color = ZhishengCyan,
-                    ) { wizard = ProviderWizardKind.CAIYUN }
-                    SettingsDivider()
-                    ActionRow(
-                        label = "> 清除本机彩云 Token",
-                        enabled = caiyunRt.ready,
-                        color = ZhishengOrange,
-                    ) { scope.launch { SecretStore.clearCaiyun() } }
-                    SettingsDivider()
-                    ActionRow(
-                        label = if (qwRt.ready) "> 和风天气 · 已配置 · 重新配置" else "> 和风天气 · 接入",
-                        enabled = true,
-                        color = ZhishengCyan,
-                    ) { wizard = ProviderWizardKind.QWEATHER }
-                    SettingsDivider()
-                    ActionRow(
-                        label = "> 清除本机和风凭据",
-                        enabled = qwRt.ready,
-                        color = ZhishengOrange,
-                    ) { scope.launch { SecretStore.clearQw() } }
-                    SettingsDivider()
-                    ActionRow(
-                        label = if (amapRt.ready) "> 高德服务 · 已配置 · 重新配置" else "> 高德服务 · 接入",
-                        enabled = true,
-                        color = ZhishengCyan,
-                    ) { wizard = ProviderWizardKind.AMAP }
-                    SettingsDivider()
-                    ActionRow(
-                        label = "> 清除本机高德 Key",
-                        enabled = amapRt.ready,
-                        color = ZhishengOrange,
-                    ) { scope.launch { SecretStore.clearAmap() } }
-                    SettingsDivider()
-                    ActionRow(
-                        label = if (baiduRt.ready) "> 百度服务 · 已配置 · 重新配置" else "> 百度服务 · 接入",
-                        enabled = true,
-                        color = ZhishengCyan,
-                    ) { wizard = ProviderWizardKind.BAIDU }
-                    SettingsDivider()
-                    ActionRow(
-                        label = "> 清除本机百度 AK",
-                        enabled = baiduRt.ready,
-                        color = ZhishengOrange,
-                    ) { scope.launch { SecretStore.clearBaidu() } }
-                    SettingsDivider()
-                    ActionRow(if (seniverseRt.ready) "> 心知天气 · 已配置 · 重新配置" else "> 心知天气 · 个人免费版接入", true, ZhishengCyan) { wizard = ProviderWizardKind.SENIVERSE }
-                    SettingsDivider()
-                    ActionRow("> 清除本机心知 Key", seniverseRt.ready, ZhishengOrange) { scope.launch { SecretStore.clearSeniverse() } }
-                    SettingsDivider()
-                    ActionRow(if (mojiRt.ready) "> 墨迹天气 · 已配置 · 重新配置" else "> 墨迹天气 · 个人订阅接入", true, ZhishengCyan) { wizard = ProviderWizardKind.MOJI }
-                    SettingsDivider()
-                    ActionRow("> 清除本机墨迹凭据", mojiRt.ready, ZhishengOrange) { scope.launch { SecretStore.clearMoji() } }
-
-
-                }
+                    ) { onManageProviders() }
                 }
             }
 
@@ -653,6 +564,14 @@ fun SettingsScreen(
                     scope.launch { SettingsRepository.setShowTyphoon(!showTyphoon) }
                 }
                 }
+                SettingsDivider()
+                ToggleRow("特色功能", "卫星辐射、洪水风险、预报扩展字段与海拔", showFeatures) {
+                    scope.launch { SettingsRepository.setShowFeatures(!showFeatures) }
+                }
+                SettingsDivider()
+                ToggleRow("穿搭", "按体感温度推荐上身/外搭/下装与鞋履", showOutfit) {
+                    scope.launch { SettingsRepository.setShowOutfit(!showOutfit) }
+                }
             }
 
             if (developerMode) {
@@ -660,80 +579,20 @@ fun SettingsScreen(
                 InlineGroupLabel("遥测项目", "开发者模式 · 自由选择显示内容")
                 CardBox {
                     ActionRow(
-                        label = if (telemetryItemsExpanded) {
-                            "> 收起遥测项目 · ${telemetryMetrics.size}/${TelemetryMetric.entries.size}"
-                        } else {
-                            "> 选择遥测项目 · ${telemetryMetrics.size}/${TelemetryMetric.entries.size}"
-                        },
+                        label = "> 选择遥测项目 · ${telemetryMetrics.size}/${TelemetryMetric.entries.size}",
                         enabled = showTelemetry,
                         color = ZhishengCyan,
-                    ) { telemetryItemsExpanded = !telemetryItemsExpanded }
-                    if (telemetryItemsExpanded && showTelemetry) {
-                        SettingsDivider()
-                        Row(Modifier.fillMaxWidth()) {
-                            ActionRow(
-                                label = "> 全选",
-                                enabled = telemetryMetrics.size != TelemetryMetric.entries.size,
-                                color = ZhishengMint,
-                                modifier = Modifier.weight(1f),
-                            ) { scope.launch { SettingsRepository.setTelemetryMetrics(TelemetryMetric.defaultSelection) } }
-                            ActionRow(
-                                label = "> 清空",
-                                enabled = telemetryMetrics.isNotEmpty(),
-                                color = ZhishengOrange,
-                                modifier = Modifier.weight(1f),
-                            ) { scope.launch { SettingsRepository.setTelemetryMetrics(emptySet()) } }
-                        }
-                        TelemetryMetric.entries.forEach { metric ->
-                            SettingsDivider()
-                            ToggleRow(metric.cn, if (isPhosphorVista) "" else metric.en, metric in telemetryMetrics) {
-                                val next = telemetryMetrics.toMutableSet().apply {
-                                    if (!add(metric)) remove(metric)
-                                }
-                                scope.launch { SettingsRepository.setTelemetryMetrics(next) }
-                            }
-                        }
-                    }
+                    ) { showTelemetryDialog = true }
                 }
 
                 Spacer(Modifier.height(8.dp))
                 InlineGroupLabel("生活指数项目", "开发者模式 · 自由选择显示内容")
                 CardBox {
                     ActionRow(
-                        label = if (lifeIndexItemsExpanded) {
-                            "> 收起生活指数项目 · ${lifeIndexMetrics.size}/${LifeIndexMetric.entries.size}"
-                        } else {
-                            "> 选择生活指数项目 · ${lifeIndexMetrics.size}/${LifeIndexMetric.entries.size}"
-                        },
+                        label = "> 选择生活指数项目 · ${lifeIndexMetrics.size}/${LifeIndexMetric.entries.size}",
                         enabled = showIndices,
                         color = ZhishengCyan,
-                    ) { lifeIndexItemsExpanded = !lifeIndexItemsExpanded }
-                    if (lifeIndexItemsExpanded && showIndices) {
-                        SettingsDivider()
-                        Row(Modifier.fillMaxWidth()) {
-                            ActionRow(
-                                label = "> 全选",
-                                enabled = lifeIndexMetrics.size != LifeIndexMetric.entries.size,
-                                color = ZhishengMint,
-                                modifier = Modifier.weight(1f),
-                            ) { scope.launch { SettingsRepository.setLifeIndexMetrics(LifeIndexMetric.defaultSelection) } }
-                            ActionRow(
-                                label = "> 清空",
-                                enabled = lifeIndexMetrics.isNotEmpty(),
-                                color = ZhishengOrange,
-                                modifier = Modifier.weight(1f),
-                            ) { scope.launch { SettingsRepository.setLifeIndexMetrics(emptySet()) } }
-                        }
-                        LifeIndexMetric.entries.forEach { metric ->
-                            SettingsDivider()
-                            ToggleRow(metric.cn, if (isPhosphorVista) "" else metric.en, metric in lifeIndexMetrics) {
-                                val next = lifeIndexMetrics.toMutableSet().apply {
-                                    if (!add(metric)) remove(metric)
-                                }
-                                scope.launch { SettingsRepository.setLifeIndexMetrics(next) }
-                            }
-                        }
-                    }
+                    ) { showLifeIndexDialog = true }
                 }
             }
 
@@ -741,27 +600,10 @@ fun SettingsScreen(
             InlineGroupLabel("模块布局", "按自己的习惯排列")
             CardBox {
                 ActionRow(
-                    label = if (moduleOrderExpanded) "> 收起模块排序" else "> 调整主页模块顺序",
+                    label = "> 调整主页模块顺序",
                     enabled = true,
                     color = ZhishengCyan,
-                ) { moduleOrderExpanded = !moduleOrderExpanded }
-                if (moduleOrderExpanded) {
-                    SettingsDivider()
-                    ActionRow(
-                        label = "> 恢复默认顺序",
-                        enabled = moduleOrder != HomeModule.defaultOrder,
-                        color = ZhishengOrange,
-                    ) {
-                        scope.launch { SettingsRepository.setModuleOrder(HomeModule.defaultOrder) }
-                    }
-                    SettingsDivider()
-                    ModuleOrderEditor(moduleOrder) { from, to ->
-                        val next = moduleOrder.toMutableList().apply {
-                            add(to, removeAt(from))
-                        }
-                        scope.launch { SettingsRepository.setModuleOrder(next) }
-                    }
-                }
+                ) { showModuleOrderDialog = true }
             }
 
             }
@@ -943,59 +785,6 @@ fun SettingsScreen(
             }
 
             }
-            if (landscapeSection == 3) {
-            SectionTitle(4, "关于枳生", "ABOUT", "版本更新与帮助信息。")
-            CardBox {
-                InfoRow(
-                    "版本",
-                    "v${com.zhisheng.weather.BuildConfig.VERSION_NAME} · 更新说明",
-                    onClick = onShowWhatsNew,
-                )
-                SettingsDivider()
-                InfoRow(
-                    "检查更新",
-                    availableUpdate?.let { "发现新版本 v${it.versionName} · 点此查看" }
-                        ?: "自动检测更新 · 可忽略此版本或延后 3 天",
-                    onClick = { showAppUpdate = true },
-                    attention = availableUpdate != null,
-                )
-            }
-            InlineGroupLabel("帮助与诊断")
-            CardBox { Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { WeatherDiagnosticsButton() } }
-            InlineGroupLabel("隐私与权限")
-            CardBox {
-                ToggleRow("帮助改进服务", "", serviceDiagnostics, onInfo = { showServiceDiagnostics = true }) {
-                    if (serviceDiagnostics) scope.launch { SettingsRepository.setServiceDiagnostics(false) }
-                    else scope.launch { SettingsRepository.setServiceDiagnostics(true) }
-                }
-                SettingsDivider()
-                InfoRow("隐私说明", "了解信息使用与管理方式", onClick = { showServicePrivacy = true })
-                SettingsDivider()
-                ToggleRow("设备与版本统计", "", usageStatistics, onInfo = { showStatisticsInfo = true }) {
-                    scope.launch { SettingsRepository.setUsageStatistics(!usageStatistics) }
-                }
-                SettingsDivider()
-                InfoRow("权限", "网络；位置可选；安装更新时才调用系统安装")
-                SettingsDivider()
-                InfoRow("位置与搜索", "帮助改善定位与地点查询体验。", onClick = { showServicePrivacy = true })
-                SettingsDivider()
-                InfoRow("位置服务与历史", if (sharedPlace.enabled) "已开启 · 查看说明与删除历史" else "已关闭 · 查看说明与管理历史",
-                    onClick = { showSharedPlaceInfo = true })
-            }
-            Spacer(Modifier.height(20.dp))
-            Text(
-                if (isPhosphorVista) "枳生天气" else "枳生天气 · 数据终端",
-                style = MaterialTheme.typography.labelSmall,
-                color = ZhishengTextTertiary,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-            )
-            Text(
-                "数据来源：和风 / 彩云 / 心知 / 墨迹（个人接入） / 小米公开接口 / 中央气象台 / 腾讯天气 / 中国天气网 / Open-Meteo / RainViewer / GeoNames（地名，CC BY 4.0） / 枳生天气源（多源融合）",
-                style = MaterialTheme.typography.labelSmall,
-                color = ZhishengTextTertiary.copy(alpha = 0.75f),
-                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp, bottom = 12.dp),
-            )
-            }
             }
         }
         if (!landscapeLayout && !isPhosphorVista) {
@@ -1005,83 +794,64 @@ fun SettingsScreen(
     }
     }
     if (glassHeader) {
-        SettingsTopBar(onBack,
-            title = listOf("数据", "首页", "外观", "关于")[landscapeSection],
-            glass = true,
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding())
+        SettingsTopBar(onBack, Modifier.align(Alignment.TopCenter)
+            .glassScrollHeader(glassSource, { glassOrigin },
+                underlay = settingsBackground, underlayOrigin = glassOrigin,
+                strength = { scrollState.value / glassBlendDistance })
+            .statusBarsPadding())
     }
     if (isFloatingGlass) {
         VistaSettingsIsland(selected = landscapeSection, onSelected = { landscapeSection = it },
-            backdrop = pageBackdrop,
+            backdrop = glassSource, background = settingsBackground, backdropOrigin = glassOrigin,
+            belowBarInsetPx = belowIslandInsetPx,
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                 .padding(start = 22.dp, end = 22.dp, bottom = islandBottomGap))
     }
     }
     }
 
-    if (showSourceManager) WeatherSourceManager(
-        primary = source, weather = activeWeather, comparisonAvailable = comparisonCity != null,
-        initialModules = sourceManagerModules,
-        onDismiss = { showSourceManager = false },
-        onPrimarySelected = { selected -> SettingsRepository.setSourcePref(selected) },
-        onCompare = { if (comparisonCity != null) { sourceManagerModules = true; showSourceManager = false; showSourceComparison = true } },
-        onManageProviders = {
-            showSourceManager = false
-            developerToolsExpanded = true
-            scope.launch {
-                repeat(2) { androidx.compose.runtime.withFrameNanos { } }
-                // Data access is the last group. Wait for its expanded layout, then
-                // reveal the actual management actions instead of an already-visible label.
-                dataScrollState.animateScrollTo(dataScrollState.maxValue)
-            }
-        },
-    )
     if (showLivingSkyPreview) LivingSkyPreviewDialog { showLivingSkyPreview = false }
-    if (showSourceComparison) comparisonCity?.let { city ->
-        WeatherSourceComparison(city = city, onDismiss = { showSourceComparison = false; showSourceManager = true })
-    }
-    wizard?.let { kind ->
-        ProviderWizard(kind = kind, onClose = { wizard = null })
-    }
-    if (showAppUpdate) {
-        AppUpdateDialog(
-            initialInfo = availableUpdate,
-            downloadOnOpen = true,
-            onClose = { showAppUpdate = false },
+
+    if (showModuleOrderDialog) {
+        ModuleOrderDialog(
+            order = moduleOrder,
+            onReorder = { next -> scope.launch { SettingsRepository.setModuleOrder(next) } },
+            onReset = { scope.launch { SettingsRepository.setModuleOrder(HomeModule.defaultOrder) } },
+            onDismiss = { showModuleOrderDialog = false },
         )
     }
+    if (showTelemetryDialog && showTelemetry) {
+        TelemetryMetricsDialog(
+            selected = telemetryMetrics,
+            onToggle = { metric ->
+                val next = telemetryMetrics.toMutableSet().apply {
+                    if (!add(metric)) remove(metric)
+                }
+                scope.launch { SettingsRepository.setTelemetryMetrics(next) }
+            },
+            onSelectAll = { scope.launch { SettingsRepository.setTelemetryMetrics(TelemetryMetric.defaultSelection) } },
+            onClear = { scope.launch { SettingsRepository.setTelemetryMetrics(emptySet()) } },
+            onDismiss = { showTelemetryDialog = false },
+        )
+    }
+    if (showLifeIndexDialog && showIndices) {
+        LifeIndexMetricsDialog(
+            selected = lifeIndexMetrics,
+            onToggle = { metric ->
+                val next = lifeIndexMetrics.toMutableSet().apply {
+                    if (!add(metric)) remove(metric)
+                }
+                scope.launch { SettingsRepository.setLifeIndexMetrics(next) }
+            },
+            onSelectAll = { scope.launch { SettingsRepository.setLifeIndexMetrics(LifeIndexMetric.defaultSelection) } },
+            onClear = { scope.launch { SettingsRepository.setLifeIndexMetrics(emptySet()) } },
+            onDismiss = { showLifeIndexDialog = false },
+        )
     }
 }
 
 @Composable
-private fun SettingsTopBar(
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-    title: String = "设置",
-    glass: Boolean = false,
-) {
-    if (glass) {
-        val palette = LocalZhishengPalette.current
-        Row(
-            modifier = modifier.fillMaxWidth().height(64.dp).settingsGlassTopBar()
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            // Floating circular Liquid Glass back button instead of a flat IconButton.
-            SettingsGlassCircleButton(onBack, uiText("返回")) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, uiText("返回"),
-                    Modifier.size(20.dp), tint = palette.text)
-            }
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
-                color = palette.text, fontWeight = FontWeight.Bold)
-            SettingsGlassCircleButton(onBack, uiText("完成")) {
-                Icon(Icons.Filled.Check, uiText("完成"), Modifier.size(20.dp),
-                    tint = palette.mint.copy(alpha = 0.8f))
-            }
-        }
-        return
-    }
+private fun SettingsTopBar(onBack: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1099,14 +869,14 @@ private fun SettingsTopBar(
     }
 }
 
-/** 经典终端的底部分页条：与新主题设置岛同一职责（四页切换），保持方角与终端编号。 */
+/** 经典终端的底部分页条：与新主题设置岛同一职责（三页切换），保持方角与终端编号。 */
 @Composable
 private fun ClassicSettingsBar(
     selected: Int,
     onSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val sections = listOf("数据" to "数据与位置", "首页" to "首页内容", "外观" to "外观与设备", "关于" to "关于枳生")
+    val sections = listOf("数据" to "数据与位置", "首页" to "首页内容", "外观" to "外观与设备")
     Row(
         modifier = modifier.fillMaxWidth()
             .background(ZhishengSurface.copy(alpha = 0.94f))
@@ -1143,7 +913,7 @@ private fun ClassicSettingsBar(
     }
 }
 
-/** 横屏专用索引：常规横屏完整露出四类，极矮窗口仍可滚动访问，右侧只滚当前类别。 */
+/** 横屏专用索引：常规横屏完整露出三类，极矮窗口仍可滚动访问，右侧只滚当前类别。 */
 @Composable
 private fun LandscapeSettingsRail(
     selected: Int,
@@ -1154,7 +924,6 @@ private fun LandscapeSettingsRail(
         Triple("01//", "数据与位置", "DATA / LOCATION"),
         Triple("02//", "首页内容", "HOME CONTENT"),
         Triple("03//", "外观与设备", "DISPLAY / DEVICE"),
-        Triple("04//", "关于枳生", "ABOUT"),
     )
     LazyColumn(
         modifier = modifier.background(ZhishengSurface.copy(alpha = 0.72f)).padding(8.dp),
@@ -1557,53 +1326,132 @@ private fun ToggleRow(label: String, hint: String, checked: Boolean, onInfo: (()
 }
 
 @Composable
-private fun ModuleOrderEditor(
+internal fun ModuleOrderEditor(
     order: List<HomeModule>,
-    onMove: (from: Int, to: Int) -> Unit,
+    onReorder: (List<HomeModule>) -> Unit,
 ) {
-    val vista = isPhosphorVista
     val movable = order.withIndex().filterNot { !ReleaseFeatures.typhoon && it.value == HomeModule.TYPHOON }
-    if (vista) Text("点箭头调整顺序", Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
-    movable.forEachIndexed { displayIndex, entry ->
-        val index = entry.index
-        val module = entry.value
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "%02d".format(displayIndex + 1),
-                style = MaterialTheme.typography.labelSmall,
-                color = ZhishengOrange,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(module.cn, style = MaterialTheme.typography.titleSmall, color = ZhishengText)
-                if (!isPhosphorVista) Text(module.en, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary, letterSpacing = 1.sp)
+    val modules = movable.map { it.value }
+    val bounds = remember { mutableStateMapOf<HomeModule, Rect>() }
+    val dragBounds = remember { mutableMapOf<HomeModule, Rect>() }
+    var dragging by remember { mutableStateOf<HomeModule?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var target by remember { mutableStateOf<HomeModule?>(null) }
+    val haptics = LocalHapticFeedback.current
+
+    Box(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth()) {
+            movable.forEachIndexed { displayIndex, entry ->
+                val module = entry.value
+                val isDragging = dragging == module
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .zIndex(if (isDragging) 1f else 0f)
+                        .offset { IntOffset(0, if (isDragging) dragOffset.roundToInt() else 0) }
+                        .then(
+                            if (isDragging) Modifier
+                                .shadow(10.dp, RoundedCornerShape(10.dp))
+                                .background(ZhishengCard, RoundedCornerShape(10.dp))
+                            else Modifier,
+                        )
+                        .onGloballyPositioned { bounds[module] = it.boundsInParent() }
+                        .pointerInput(module) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    dragBounds.clear()
+                                    dragBounds.putAll(bounds)
+                                    dragging = module
+                                    target = module
+                                    dragOffset = 0f
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragOffset += amount.y
+                                    val origin = dragBounds[module]
+                                    if (origin != null) {
+                                        val centerY = origin.center.y + dragOffset
+                                        dragBounds.entries
+                                            .firstOrNull { centerY in it.value.top..it.value.bottom }
+                                            ?.let { target = it.key }
+                                    }
+                                },
+                                onDragEnd = {
+                                    val from = dragging
+                                    val to = target
+                                    if (from != null && to != null && from != to) {
+                                        val fromIndex = order.indexOf(from)
+                                        val toIndex = order.indexOf(to)
+                                        if (fromIndex >= 0 && toIndex >= 0) {
+                                            onReorder(
+                                                order.toMutableList().apply {
+                                                    add(toIndex, removeAt(fromIndex))
+                                                },
+                                            )
+                                        }
+                                    }
+                                    dragging = null
+                                    target = null
+                                    dragOffset = 0f
+                                },
+                                onDragCancel = {
+                                    dragging = null
+                                    target = null
+                                    dragOffset = 0f
+                                },
+                            )
+                        }
+                        .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "%02d".format(displayIndex + 1),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ZhishengOrange,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    com.zhisheng.weather.ui.components.PhosphorIcon(
+                        homeModuleIcon(module),
+                        null,
+                        Modifier.size(16.dp),
+                        if (displayIndex == 0) ZhishengMint else ZhishengTextSecondary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(module.cn, style = MaterialTheme.typography.titleSmall, color = ZhishengText)
+                        if (!isPhosphorVista) Text(module.en, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary, letterSpacing = 1.sp)
+                    }
+                    com.zhisheng.weather.ui.components.PhosphorIcon(
+                        R.drawable.ph_dots_six_vertical,
+                        "${module.cn}拖动排序",
+                        Modifier.padding(end = 6.dp).size(18.dp),
+                        if (isDragging) ZhishengMint else ZhishengTextTertiary,
+                    )
+                }
+                if (displayIndex < movable.lastIndex) SettingsDivider()
             }
-            Text(
-                "[↑]",
-                style = MaterialTheme.typography.titleSmall,
-                color = if (displayIndex > 0) ZhishengCyan else ZhishengCardBorder,
-                modifier = Modifier
-                    .clickable(enabled = displayIndex > 0, role = Role.Button, onClickLabel = "${module.cn}上移") {
-                        onMove(index, movable[displayIndex - 1].index)
-                    }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-            )
-            Text(
-                "[↓]",
-                style = MaterialTheme.typography.titleSmall,
-                color = if (displayIndex < movable.lastIndex) ZhishengMint else ZhishengCardBorder,
-                modifier = Modifier
-                    .clickable(enabled = displayIndex < movable.lastIndex, role = Role.Button, onClickLabel = "${module.cn}下移") {
-                        onMove(index, movable[displayIndex + 1].index)
-                    }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-            )
         }
-        if (displayIndex < movable.lastIndex) SettingsDivider()
+
+        val from = dragging
+        val to = target
+        if (from != null && to != null && from != to) {
+            val fromDisplay = modules.indexOf(from)
+            val toDisplay = modules.indexOf(to)
+            val rect = bounds[to]
+            if (fromDisplay >= 0 && toDisplay >= 0 && rect != null) {
+                val edge = if (toDisplay > fromDisplay) rect.bottom else rect.top
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .offset { IntOffset(0, edge.roundToInt() - 1) }
+                        .padding(horizontal = 16.dp)
+                        .height(2.dp)
+                        .background(ZhishengMint, RoundedCornerShape(1.dp)),
+                )
+            }
+        }
     }
 }
 
@@ -1697,4 +1545,13 @@ private fun SettingsDivider() {
         thickness = if (isPhosphorVista) 0.5.dp else 1.dp,
         color = ZhishengCardBorder.copy(alpha = if (isPhosphorVista) 0.32f else 1f),
     )
+}
+
+/** 经纬度展示：保留四位小数，按半球给出北纬/南纬、东经/西经。 */
+private fun coordinateLabel(latitude: Double, longitude: Double): String {
+    val lat = String.format(java.util.Locale.US, "%.4f", kotlin.math.abs(latitude))
+    val lon = String.format(java.util.Locale.US, "%.4f", kotlin.math.abs(longitude))
+    val latDir = if (latitude >= 0) "北纬" else "南纬"
+    val lonDir = if (longitude >= 0) "东经" else "西经"
+    return "$latDir $lat° · $lonDir $lon°"
 }

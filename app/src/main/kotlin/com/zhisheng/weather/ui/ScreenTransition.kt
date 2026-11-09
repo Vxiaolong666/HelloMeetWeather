@@ -18,26 +18,32 @@ import androidx.compose.ui.graphics.TransformOrigin
 
 // 搜索从城市列表向内进入；返回保留列表。设置、实验室按层级向内进入。
 internal enum class AppScreen {
-    HOME, SEARCH, DAILY_FORECAST, HISTORY, RADAR, TYPHOON, SETTINGS, ATMOSPHERE_LAB, PRECIPITATION, HOURLY_DETAIL, AIR_QUALITY
+    HOME, SEARCH, DAILY_FORECAST, DAILY_DAY_DETAIL, HISTORY, RADAR, TYPHOON, SETTINGS, ATMOSPHERE_LAB, PRECIPITATION,
+    HOURLY_DETAIL, AIR_QUALITY, YESTERDAY_DETAIL, PROVIDER_ACCESS, WEATHER_SOURCE, FEATURES
 }
 
 internal fun AppScreen.navSlot(): Int = when (this) {
     AppScreen.SEARCH -> 0
     AppScreen.HOME -> 1
     AppScreen.DAILY_FORECAST -> 2
+    AppScreen.DAILY_DAY_DETAIL -> 2
     AppScreen.PRECIPITATION -> 2
     AppScreen.HOURLY_DETAIL -> 2
     AppScreen.AIR_QUALITY -> 2
+    AppScreen.YESTERDAY_DETAIL -> 2
+    AppScreen.FEATURES -> 2
     AppScreen.HISTORY -> 3
     AppScreen.RADAR -> 4
     AppScreen.TYPHOON -> 5
     AppScreen.SETTINGS -> 6
     AppScreen.ATMOSPHERE_LAB -> 7
+    AppScreen.PROVIDER_ACCESS -> 7
+    AppScreen.WEATHER_SOURCE -> 7
 }
 
 internal fun AppScreen.opensFromContent(): Boolean = this in setOf(
-    AppScreen.DAILY_FORECAST, AppScreen.PRECIPITATION, AppScreen.HISTORY,
-    AppScreen.RADAR, AppScreen.TYPHOON, AppScreen.AIR_QUALITY,
+    AppScreen.DAILY_FORECAST, AppScreen.DAILY_DAY_DETAIL, AppScreen.PRECIPITATION, AppScreen.HISTORY,
+    AppScreen.RADAR, AppScreen.TYPHOON, AppScreen.AIR_QUALITY, AppScreen.YESTERDAY_DETAIL, AppScreen.FEATURES,
 )
 
 internal fun overlayEnter(screen: AppScreen, origin: TransformOrigin = TransformOrigin.Center): EnterTransition {

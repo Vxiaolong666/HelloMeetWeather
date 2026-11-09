@@ -298,9 +298,11 @@ enum class HomeModule(val key: String, val cn: String, val en: String) {
     DAILY("daily", "五天天气", "5-DAY FORECAST"),
     TELEMETRY("telemetry", "遥测数据", "TELEMETRY"),
     AQI("aqi", "空气质量", "AIR QUALITY"),
+    OUTFIT("outfit", "穿搭", "OUTFIT"),
     INDICES("indices", "生活指数", "INDICES"),
     YESTERDAY("yesterday", "昨日复盘", "RETRO"),
-    TYPHOON("typhoon", "台风关注", "TYPHOON");
+    TYPHOON("typhoon", "台风关注", "TYPHOON"),
+    FEATURES("features", "特色功能", "FEATURE HUB");
 
     companion object {
         // 默认阅读顺序先回答用户最常看的三件事：接下来几小时、是否马上下雨、
@@ -310,12 +312,14 @@ enum class HomeModule(val key: String, val cn: String, val en: String) {
             HOURLY,
             PRECIP,
             DAILY,
+            OUTFIT,
             TELEMETRY,
             AQI,
             SPACETIME,
             INDICES,
             YESTERDAY,
             TYPHOON,
+            FEATURES,
         )
 
         // v2 标记 = 用户在本机主动保存过的排序。旧格式串（无标记）才走
@@ -412,6 +416,8 @@ object SettingsRepository {
     private val KEY_SHOW_SPACETIME = booleanPreferencesKey("show_spacetime")
     private val KEY_SHOW_SKY = booleanPreferencesKey("show_sky_photography")
     private val KEY_SHOW_COAST = booleanPreferencesKey("show_coast_weather")
+    private val KEY_SHOW_FEATURES = booleanPreferencesKey("show_features")
+    private val KEY_SHOW_OUTFIT = booleanPreferencesKey("show_outfit")
     private val KEY_BOOT_ANIM = booleanPreferencesKey("boot_anim")
     private val KEY_KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
     private val KEY_STANDBY_BURN_IN_PROTECTION = booleanPreferencesKey("standby_burn_in_protection")
@@ -480,6 +486,8 @@ object SettingsRepository {
     }
     val showSkyPhotography: Flow<Boolean> by lazy { store.data.map { it[KEY_SHOW_SKY] ?: true } }
     val showCoastWeather: Flow<Boolean> by lazy { store.data.map { ReleaseFeatures.coastalWeather && (it[KEY_SHOW_COAST] ?: true) } }
+    val showFeatures: Flow<Boolean> by lazy { store.data.map { it[KEY_SHOW_FEATURES] ?: true } }
+    val showOutfit: Flow<Boolean> by lazy { store.data.map { it[KEY_SHOW_OUTFIT] ?: true } }
     val bootAnim: Flow<Boolean> by lazy { store.data.map { it[KEY_BOOT_ANIM] ?: true } }
     val keepScreenOn: Flow<Boolean> by lazy { store.data.map { it[KEY_KEEP_SCREEN_ON] ?: false } }
     val standbyBurnInProtection: Flow<Boolean> by lazy {
@@ -588,6 +596,8 @@ object SettingsRepository {
     suspend fun setShowSpacetime(v: Boolean) = store.edit { it[KEY_SHOW_SPACETIME] = v }
     suspend fun setShowSkyPhotography(v: Boolean) = store.edit { it[KEY_SHOW_SKY] = v }
     suspend fun setShowCoastWeather(v: Boolean) = store.edit { it[KEY_SHOW_COAST] = v }
+    suspend fun setShowFeatures(v: Boolean) = store.edit { it[KEY_SHOW_FEATURES] = v }
+    suspend fun setShowOutfit(v: Boolean) = store.edit { it[KEY_SHOW_OUTFIT] = v }
     suspend fun setBootAnim(v: Boolean) = store.edit { it[KEY_BOOT_ANIM] = v }
     suspend fun setKeepScreenOn(v: Boolean) = store.edit { it[KEY_KEEP_SCREEN_ON] = v }
     suspend fun setStandbyBurnInProtection(v: Boolean) = store.edit { it[KEY_STANDBY_BURN_IN_PROTECTION] = v }

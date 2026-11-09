@@ -160,6 +160,13 @@ internal fun AtlasCoastDetail(scene: SceneWeatherData?, unit: String) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             row.forEach { (label, value) ->
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    PhosphorIcon(
+                                        coastalFactIcon(label),
+                                        null,
+                                        Modifier.size(13.dp),
+                                        ZhishengCyan.copy(alpha = 0.75f),
+                                    )
+                                    Spacer(Modifier.height(3.dp))
                                     Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = ZhishengCyan)
                                     Spacer(Modifier.height(2.dp))
                                     Text(label, style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
@@ -252,7 +259,7 @@ internal fun AtlasCoastDetail(scene: SceneWeatherData?, unit: String) {
     Column(Modifier.fillMaxWidth().atlasDetailSurface().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("24小时潮汐预报", color = ZhishengText, style = MaterialTheme.typography.titleMedium)
         if (selected != null) {
-            AtlasTideChart(chartCoast, 192.dp, selected)
+            AtlasTideChart(chartCoast, 192.dp, selected, onSelect = { selectedTime = it.timeMillis })
             AtlasCaption("${sceneStamp(selected.timeMillis, coast.zoneId)} · 预估潮位 ${atlasNumber(selected.seaLevelM, "m")}")
             if (available.size > 1) {
                 AtlasScrubber(selectedIndex.toFloat(), available.lastIndex, "选择逐时潮位") { selectedTime = available[it.roundToInt().coerceIn(available.indices)].timeMillis }

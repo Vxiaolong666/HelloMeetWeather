@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phosphor Icons style buildings (regular); see THIRD_PARTY_NOTICES.md -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M232,216h-24V128l-40,-24v-40l-64,32V216H32V96l96,-48 32,16V64l48,24v128h24zM56,216h52v-64H56zM152,96l16,8v112h-44V56z" />
+</vector>

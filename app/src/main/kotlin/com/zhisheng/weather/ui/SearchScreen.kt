@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.saveable.rememberSaveable
 
 import androidx.compose.foundation.background
@@ -40,6 +41,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -67,6 +70,7 @@ import com.zhisheng.weather.ui.theme.ZhishengTextSecondary
 import com.zhisheng.weather.ui.theme.ZhishengTextTertiary
 import com.zhisheng.weather.ui.theme.isPhosphorVista
 import com.zhisheng.weather.ui.theme.zhishengCompactPanel
+import com.zhisheng.weather.ui.theme.zhishengPanel
 import com.zhisheng.weather.ui.theme.zhishengScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -187,7 +191,14 @@ internal fun SearchScreenContent(state: SearchUiState, onQueryChanged: (String) 
                     if (isPhosphorVista) PhosphorIcon(R.drawable.ph_arrow_left, "返回", Modifier.size(24.dp), ZhishengText)
                     else Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = ZhishengOrange)
                 }
-                Text("添加地点", style = MaterialTheme.typography.titleLarge, color = ZhishengText)
+                Column(Modifier.weight(1f)) {
+                    Text("添加地点", style = MaterialTheme.typography.titleLarge, color = ZhishengText)
+                    Text(
+                        "搜索城市、区县或街道，点结果即可加入首页",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ZhishengTextTertiary,
+                    )
+                }
             }
             OutlinedTextField(value = state.query, onValueChange = onQueryChanged,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -212,13 +223,13 @@ internal fun SearchScreenContent(state: SearchUiState, onQueryChanged: (String) 
                 item(key = "search-scope-controls") {
                     Column {
                         SearchPlaceTools(state, onAreaChanged, onCityPicked)
-                        Row(Modifier.fillMaxWidth().selectableGroup().padding(bottom = 6.dp)) {
-                            SearchScopeButton("国内", state.region == PlaceRegion.DOMESTIC, Modifier.weight(1f)) { onRegionChanged(PlaceRegion.DOMESTIC) }
-                            SearchScopeButton("海外", state.region == PlaceRegion.OVERSEAS, Modifier.weight(1f)) { onRegionChanged(PlaceRegion.OVERSEAS) }
+                        Row(Modifier.fillMaxWidth().selectableGroup().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SearchScopeButton(R.drawable.ph_map_pin, "国内", state.region == PlaceRegion.DOMESTIC, Modifier.weight(1f)) { onRegionChanged(PlaceRegion.DOMESTIC) }
+                            SearchScopeButton(R.drawable.ph_globe, "海外", state.region == PlaceRegion.OVERSEAS, Modifier.weight(1f)) { onRegionChanged(PlaceRegion.OVERSEAS) }
                         }
-                        Row(Modifier.fillMaxWidth().selectableGroup()) {
-                            SearchScopeButton("城市与区县", !state.preciseAddress, Modifier.weight(1f)) { onScopeChanged(false) }
-                            SearchScopeButton("街道与地点", state.preciseAddress, Modifier.weight(1f)) { onScopeChanged(true) }
+                        Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SearchScopeButton(R.drawable.ph_buildings, "城市与区县", !state.preciseAddress, Modifier.weight(1f)) { onScopeChanged(false) }
+                            SearchScopeButton(R.drawable.ph_map_pin, "街道与地点", state.preciseAddress, Modifier.weight(1f)) { onScopeChanged(true) }
                         }
                         if (amapEnhanced && state.region == PlaceRegion.DOMESTIC) {
                             Text("已接入你的高德 Key，街道和地点优先用高德查找",
@@ -228,9 +239,44 @@ internal fun SearchScreenContent(state: SearchUiState, onQueryChanged: (String) 
                     }
                 }
                 if (state.query.isBlank()) item {
-                    Column(Modifier.padding(horizontal = 4.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(if (state.preciseAddress) "搜索街道或地点" else "查找天气地点", style = MaterialTheme.typography.titleMedium, color = ZhishengText)
-                        Text(if (state.region == PlaceRegion.DOMESTIC) "国内含港澳台。输入即查本地城市与区县；街道和地标请补充城市名，再点联网搜索。" else "输入海外城市名，再点联网搜索；结果会显示国家或地区。", style = MaterialTheme.typography.bodyMedium, color = ZhishengTextSecondary)
+                    Column(
+                        Modifier.fillMaxWidth().padding(top = 14.dp).zhishengPanel().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(
+                                Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
+                                    .background(ZhishengMint.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                PhosphorIcon(
+                                    if (state.preciseAddress) R.drawable.ph_map_pin else R.drawable.ph_magnifying_glass,
+                                    null,
+                                    Modifier.size(18.dp),
+                                    ZhishengMint,
+                                )
+                            }
+                            Text(
+                                if (state.preciseAddress) "搜索街道或地点" else "查找天气地点",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = ZhishengText,
+                            )
+                        }
+                        listOf(
+                            R.drawable.ph_magnifying_glass to "输入城市名、区县或拼音，本地结果即时出现",
+                            R.drawable.ph_globe to "没有合适结果时，点「联网搜索」补充",
+                            R.drawable.ph_plus to "点任意结果即可添加到首页",
+                        ).forEach { (icon, label) ->
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                PhosphorIcon(icon, null, Modifier.size(15.dp), ZhishengTextTertiary)
+                                Text(label, style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
+                            }
+                        }
+                        Text(
+                            if (state.region == PlaceRegion.DOMESTIC) "国内范围含港澳台" else "海外结果会标注国家或地区",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ZhishengTextTertiary,
+                        )
                     }
                 }
                 if (state.indexUnavailable) item { SearchMessage("本地地名数据暂不可用，可选收藏或联网搜索", ZhishengTextSecondary) }
@@ -252,7 +298,24 @@ internal fun SearchScreenContent(state: SearchUiState, onQueryChanged: (String) 
                     val category = if (city.placeRegion() == null) "地区待确认" else if (state.region == PlaceRegion.OVERSEAS) "海外地点" else if (city.coordinateKind == CoordinateKind.PLACE || city.street != null) "街道与地点" else "城市与区县"
                     val previous = state.results.getOrNull(index - 1)
                     val previousCategory = previous?.let { if (it.placeRegion() == null) "地区待确认" else if (state.region == PlaceRegion.OVERSEAS) "海外地点" else if (it.coordinateKind == CoordinateKind.PLACE || it.street != null) "街道与地点" else "城市与区县" }
-                    if (category != previousCategory) Text(category, Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
+                    if (category != previousCategory) Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        PhosphorIcon(
+                            when (category) {
+                                "海外地点" -> R.drawable.ph_globe
+                                "街道与地点" -> R.drawable.ph_map_pin
+                                "地区待确认" -> R.drawable.ph_magnifying_glass
+                                else -> R.drawable.ph_buildings
+                            },
+                            null,
+                            Modifier.size(13.dp),
+                            ZhishengTextTertiary,
+                        )
+                        Text(category, style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
+                    }
                     SearchResultRow(city, index) { dismissKeyboard(); onCityPicked(it) }
                 }
                 item {
@@ -278,15 +341,25 @@ private fun SearchResultRow(city: City, index: Int, onCityPicked: (City) -> Unit
     Column {
         Row(
             Modifier.fillMaxWidth()
-                .then(if (isPhosphorVista) Modifier else Modifier.zhishengCompactPanel())
+                .then(if (isPhosphorVista) Modifier.zhishengPanel() else Modifier.zhishengCompactPanel())
                 .clickable { onCityPicked(city) }
                 .heightIn(min = 76.dp)
-                .padding(horizontal = 8.dp, vertical = 12.dp),
+                .padding(horizontal = if (isPhosphorVista) 12.dp else 8.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (isPhosphorVista) {
-                PhosphorIcon(if (city.coordinateKind == com.zhisheng.weather.model.CoordinateKind.DEVICE) R.drawable.ph_crosshair else R.drawable.ph_map_pin,
-                    null, Modifier.size(24.dp), ZhishengTextSecondary)
+                Box(
+                    Modifier.size(36.dp).clip(RoundedCornerShape(11.dp))
+                        .background(ZhishengMint.copy(alpha = 0.10f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PhosphorIcon(
+                        if (city.coordinateKind == com.zhisheng.weather.model.CoordinateKind.DEVICE) R.drawable.ph_crosshair else R.drawable.ph_map_pin,
+                        null,
+                        Modifier.size(19.dp),
+                        ZhishengMint,
+                    )
+                }
             } else {
                 Text("%02d".format(index + 1), style = MaterialTheme.typography.labelSmall, color = ZhishengOrange)
             }
@@ -301,12 +374,17 @@ private fun SearchResultRow(city: City, index: Int, onCityPicked: (City) -> Unit
                 )
             }
             if (isPhosphorVista) {
-                PhosphorIcon(R.drawable.ph_plus, "添加$primary", Modifier.size(21.dp), ZhishengMint)
+                Box(
+                    Modifier.size(30.dp).clip(RoundedCornerShape(9.dp))
+                        .background(ZhishengMint.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PhosphorIcon(R.drawable.ph_plus, "添加$primary", Modifier.size(17.dp), ZhishengMint)
+                }
             } else {
                 Text("[+]", style = MaterialTheme.typography.labelMedium, color = ZhishengMint)
             }
         }
-        if (isPhosphorVista) HorizontalDivider(color = ZhishengTextTertiary.copy(alpha = 0.20f), thickness = 1.dp)
     }
 }
 
@@ -316,17 +394,35 @@ private fun SearchMessage(text: String, color: androidx.compose.ui.graphics.Colo
 }
 
 @Composable
-private fun SearchScopeButton(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun SearchScopeButton(
+    icon: Int,
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
     Column(
-        modifier.selectable(selected = selected, role = Role.Tab, onClick = onClick).heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 10.dp),
+        modifier
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .clip(shape)
+            .background(if (selected) ZhishengMint.copy(alpha = 0.12f) else Color.Transparent)
+            .border(
+                1.dp,
+                if (selected) ZhishengMint.copy(alpha = 0.45f) else ZhishengTextTertiary.copy(alpha = 0.22f),
+                shape,
+            )
+            .heightIn(min = 52.dp)
+            .padding(horizontal = 8.dp, vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
+        PhosphorIcon(icon, null, Modifier.size(17.dp), if (selected) ZhishengMint else ZhishengTextTertiary)
         Text(
-            if (!isPhosphorVista && selected) "[ $label ]" else label,
-            style = MaterialTheme.typography.labelLarge,
+            label,
+            style = MaterialTheme.typography.labelMedium,
             color = if (selected) ZhishengMint else ZhishengTextSecondary,
+            maxLines = 1,
         )
-        Spacer(Modifier.height(7.dp))
-        Box(Modifier.fillMaxWidth().height(if (selected) 2.dp else 1.dp).background(if (selected) ZhishengMint else ZhishengTextTertiary.copy(alpha = 0.22f)))
     }
 }

@@ -1,6 +1,10 @@
 package com.zhisheng.weather.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -9,12 +13,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -26,15 +34,36 @@ import com.zhisheng.weather.i18n.uiText
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import com.zhisheng.weather.ui.theme.LocalHomeSurfaceStyle
-import com.zhisheng.weather.ui.theme.SettingsGlassSwitch
+import com.zhisheng.weather.ui.theme.LocalZhishengChrome
 import com.zhisheng.weather.ui.theme.zhishengPanel
+import com.zhisheng.weather.ui.theme.vistaSoftGlow
 
 @Composable
 internal fun VistaSettingsCard(content: @Composable () -> Unit) {
     val palette = LocalZhishengPalette.current
+    val chrome = LocalZhishengChrome.current
     val glass = LocalHomeSurfaceStyle.current == HomeSurfaceStyle.FRAGRANCE_GLASS
-    Column(Modifier.fillMaxWidth().then(if (glass) Modifier.zhishengPanel()
-        else Modifier.clip(RoundedCornerShape(20.dp)).background(palette.card))) {
+    val shape = RoundedCornerShape(20.dp)
+    val outline = Modifier.border(chrome.borderWidth, palette.cardBorder.copy(alpha = 0.45f), shape)
+    // 浅色纸面用不透明白卡：半透明磨砂渐变与玻璃采样会让内容较少的短卡片透出灰底，
+    // 与同页的白色长卡片不一致。深色磷光主题仍保留原来的磨砂/玻璃材质与柔光。
+    val surface = when {
+        palette.isLight -> Modifier.clip(shape).background(Color.White).then(outline)
+        glass -> Modifier.zhishengPanel()
+        else -> Modifier
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        lerp(palette.card, palette.surface, 0.30f).copy(alpha = 0.92f),
+                        palette.card.copy(alpha = 0.76f),
+                    ),
+                ),
+            )
+            .vistaSoftGlow(panel = true)
+            .then(outline)
+    }
+    Column(Modifier.fillMaxWidth().then(surface)) {
         content()
     }
 }
@@ -62,8 +91,16 @@ internal fun VistaSettingToggle(
         ) {
             PhosphorIcon(R.drawable.ph_info, uiText("查看说明"), Modifier.size(19.dp), palette.textSecondary)
         }
-        // The row owns the single switch action; the Liquid Glass switch is purely visual.
-        SettingsGlassSwitch(checked)
+        // The row owns the single switch action; this compact track is purely visual.
+        val track by animateColorAsState(
+            if (checked) palette.mint else lerp(palette.card, palette.textSecondary, 0.20f),
+            tween(180), label = "settings-switch-track",
+        )
+        val position by animateDpAsState(if (checked) 21.dp else 3.dp, tween(180), label = "settings-switch-thumb")
+        Box(Modifier.size(44.dp, 26.dp).clearAndSetSemantics { }.clip(CircleShape).background(track)) {
+            Box(Modifier.offset(x = position, y = 3.dp).size(20.dp).clip(CircleShape)
+                .background(if (checked) Color.White else palette.textSecondary))
+        }
     }
 }
 
