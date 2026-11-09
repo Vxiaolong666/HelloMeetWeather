@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">枳生天気</string>
+    <string name="shortcut_refresh_short">天気を更新</string>
+    <string name="shortcut_refresh_long">現在の地点をすぐに更新</string>
+    <string name="shortcut_search_short">地点を検索</string>
+    <string name="shortcut_search_long">地点を検索して切り替え</string>
+    <string name="shortcut_settings_short">設定</string>
+    <string name="shortcut_settings_long">枳生天気の設定を開く</string>
+</resources>

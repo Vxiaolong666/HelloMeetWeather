@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">枳生天气</string>
+    <string name="shortcut_refresh_short">刷新天气</string>
+    <string name="shortcut_refresh_long">刷新天气</string>
+    <string name="shortcut_search_short">搜索城市</string>
+    <string name="shortcut_search_long">切换城市</string>
+    <string name="shortcut_settings_short">设置</string>
+    <string name="shortcut_settings_long">打开设置</string>
+</resources>
