@@ -113,6 +113,9 @@ import kotlinx.coroutines.launch
 
 private data class ShortcutCommand(val action: String? = null, val sequence: Long = 0L)
 
+/** 触点只写普通对象而非 State，避免每次按下都触发整棵首页重组。 */
+private class NavigationOrigin(var value: TransformOrigin = TransformOrigin.Center)
+
 class MainActivity : ComponentActivity() {
     private var hostResumed by mutableStateOf(false)
     private var startupPromptsSuppressed by mutableStateOf(false)
@@ -405,10 +408,15 @@ class MainActivity : ComponentActivity() {
                     onDispose { view.keepScreenOn = false }
                 }
 
-                // 系统返回键：搜索/设置页退回主屏，而不是直接退出 App（v0.0.2）
+                // 系统返回键与左上角返回按钮保持一致：设置子页先回设置主页，其余二级页回主屏。
                 BackHandler(enabled = screen != AppScreen.HOME) {
                     if (screen == AppScreen.SEARCH) choosingInitialCity = false
-                    screen = if (screen == AppScreen.ATMOSPHERE_LAB) AppScreen.SETTINGS else AppScreen.HOME
+                    screen = when (screen) {
+                        AppScreen.ATMOSPHERE_LAB,
+                        AppScreen.PROVIDER_ACCESS,
+                        AppScreen.WEATHER_SOURCE -> AppScreen.SETTINGS
+                        else -> AppScreen.HOME
+                    }
                 }
 
                 val automation by com.zhisheng.weather.data.AutomationSettingsRepository.settings.collectAsState()
@@ -439,11 +447,12 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val orientationState = rememberSaveableStateHolder()
+                val motionEnabled = systemAnimationsEnabled()
                 SharedTransitionLayout(Modifier.fillMaxSize()) {
                     AnimatedContent(
                         targetState = standbyVisible,
                         transitionSpec = {
-                            if (screen == AppScreen.HOME) fadeIn(tween(300)) togetherWith fadeOut(tween(180))
+                            if (screen == AppScreen.HOME && motionEnabled) fadeIn(tween(220)) togetherWith fadeOut(tween(160))
                             else androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
                         },
                         label = "weather-orientation",
@@ -461,14 +470,15 @@ class MainActivity : ComponentActivity() {
                 } else {
                     // 主屏始终留在下层。进出设置/搜索只盖一层，避免拆掉 WeatherContent
                     // 后温度、图标再播一遍交错入场。
-                    var lastNavigationOrigin by remember { mutableStateOf(TransformOrigin.Center) }
+                    // 触点写入普通对象，不触发首页重组；只在真正打开二级页时读取一次。
+                    val navigationOrigin = remember { NavigationOrigin() }
                     val overlayState = rememberSaveableStateHolder()
                     Box(Modifier.fillMaxSize().pointerInput(Unit) {
                         awaitPointerEventScope {
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 event.changes.firstOrNull { it.pressed && !it.previousPressed }?.let { down ->
-                                    lastNavigationOrigin = TransformOrigin(
+                                    navigationOrigin.value = TransformOrigin(
                                         (down.position.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f),
                                         (down.position.y / size.height.coerceAtLeast(1)).coerceIn(0f, 1f))
                                 }
@@ -520,7 +530,7 @@ class MainActivity : ComponentActivity() {
                         var overlayWasVisible by remember { mutableStateOf(false) }
                         var overlayOrigin by remember { mutableStateOf(TransformOrigin.Center) }
                         if (overlayVisible != overlayWasVisible) {
-                            if (overlayVisible) overlayOrigin = lastNavigationOrigin
+                            if (overlayVisible) overlayOrigin = navigationOrigin.value
                             overlayWasVisible = overlayVisible
                         }
                         // 组合期回写需带相等性护栏：状态已一致就不再写，杜绝潜在的无限重组；
@@ -528,14 +538,14 @@ class MainActivity : ComponentActivity() {
                         if (overlayVisible && overlayScreen != screen) overlayScreen = screen
                         AnimatedVisibility(
                             visible = overlayVisible,
-                            enter = if (standbyActive) androidx.compose.animation.EnterTransition.None else overlayEnter(overlayScreen, overlayOrigin),
-                            exit = overlayExit(overlayScreen, overlayOrigin),
+                            enter = if (standbyActive) androidx.compose.animation.EnterTransition.None else overlayEnter(motionEnabled, overlayOrigin),
+                            exit = if (standbyActive) androidx.compose.animation.ExitTransition.None else overlayExit(motionEnabled, overlayOrigin),
                             modifier = Modifier.fillMaxSize(),
                             label = "overlay",
                         ) {
                             AnimatedContent(
                                 targetState = if (overlayScreen == AppScreen.ATMOSPHERE_LAB) AppScreen.SETTINGS else overlayScreen,
-                                transitionSpec = { screenTransition(initialState, targetState) },
+                                transitionSpec = { screenTransition(motionEnabled) },
                                 label = "overlay-stack",
                             ) { dest ->
                                 overlayState.SaveableStateProvider(dest.name) {
@@ -565,8 +575,8 @@ class MainActivity : ComponentActivity() {
                                     )
                                     AnimatedVisibility(
                                         visible = overlayScreen == AppScreen.ATMOSPHERE_LAB,
-                                        enter = overlayEnter(AppScreen.ATMOSPHERE_LAB),
-                                        exit = overlayExit(AppScreen.ATMOSPHERE_LAB),
+                                        enter = overlayEnter(motionEnabled),
+                                        exit = overlayExit(motionEnabled),
                                     ) {
                                         if (ReleaseFeatures.weatherAtmosphere) AtmosphereLabScreen(
                                             initialLevel = uiState.prefs.ambience,

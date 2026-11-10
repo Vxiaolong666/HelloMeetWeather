@@ -32,6 +32,16 @@ internal fun forecastLifeAdvice(english: String, day: DailyWeather?): String {
         "SPORTS", "TRAVEL", "FISHING" -> when { rain -> "留意降水，优先安排室内活动"; (day.windSpeed ?: 0.0) >= 30 -> "风力较强，减少空旷处活动"; (day.high ?: 0.0) >= 32 -> "避开高温时段"; day.condition != null -> "结合临近天气安排户外活动"; else -> "缺少天气预报" }
         "DRYING" -> if (rain) "有降水可能，建议室内晾晒" else if (day.precipProbability != null) "关注临近降水，及时收衣" else "缺少降水预报"
         "TRAFFIC" -> if (rain) "雨天路滑，出行预留时间" else "出行前留意当地路况"
+        "MORNING EXERCISE", "SHOPPING", "BOATING", "KITE", "NIGHTLIFE", "DATE", "MOOD" ->
+            if (rain) "预计有降水，建议改在室内安排" else "天气条件合适，可以安排"
+        "UMBRELLA" -> if (rain) "出门记得带伞" else "暂不需要带伞"
+        "WIND CHILL" -> (day.low ?: day.high)?.let {
+            if (it <= 5) "气温偏低，注意防风保暖" else "风力与体感尚可"
+        } ?: "缺少温度预报"
+        "HEATSTROKE" -> day.high?.let {
+            if (it >= 32) "高温时段注意补水、减少暴晒" else "暂无明显中暑风险"
+        } ?: "缺少温度预报"
+        "DRYNESS", "HAIR CARE", "BEER" -> "结合当天温湿度自行安排"
         else -> "数据源暂未提供该日建议"
     }
 }

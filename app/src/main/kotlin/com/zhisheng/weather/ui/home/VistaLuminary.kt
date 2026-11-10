@@ -321,55 +321,59 @@ private fun VistaLuminaryArc(
         Triple("日落", today.sunset, orange),
     )
     val hasMoon = today.moonrise != null && today.moonset != null
-    Canvas(Modifier.fillMaxWidth().height(150.dp)) {
-        val left = 6.dp.toPx()
-        val right = size.width - 6.dp.toPx()
-        val width = (right - left).coerceAtLeast(1f)
-        val base = size.height - 14.dp.toPx()
-        val dash = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 6.dp.toPx()))
-        val arcStroke = Stroke(1.5.dp.toPx(), pathEffect = dash)
-        fun drawArc(startFraction: Float, endFraction: Float, height: Float) {
-            val x1 = left + width * startFraction
-            val x2 = left + width * endFraction
-            val mid = (x1 + x2) / 2f
-            val half = (x2 - x1) / 2f
-            val path = Path().apply {
-                moveTo(x1, base)
-                cubicTo(x1 + half * 0.25f, base - height * 0.86f,
-                    mid - half * 0.55f, base - height, mid, base - height)
-                cubicTo(mid + half * 0.55f, base - height,
-                    x2 - half * 0.25f, base - height * 0.86f, x2, base)
-            }
-            drawPath(path, rail.copy(alpha = 0.9f), style = arcStroke)
-        }
-        drawLine(rail.copy(alpha = 0.55f), Offset(left, base), Offset(right, base), 1.dp.toPx())
-        val outerHeight = (base - 12.dp.toPx()).coerceAtLeast(24f)
-        drawArc(0.06f, 0.94f, outerHeight)
-        if (hasMoon) drawArc(0.22f, 0.78f, outerHeight * 0.62f)
-        listOf(0.06f, 0.22f, 0.78f, 0.94f).forEach { fraction ->
-            drawCircle(rail.copy(alpha = 0.95f), 3.dp.toPx(), Offset(left + width * fraction, base))
-        }
-    }
-    Row(Modifier.fillMaxWidth()) {
-        marks.forEach { (label, time, color) ->
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(label, style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    time ?: "—",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = color,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        }
-    }
     val rise = clockMinutes(today.sunrise)
     val set = clockMinutes(today.sunset)
     val daylight = if (rise != null && set != null && set > rise) vistaAstroDuration(set - rise) else "—"
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("照亮 ${(illumination * 100).toInt()}%", style = MaterialTheme.typography.titleSmall, color = ZhishengTextSecondary)
-        Text("白昼 $daylight", style = MaterialTheme.typography.titleSmall, color = ZhishengTextSecondary)
+    // 必须包成单个根布局：外层 Crossfade/AnimatedContent 会把多个子节点叠放，
+    // 否则弧线、四个时刻与照亮/白昼文字会互相压在同一行。
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(150.dp)) {
+            val left = 6.dp.toPx()
+            val right = size.width - 6.dp.toPx()
+            val width = (right - left).coerceAtLeast(1f)
+            val base = size.height - 14.dp.toPx()
+            val dash = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 6.dp.toPx()))
+            val arcStroke = Stroke(1.5.dp.toPx(), pathEffect = dash)
+            fun drawArc(startFraction: Float, endFraction: Float, height: Float) {
+                val x1 = left + width * startFraction
+                val x2 = left + width * endFraction
+                val mid = (x1 + x2) / 2f
+                val half = (x2 - x1) / 2f
+                val path = Path().apply {
+                    moveTo(x1, base)
+                    cubicTo(x1 + half * 0.25f, base - height * 0.86f,
+                        mid - half * 0.55f, base - height, mid, base - height)
+                    cubicTo(mid + half * 0.55f, base - height,
+                        x2 - half * 0.25f, base - height * 0.86f, x2, base)
+                }
+                drawPath(path, rail.copy(alpha = 0.9f), style = arcStroke)
+            }
+            drawLine(rail.copy(alpha = 0.55f), Offset(left, base), Offset(right, base), 1.dp.toPx())
+            val outerHeight = (base - 12.dp.toPx()).coerceAtLeast(24f)
+            drawArc(0.06f, 0.94f, outerHeight)
+            if (hasMoon) drawArc(0.22f, 0.78f, outerHeight * 0.62f)
+            listOf(0.06f, 0.22f, 0.78f, 0.94f).forEach { fraction ->
+                drawCircle(rail.copy(alpha = 0.95f), 3.dp.toPx(), Offset(left + width * fraction, base))
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            marks.forEach { (label, time, color) ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(label, style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        time ?: "—",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = color,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("照亮 ${(illumination * 100).toInt()}%", style = MaterialTheme.typography.titleSmall, color = ZhishengTextSecondary)
+            Text("白昼 $daylight", style = MaterialTheme.typography.titleSmall, color = ZhishengTextSecondary)
+        }
     }
 }
 

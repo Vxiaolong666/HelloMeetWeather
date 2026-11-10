@@ -2,14 +2,17 @@ package com.zhisheng.weather.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -40,6 +44,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -48,6 +54,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -55,13 +62,17 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.zhisheng.weather.R
+import com.zhisheng.weather.data.ChineseAqi2026
 import com.zhisheng.weather.model.AqiInfo
 import com.zhisheng.weather.model.WeatherData
 import com.zhisheng.weather.ui.components.PhosphorIcon
@@ -431,9 +442,73 @@ private fun PanelCard(content: @Composable ColumnScope.() -> Unit) {
     }
 }
 
+private data class PollutantTip(
+    val name: String,
+    val unit: String,
+    val limit: Double,
+    val description: String,
+)
+
+/**
+ * 判定依据：GB 3095—2012（及修改单）二级浓度限值、HJ 633—2026 表 3 分指数断点。
+ * limit 为 IAQI = 100 对应的二级浓度限值（一小时平均口径），与 App 内
+ * ChineseAqi2026 的 AQI 估算使用同一张断点表，避免卡片等级与提示互相矛盾。
+ */
+private fun pollutantTip(label: String): PollutantTip = when (label) {
+    "PM2.5" -> PollutantTip("细颗粒物", "μg/m³", 60.0,
+        "粒径小于 2.5 微米，可深入肺泡并进入血液，长期暴露会影响呼吸与心血管系统。")
+    "PM10" -> PollutantTip("可吸入颗粒物", "μg/m³", 120.0,
+        "可进入呼吸道的颗粒物，浓度升高时易引起咳嗽、咽喉不适与呼吸道炎症。")
+    "SO₂" -> PollutantTip("二氧化硫", "μg/m³", 500.0,
+        "有刺激性气味的气体，会刺激眼鼻与呼吸道，哮喘人群尤其需要注意。")
+    "NO₂" -> PollutantTip("二氧化氮", "μg/m³", 200.0,
+        "主要来自燃烧排放，高浓度会刺激肺部并加重呼吸道症状。")
+    "O₃" -> PollutantTip("臭氧", "μg/m³", 200.0,
+        "近地面臭氧在日照强烈时升高，会刺激眼睛与呼吸道，午后应减少剧烈户外活动。")
+    else -> PollutantTip("一氧化碳", "mg/m³", 10.0,
+        "一氧化碳是无色、无臭、无味气体，但吸入对人体有十分大的危害。")
+}
+
+/** 断点口径：CO 用 mg/m³，其余用 μg/m³；把供应商单位归一到该口径后再判定。 */
+private fun normalizedConcentration(label: String, value: Double, unit: String): Pair<Double, String> {
+    val milligram = unit.contains("mg", ignoreCase = true)
+    return if (label == "CO") {
+        (if (milligram) value else value / 1000.0) to "mg/m³"
+    } else {
+        (if (milligram) value * 1000.0 else value) to "μg/m³"
+    }
+}
+
+private fun pollutantUnit(label: String, aqi: AqiInfo?): String {
+    val key = when (label) {
+        "PM2.5" -> "pm2p5"
+        "PM10" -> "pm10"
+        "SO₂" -> "so2"
+        "NO₂" -> "no2"
+        "O₃" -> "o3"
+        else -> "co"
+    }
+    return aqi?.pollutantUnits?.get(key) ?: pollutantTip(label).unit
+}
+
+private fun pollutantBand(iaqi: Int): Int = when {
+    iaqi <= 50 -> 0
+    iaqi <= 100 -> 1
+    iaqi <= 150 -> 2
+    iaqi <= 200 -> 3
+    iaqi <= 300 -> 4
+    else -> 5
+}
+
+private fun formatConcentration(value: Double): String {
+    val rounded = (value * 100.0).roundToInt() / 100.0
+    return if (rounded % 1.0 == 0.0) rounded.toLong().toString() else rounded.toString()
+}
+
 @Composable
 private fun PollutantGrid(aqi: AqiInfo?) {
     val tint = aqiColor(aqi?.value)
+    var selected by remember { mutableStateOf<String?>(null) }
     val items = listOf(
         "PM2.5" to aqi?.pm25,
         "PM10" to aqi?.pm10,
@@ -446,18 +521,100 @@ private fun PollutantGrid(aqi: AqiInfo?) {
         items.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { (label, value) ->
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            value ?: "—",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = tint,
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(label, style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
+                    Box(Modifier.weight(1f)) {
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .clickable { selected = if (selected == label) null else label },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                value ?: "—",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = tint,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(label, style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
+                        }
+                        if (selected == label) PollutantTooltip(label, value, aqi) { selected = null }
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 独立 Popup 窗口：不挂在卡片布局里，不会被页面框架裁剪，也不挤占原有排版。
+ * 底部小尖角指向被点击的那一列；判定用分项 IAQI 而非固定阈值的二元判断。
+ */
+@Composable
+private fun PollutantTooltip(label: String, value: String?, aqi: AqiInfo?, onDismiss: () -> Unit) {
+    val palette = LocalZhishengPalette.current
+    val light = palette.isLight
+    val tip = pollutantTip(label)
+    val surface = if (light) Color.White else palette.card
+    val raw = value?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+    val normalized = raw?.let { normalizedConcentration(label, it, pollutantUnit(label, aqi)) }
+    val iaqi = normalized?.let { ChineseAqi2026.subIndex(label, it.first) }
+    val band = iaqi?.let(::pollutantBand)
+    val status = when {
+        iaqi == null -> "数据暂缺"
+        iaqi > 100 -> "${AqiLevels[band!!].label} · 超标"
+        else -> "${AqiLevels[band!!].label} · 达标"
+    }
+    val statusColor = band?.let { AqiLevels[it].color(light) } ?: ZhishengTextTertiary
+    val shape = RoundedCornerShape(20.dp)
+    val density = LocalDensity.current
+    Popup(
+        alignment = Alignment.BottomCenter,
+        offset = IntOffset(0, with(density) { -12.dp.roundToPx() }),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                Modifier.widthIn(max = 300.dp)
+                    .shadow(10.dp, shape)
+                    .clip(shape)
+                    .background(surface)
+                    .border(1.dp, palette.cardBorder.copy(alpha = 0.5f), shape)
+                    .clickable { onDismiss() }
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(tip.name, style = MaterialTheme.typography.titleMedium,
+                        color = ZhishengText, fontWeight = FontWeight.Bold)
+                    Text("｜", style = MaterialTheme.typography.titleSmall, color = ZhishengTextTertiary)
+                    Text(status, style = MaterialTheme.typography.titleSmall,
+                        color = statusColor, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text("单位: ${normalized?.second ?: tip.unit}",
+                        style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
+                }
+                Text(tip.description, style = MaterialTheme.typography.bodyMedium,
+                    color = ZhishengTextSecondary)
+                HorizontalDivider(color = ZhishengCardBorder)
+                Text(
+                    "二级限值 ${formatConcentration(tip.limit)} ${tip.unit} · 分指数 ${iaqi ?: "—"}",
+                    style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary,
+                )
+                Text(
+                    normalized?.let { "当前 ${formatConcentration(it.first)} ${it.second}" } ?: "当前读数暂缺",
+                    style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary,
+                )
+                Text(
+                    "按 HJ 633—2026 一小时平均断点分级，分指数 >100 即超过国标二级限值；" +
+                        "当前为瞬时浓度，仅供参考。",
+                    style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary,
+                )
+            }
+            Box(
+                Modifier.size(14.dp).offset(y = (-7).dp).rotate(45f)
+                    .background(surface)
+                    .border(1.dp, palette.cardBorder.copy(alpha = 0.5f), RoundedCornerShape(2.dp)),
+            )
         }
     }
 }

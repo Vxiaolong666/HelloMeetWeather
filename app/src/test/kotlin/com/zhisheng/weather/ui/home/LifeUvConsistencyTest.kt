@@ -6,6 +6,7 @@ import com.zhisheng.weather.model.LifeIndexExtra
 import com.zhisheng.weather.model.WeatherCondition
 import com.zhisheng.weather.model.WeatherData
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -20,7 +21,7 @@ class LifeUvConsistencyTest {
         val items = lifeIndexItems(data, uvSelection)
         assertEquals(1, items.size)
         assertEquals("1 弱", items.single().value)
-        assertEquals("当前", items.single().period)
+        assertNull(items.single().period)
     }
 
     @Test fun rainDoesNotFabricateLowUvWhenTheActualReadingIsHigh() {

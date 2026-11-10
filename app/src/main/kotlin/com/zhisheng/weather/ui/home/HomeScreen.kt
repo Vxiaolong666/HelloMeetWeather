@@ -4028,14 +4028,15 @@ private fun AqiFactCell(name: String, value: String?, modifier: Modifier = Modif
 }
 
 @Composable
+/** 首页 AQI 与详情页共用同一套六档等级色（优→严重），深浅主题下都可辨读。 */
 private fun aqiColor(value: Int?): Color = when {
     value == null -> ZhishengTextTertiary
-    value <= 50 -> ZhishengMint
-    value <= 100 -> ZhishengMint.copy(alpha = if (isPhosphorVista) 1f else 0.8f)
-    value <= 150 -> ZhishengOrange
-    value <= 200 -> ZhishengOrange.copy(alpha = if (isPhosphorVista) 1f else 0.85f)
-    value <= 300 -> ZhishengRed
-    else -> ZhishengRed.copy(alpha = if (isPhosphorVista) 1f else 0.8f)
+    value <= 50 -> Color(0xFF2EAA5E)
+    value <= 100 -> Color(0xFFD9A41B)
+    value <= 150 -> Color(0xFFEE7A20)
+    value <= 200 -> Color(0xFFDE4034)
+    value <= 300 -> Color(0xFF9B4FB3)
+    else -> Color(0xFFA83A55)
 }
 
 // —— 生活指数 ——
@@ -4046,6 +4047,38 @@ internal data class LifeIndexUi(
     val positive: Boolean? = null,
     val period: String? = null,
 )
+
+/** 与空气质量详情页同一套六档等级色（优→严重），浅色在前、深色在后。 */
+private val LifeIndexLevelColors = listOf(
+    Color(0xFF21A356) to Color(0xFF35D95A),
+    Color(0xFFEFB800) to Color(0xFFFFE14D),
+    Color(0xFFFF7E00) to Color(0xFFFF9E2C),
+    Color(0xFFE8382B) to Color(0xFFFF5A4F),
+    Color(0xFF8F3F97) to Color(0xFFC77BE0),
+    Color(0xFF7E0023) to Color(0xFFE07A6E),
+)
+
+private fun lifeIndexLevel(value: String, positive: Boolean?): Int? {
+    val v = value.trim()
+    return when {
+        v.isEmpty() -> null
+        v.contains("极") || v.contains("严重") || v.contains("很差") -> 5
+        v.contains("较不宜") || v.contains("较不适宜") || v.contains("较强") || v.contains("偏高") -> 3
+        v.contains("不宜") || v.contains("很强") || v.contains("强") || v.contains("高") || v.contains("差") -> 4
+        v.contains("中等") || v.contains("一般") || v.contains("适中") || v.contains("较宜") || v.contains("较适宜") -> 1
+        v.contains("弱") || v.contains("低") || v.contains("适宜") || v.contains("优") || v.contains("良") -> 0
+        positive == true -> 0
+        positive == false -> 4
+        else -> null
+    }
+}
+
+@Composable
+private fun lifeIndexColor(item: LifeIndexUi): Color {
+    val level = lifeIndexLevel(item.value, item.positive) ?: return ZhishengTextSecondary
+    val pair = LifeIndexLevelColors[level]
+    return if (LocalZhishengPalette.current.isLight) pair.first else pair.second
+}
 
 internal fun clampCityDeckPosition(position: Float, cityCount: Int): Float {
     if (cityCount <= 0) return 0f
@@ -4077,7 +4110,7 @@ internal fun lifeIndexItems(data: WeatherData, selected: Set<LifeIndexMetric>): 
     // Supplier life indices can describe the whole day. The current UV card must
     // agree with the current numeric reading, including a valid zero at night.
     data.current?.uvIndex?.takeIf { it in 0..50 && LifeIndexMetric.UV in selected }?.let { uv ->
-        add(LifeIndexUi(LifeIndexMetric.UV.cn, LifeIndexMetric.UV.en, uvText(uv), period = "当前"))
+        add(LifeIndexUi(LifeIndexMetric.UV.cn, LifeIndexMetric.UV.en, uvText(uv)))
     }
     data.carWashOk?.takeIf { LifeIndexMetric.CAR_WASH in selected }?.let {
         add(LifeIndexUi(LifeIndexMetric.CAR_WASH.cn, LifeIndexMetric.CAR_WASH.en, if (it) "适宜" else "不适宜", it))
@@ -4114,16 +4147,33 @@ internal fun IndicesRow(data: WeatherData, selected: Set<LifeIndexMetric>, modif
             val rows = items.chunked(columns)
             Column {
                 rows.forEachIndexed { index, row ->
-                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Row(Modifier.fillMaxWidth().height(76.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                         row.forEach { item ->
-                            Column(Modifier.weight(1f).clickable { advice = item }.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(item.name, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
-                                    PhosphorIcon(lifeIndexIcon(item.en), null, Modifier.size(18.dp), ZhishengTextSecondary)
+                            val tint = lifeIndexColor(item)
+                            Row(
+                                Modifier.weight(1f).fillMaxHeight()
+                                    .clickable { advice = item }
+                                    .padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                // 图标放大并占满卡片高度，浅色底衬突出当前等级色。
+                                PhosphorIcon(
+                                    lifeIndexIcon(item.en),
+                                    null,
+                                    Modifier.fillMaxHeight().width(56.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(tint.copy(alpha = 0.12f))
+                                        .padding(12.dp),
+                                    tint,
+                                )
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(item.name, style = MaterialTheme.typography.bodySmall,
+                                        color = ZhishengTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(item.value, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                        color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    item.period?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary) }
                                 }
-                                Text(item.value, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                                    color = when (item.positive) { true -> ZhishengMint; false -> ZhishengOrange; null -> ZhishengText })
-                                item.period?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary) }
                             }
                         }
                         repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
@@ -4153,11 +4203,11 @@ internal fun IndicesRow(data: WeatherData, selected: Set<LifeIndexMetric>, modif
         }
         items.chunked(2).forEach { rowItems ->
             Row(
-                Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                Modifier.fillMaxWidth().height(76.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 rowItems.forEach { item ->
-                    LifeIndexCard(item, Modifier.weight(1f).fillMaxHeight().clickable { advice = item })
+                    LifeIndexCard(item, Modifier.weight(1f).clickable { advice = item })
                 }
                 // 奇数项独占最后一行，避免人为留下半屏空栏。
             }
@@ -4167,72 +4217,87 @@ internal fun IndicesRow(data: WeatherData, selected: Set<LifeIndexMetric>, modif
 }
 
 internal fun lifeIndexIcon(english: String): Int = when (LifeIndexMetric.fromEnglish(english)) {
-    LifeIndexMetric.CAR_WASH -> R.drawable.ph_drop
-    LifeIndexMetric.SPORTS -> R.drawable.ph_person_simple_walk
+    LifeIndexMetric.CAR_WASH, LifeIndexMetric.BEER -> R.drawable.ph_drop
+    LifeIndexMetric.SPORTS, LifeIndexMetric.MORNING_EXERCISE -> R.drawable.ph_person_simple_walk
     LifeIndexMetric.DRESS, LifeIndexMetric.DRYING -> R.drawable.ph_t_shirt
-    LifeIndexMetric.UV, LifeIndexMetric.SUNSCREEN -> R.drawable.ph_sun
-    LifeIndexMetric.FISHING -> R.drawable.ph_waves
-    LifeIndexMetric.TRAVEL -> R.drawable.ph_map_trifold
-    LifeIndexMetric.TRAFFIC -> R.drawable.ph_navigation_arrow
+    LifeIndexMetric.UV, LifeIndexMetric.SUNSCREEN, LifeIndexMetric.HEATSTROKE -> R.drawable.ph_sun
+    LifeIndexMetric.FISHING, LifeIndexMetric.BOATING -> R.drawable.ph_waves
+    LifeIndexMetric.TRAVEL, LifeIndexMetric.SHOPPING -> R.drawable.ph_map_trifold
+    LifeIndexMetric.TRAFFIC, LifeIndexMetric.KITE -> R.drawable.ph_navigation_arrow
     LifeIndexMetric.SUNGLASSES -> R.drawable.ph_eye
     LifeIndexMetric.ALLERGY, LifeIndexMetric.AIR_POLLUTION -> R.drawable.ph_leaf
-    LifeIndexMetric.COMFORT, LifeIndexMetric.COLD, LifeIndexMetric.AIR_CONDITIONER -> R.drawable.ph_thermometer
-    LifeIndexMetric.MAKEUP -> R.drawable.ph_sparkle
+    LifeIndexMetric.COMFORT, LifeIndexMetric.COLD, LifeIndexMetric.AIR_CONDITIONER,
+    LifeIndexMetric.WIND_CHILL, LifeIndexMetric.DRYNESS -> R.drawable.ph_thermometer
+    LifeIndexMetric.MAKEUP, LifeIndexMetric.HAIR_CARE, LifeIndexMetric.DATE,
+    LifeIndexMetric.MOOD -> R.drawable.ph_sparkle
+    LifeIndexMetric.NIGHTLIFE -> R.drawable.ph_moon_stars
+    LifeIndexMetric.UMBRELLA -> R.drawable.ph_umbrella
     null -> R.drawable.ph_info
 }
 
 @Composable
 private fun LifeIndexCard(item: LifeIndexUi, modifier: Modifier = Modifier) {
-    val accent = when (item.positive) {
-        true -> ZhishengMint
-        false -> ZhishengOrange
-        null -> ZhishengCardBorder
-    }
-    Column(
+    val accent = lifeIndexColor(item)
+    Row(
         modifier
             .then(
                 if (isPhosphorVista) Modifier else Modifier.zhishengCompactPanel(
                     borderColor = accent.copy(alpha = if (item.positive == null) 1f else 0.5f),
                 ),
             )
+            .fillMaxHeight()
             .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            PhosphorIcon(lifeIndexIcon(item.en), null, Modifier.size(13.dp), ZhishengOrange)
-            Spacer(Modifier.width(6.dp))
-            Text(
-                item.name,
-                style = MaterialTheme.typography.labelMedium,
-                color = ZhishengTextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            Spacer(Modifier.width(6.dp))
-            if (!isPhosphorVista) Text(
-                item.en,
-                style = MaterialTheme.typography.labelSmall,
-                color = ZhishengTextTertiary,
-                letterSpacing = 0.7.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-            )
-        }
-        Spacer(Modifier.height(4.dp))
-        item.period?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary) }
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                item.value,
-                style = MaterialTheme.typography.titleMedium,
-                color = item.positive?.let { accent } ?: ZhishengText,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            item.positive?.let {
-                Spacer(Modifier.width(6.dp))
-                Text(if (isPhosphorVista) { if (it) "适宜" else "注意" } else { if (it) "[OK]" else "[NG]" }, style = MaterialTheme.typography.labelMedium, color = accent)
+        // 左侧大图标占满高度，右侧自上而下放名称、时段与等级值。
+        PhosphorIcon(
+            lifeIndexIcon(item.en),
+            null,
+            Modifier.fillMaxHeight().width(52.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(accent.copy(alpha = 0.12f))
+                .padding(10.dp),
+            accent,
+        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    item.name,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ZhishengTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (!isPhosphorVista) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        item.en,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ZhishengTextTertiary,
+                        letterSpacing = 0.7.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                    )
+                }
+            }
+            item.period?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary) }
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    item.value,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = accent,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                item.positive?.let {
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (isPhosphorVista) { if (it) "适宜" else "注意" } else { if (it) "[OK]" else "[NG]" },
+                        style = MaterialTheme.typography.labelMedium, color = accent)
+                }
             }
         }
     }

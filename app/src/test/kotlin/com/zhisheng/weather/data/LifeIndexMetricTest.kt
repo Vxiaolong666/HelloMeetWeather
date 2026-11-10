@@ -15,7 +15,10 @@ class LifeIndexMetricTest {
         val selected = setOf(LifeIndexMetric.SUNSCREEN, LifeIndexMetric.CAR_WASH, LifeIndexMetric.COMFORT)
         val stored = LifeIndexMetric.selectionKey(selected)
 
-        assertEquals(selected, LifeIndexMetric.selectionFrom(stored))
+        val restored = LifeIndexMetric.selectionFrom(stored)
+        assertTrue(selected.all { it in restored })
+        // 旧存档不包含新增的指数类型，升级后默认开启。
+        assertTrue(LifeIndexMetric.MORNING_EXERCISE in restored)
         assertTrue(stored.startsWith(LifeIndexMetric.CAR_WASH.key))
     }
 
@@ -33,5 +36,13 @@ class LifeIndexMetricTest {
         assertEquals(LifeIndexMetric.AIR_POLLUTION, LifeIndexMetric.fromEnglish("AIR"))
         assertEquals(LifeIndexMetric.SUNGLASSES, LifeIndexMetric.fromEnglish("SUNGLASSES"))
         assertEquals(LifeIndexMetric.SUNGLASSES, LifeIndexMetric.fromEnglish("GLASSES"))
+    }
+
+    @Test
+    fun weatherComCnKeysResolveToSharedMetrics() {
+        assertEquals(LifeIndexMetric.CAR_WASH, LifeIndexMetric.fromEnglish("wcn:xc"))
+        assertEquals(LifeIndexMetric.MORNING_EXERCISE, LifeIndexMetric.fromEnglish("wcn:cl"))
+        assertEquals(LifeIndexMetric.UMBRELLA, LifeIndexMetric.fromEnglish("wcn:ys"))
+        assertEquals(LifeIndexMetric.HEATSTROKE, LifeIndexMetric.fromEnglish("wcn:zs"))
     }
 }

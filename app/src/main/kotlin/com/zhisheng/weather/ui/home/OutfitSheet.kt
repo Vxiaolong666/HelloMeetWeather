@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -196,7 +197,7 @@ internal fun OutfitFigure(
     }
 }
 
-/** 「搭配一下」底部弹层：白底、时段、配色、可点选部位、偏好联动与建议依据。 */
+/** 「搭配一下」弹层：与生活指数弹出层一致的标准底部弹层，默认约 80% 高。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun OutfitStylingSheet(
@@ -255,7 +256,7 @@ internal fun OutfitStylingSheet(
         append("。")
     }
 
-    val sheetHeight = (LocalConfiguration.current.screenHeightDp * 0.8f).dp
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -263,15 +264,16 @@ internal fun OutfitStylingSheet(
         containerColor = Color.White,
         tonalElevation = 0.dp,
     ) {
+        // 拖动指示器由 ModalBottomSheet 提供，这里不再重复绘制。
         Column(
             Modifier
                 .fillMaxWidth()
-                .height(sheetHeight)
+                .heightIn(min = screenHeight * 0.8f)
                 .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // 拖动指示器由 ModalBottomSheet 自带，这里不再重复画一条。
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -439,7 +441,6 @@ internal fun OutfitStylingSheet(
                 }
             }
             Spacer(Modifier.height(16.dp))
-            Spacer(Modifier.navigationBarsPadding())
         }
     }
 }

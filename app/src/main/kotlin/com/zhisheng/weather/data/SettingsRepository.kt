@@ -160,41 +160,83 @@ enum class LifeIndexMetric(val key: String, val cn: String, val en: String) {
     MAKEUP("makeup", "化妆", "MAKEUP"),
     DRYING("drying", "晾晒", "DRYING"),
     TRAFFIC("traffic", "交通", "TRAFFIC"),
-    SUNSCREEN("sunscreen", "防晒", "SPF");
+    SUNSCREEN("sunscreen", "防晒", "SPF"),
+    // 中国天气网 dataZS 实际返回的 30 项里，原先未纳入的指数类型。
+    MORNING_EXERCISE("morning_exercise", "晨练", "MORNING EXERCISE"),
+    SHOPPING("shopping", "逛街", "SHOPPING"),
+    BEER("beer", "啤酒", "BEER"),
+    BOATING("boating", "划船", "BOATING"),
+    WIND_CHILL("wind_chill", "风寒", "WIND CHILL"),
+    KITE("kite", "放风筝", "KITE"),
+    NIGHTLIFE("nightlife", "夜生活", "NIGHTLIFE"),
+    MOOD("mood", "心情", "MOOD"),
+    DATE("date", "约会", "DATE"),
+    HAIR_CARE("hair_care", "美发", "HAIR CARE"),
+    UMBRELLA("umbrella", "雨伞", "UMBRELLA"),
+    HEATSTROKE("heatstroke", "中暑", "HEATSTROKE"),
+    DRYNESS("dryness", "干燥", "DRYNESS");
 
     companion object {
         private const val NONE = "__none__"
         val defaultSelection: Set<LifeIndexMetric> = entries.toSet()
+        // 旧存档只可能含这 16 个 key。升级后新增类型默认开启，
+        // 既不覆盖用户主动取消过的旧项，也不会让指数突然消失。
+        private val legacyKeys = setOf(
+            "car_wash", "sports", "dress", "fishing", "uv", "travel", "allergy", "comfort",
+            "cold", "air_pollution", "air_conditioner", "sunglasses", "makeup", "drying",
+            "traffic", "sunscreen",
+        )
 
         fun selectionFrom(raw: String?): Set<LifeIndexMetric> = when {
             raw == null -> defaultSelection
             raw == NONE -> emptySet()
-            else -> raw.split(',')
-                .mapNotNull { key -> entries.firstOrNull { it.key == key.trim() } }
-                .toSet()
+            else -> {
+                val parsed = raw.split(',')
+                    .mapNotNull { key -> entries.firstOrNull { it.key == key.trim() } }
+                    .toMutableSet()
+                parsed.addAll(entries.filter { it.key !in legacyKeys })
+                parsed.toSet()
+            }
         }
 
         fun selectionKey(selection: Set<LifeIndexMetric>): String =
             if (selection.isEmpty()) NONE else entries.filter(selection::contains).joinToString(",") { it.key }
 
-        fun fromEnglish(raw: String): LifeIndexMetric? = when (raw.trim().uppercase()) {
-            "CAR WASH" -> CAR_WASH
-            "SPORTS" -> SPORTS
-            "DRESS" -> DRESS
-            "FISHING" -> FISHING
-            "UV" -> UV
-            "TRAVEL" -> TRAVEL
-            "ALLERGY" -> ALLERGY
-            "COMFORT" -> COMFORT
-            "COLD" -> COLD
-            "AIR POLLUTION", "AIR" -> AIR_POLLUTION
-            "A/C" -> AIR_CONDITIONER
-            "SUNGLASSES", "GLASSES" -> SUNGLASSES
-            "MAKEUP" -> MAKEUP
-            "DRYING" -> DRYING
-            "TRAFFIC" -> TRAFFIC
-            "SPF" -> SUNSCREEN
-            else -> null
+        fun fromEnglish(raw: String): LifeIndexMetric? {
+            // 中国天气网把来源前缀写进 en（wcn:cl），先剥离再统一按别名匹配。
+            val key = raw.trim().uppercase().substringAfterLast(':')
+            return when (key) {
+                "CAR WASH", "XC" -> CAR_WASH
+                "SPORTS", "YD" -> SPORTS
+                "DRESS", "CT" -> DRESS
+                "FISHING", "DY" -> FISHING
+                "UV" -> UV
+                "TRAVEL", "TR" -> TRAVEL
+                "ALLERGY", "AG" -> ALLERGY
+                "COMFORT", "CO" -> COMFORT
+                "COLD", "GM" -> COLD
+                "AIR POLLUTION", "AIR", "PL" -> AIR_POLLUTION
+                "A/C", "AC" -> AIR_CONDITIONER
+                "SUNGLASSES", "GLASSES", "GL" -> SUNGLASSES
+                "MAKEUP", "PP" -> MAKEUP
+                "DRYING", "LS" -> DRYING
+                "TRAFFIC", "JT", "LK" -> TRAFFIC
+                "SPF", "FS" -> SUNSCREEN
+                "MORNING EXERCISE", "CL" -> MORNING_EXERCISE
+                "SHOPPING", "GJ" -> SHOPPING
+                "BEER", "PJ" -> BEER
+                "BOATING", "HC" -> BOATING
+                "WIND CHILL", "WC" -> WIND_CHILL
+                "KITE", "PK" -> KITE
+                "NIGHTLIFE", "NL" -> NIGHTLIFE
+                "MOOD", "XQ" -> MOOD
+                "DATE", "YH" -> DATE
+                "HAIR CARE", "MF" -> HAIR_CARE
+                "UMBRELLA", "YS" -> UMBRELLA
+                "HEATSTROKE", "ZS" -> HEATSTROKE
+                "DRYNESS", "GZ" -> DRYNESS
+                else -> null
+            }
         }
     }
 }
