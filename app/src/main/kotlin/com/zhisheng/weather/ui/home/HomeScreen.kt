@@ -130,6 +130,7 @@ import ui.feice.mochi.navigation.MochiSidebarHeaderButton
 import ui.feice.mochi.navigation.MochiSidebarItem
 import ui.feice.mochi.navigation.MochiSidebarLayout
 import ui.feice.mochi.navigation.MochiSidebarSectionHeader
+import ui.feice.mochi.navigation.MochiSidebarStyle
 import ui.feice.mochi.navigation.rememberMochiSidebarState
 import ui.feice.mochi.theme.MochiTheme
 import androidx.compose.ui.Alignment
@@ -410,7 +411,8 @@ fun HomeScreen(
     MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
     MochiSidebarLayout(
         state = sidebar,
-        swipeToOpen = false,
+        style = MochiSidebarStyle.Push,
+        swipeToOpen = true,
         sidebar = {
             CityDrawer(
                 uiState = uiState,
@@ -433,10 +435,10 @@ fun HomeScreen(
     ) {
         // 氛围层视差：列表滚动越深，天空/云层越往上退（按城市列表取最大滚动深度）
         val ambienceParallax = remember { mutableFloatStateOf(0f) }
+        // Push 样式由组件把主页面整体右推并叠加 pushScrim 压暗；主页面必须始终可见，
+        // 否则侧边栏右边缘贴住的是一片空白，和主界面接不上（demo 的 content 从不做隐藏）。
         NaturalWeatherSurface(atmosphereWeather, uiState.prefs.ambience, night,
-            modifier = Modifier.fillMaxSize().graphicsLayer {
-                alpha = if (sidebar.isOpen) 0f else 1f
-            }, active = ambienceActive && !sidebar.isOpen,
+            modifier = Modifier.fillMaxSize(), active = ambienceActive && !sidebar.isOpen,
             parallax = { ambienceParallax.floatValue }, city = atmosphereCity,
             pagingTransition = skyTransition,
             pagingFraction = { cityPager?.let { p ->
