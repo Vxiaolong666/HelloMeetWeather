@@ -65,6 +65,7 @@ import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.basic.MochiSwitch
 import ui.feice.mochi.basic.MochiTabItem
 import ui.feice.mochi.effect.overscroll.ProvideMochiOverscroll
+import ui.feice.mochi.list.MochiListDefaults
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
 import ui.feice.mochi.list.MochiListSliderRow
@@ -525,7 +526,7 @@ private fun MochiSettingsNavRow(
         chevron = chevron,
         modifier = Modifier.mochiNavSource(
             mochiSettingsSourceKey(route),
-            18.dp,
+            MochiListDefaults.SectionCorner,
             sourceColor,
         ),
         onClick = { onPush(route) },

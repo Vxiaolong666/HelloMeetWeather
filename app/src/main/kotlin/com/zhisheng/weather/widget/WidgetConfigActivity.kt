@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.lifecycle.lifecycleScope
@@ -125,6 +126,8 @@ class WidgetConfigActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 三个下级页用库标题栏（自带状态栏留白）和组件库分组底色，窗口统一走 edge-to-edge。
+        enableEdgeToEdge()
         savedInstanceState?.let { saved ->
             pendingPinToken = saved.getString("pending_pin_token")
             pinStartedAt = saved.getLong("pending_pin_started")
@@ -144,7 +147,6 @@ class WidgetConfigActivity : ComponentActivity() {
         val style = instance?.style ?: WidgetStyle.from(intent.getStringExtra("widget_style"))
         val initial = instance?.let { WidgetStore.config(this, it.id, style) } ?: WidgetConfig.defaults(style)
         notification = WidgetStore.notification(this)
-        val statusBar = if (style == WidgetStyle.VISTA) android.graphics.Color.rgb(237,244,245) else android.graphics.Color.rgb(20,27,27)
         setContent {
             val cities by CityRepository.cities.collectAsState(initial = emptyList())
             val selected by CityRepository.selectedCity.collectAsState(initial = null)
@@ -166,15 +168,6 @@ class WidgetConfigActivity : ComponentActivity() {
             }
         }
         if (instance == null && pinState == WidgetPinState.IDLE) { pinStyle = style; pinKind = WidgetKind.WEEK }
-        // MIUI can create the DecorView lazily; apply system-bar styling only after content exists.
-        window.decorView.post {
-            window.statusBarColor = statusBar
-            window.navigationBarColor = statusBar
-            if (Build.VERSION.SDK_INT >= 30) window.decorView.windowInsetsController?.setSystemBarsAppearance(
-                if (style == WidgetStyle.VISTA) android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS else 0,
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-            )
-        }
         // Install the restored request's observer once; repeatOnLifecycle owns
         // pausing/resuming it when returning from the launcher's confirmation.
         monitorPin()

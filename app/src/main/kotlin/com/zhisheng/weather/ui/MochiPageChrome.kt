@@ -1,6 +1,7 @@
 package com.zhisheng.weather.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -75,6 +76,7 @@ internal fun MochiSettingsScaffold(
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     showSave: Boolean = true,
+    actions: (@Composable RowScope.() -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val toast = LocalMochiToast.current
@@ -83,7 +85,7 @@ internal fun MochiSettingsScaffold(
         title = title,
         subtitle = subtitle,
         navigationIcon = { MochiBackButton(onClick = onBack, history = ::mochiSettingsRouteTitle) },
-        actions = if (showSave) {
+        actions = actions ?: if (showSave) {
             {
                 MochiBarButton(
                     "保存",
@@ -111,6 +113,8 @@ internal fun MochiPageFrame(
     onBack: () -> Unit,
     subtitle: String? = null,
     showSave: Boolean = false,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    overlay: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
     val colors = rememberMochiColorScheme()
@@ -121,8 +125,10 @@ internal fun MochiPageFrame(
                 subtitle = subtitle,
                 onBack = onBack,
                 showSave = showSave,
+                actions = actions,
                 content = content,
             )
+            overlay()
         }
     }
 }

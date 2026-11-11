@@ -10,23 +10,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,16 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.zhisheng.weather.R
-import com.zhisheng.weather.ui.theme.ZhishengCardBorder
-import com.zhisheng.weather.ui.theme.ZhishengMint
-import com.zhisheng.weather.ui.theme.ZhishengOrange
-import com.zhisheng.weather.ui.theme.ZhishengText
-import com.zhisheng.weather.ui.theme.ZhishengTextSecondary
-import com.zhisheng.weather.ui.theme.ZhishengTextTertiary
-import com.zhisheng.weather.ui.theme.zhishengPanel
-import com.zhisheng.weather.ui.theme.zhishengScreen
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -69,6 +56,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import ui.feice.mochi.basic.MochiBarButton
+import ui.feice.mochi.basic.MochiDialog
+import ui.feice.mochi.basic.MochiDialogAction
+import ui.feice.mochi.basic.MochiDialogActionRole
+import ui.feice.mochi.list.MochiListSection
+import ui.feice.mochi.theme.MochiTheme
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -79,7 +72,7 @@ import kotlin.math.roundToInt
  * - 洪水风险：flood-api / flood（河流流量及分位数 + 逐日柱状图 + 历史分位区间）
  * - 预报扩展：api / forecast 未展示的逐时字段（高空风、土壤、辐射、UV、降雪、蒸散、CAPE 等）与逐日明细
  * - 海拔：api / elevation
- * 每个指标可点按，弹窗展示数值与含义；页面风格与空气质量页一致。
+ * 每个指标可点按，弹窗展示数值与含义；页面外壳与二级设置页统一使用 mochi 组件库。
  */
 @Composable
 fun FeatureHubScreen(
@@ -89,33 +82,23 @@ fun FeatureHubScreen(
     onBack: () -> Unit,
 ) {
     var refreshTick by remember { mutableIntStateOf(0) }
+    var selectedMetric by remember { mutableStateOf<FeatureMetric?>(null) }
     var state by remember { mutableStateOf(FeatureHubState(loading = true)) }
     LaunchedEffect(latitude, longitude, refreshTick) {
         state = FeatureHubState(loading = true)
         state = FeatureHubFetcher.fetch(latitude, longitude)
     }
-    Box(Modifier.fillMaxSize().zhishengScreen()) {
-        Column(
-            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-        ) {
-            FeaturePageHeader(
-                title = "特色功能",
-                subtitle = (cityName?.let { "$it · " } ?: "") + "Open-Meteo 扩展",
-                onBack = onBack,
-                trailing = {
-                    TextButton(onClick = { refreshTick++ }) {
-                        Icon(painterResource(R.drawable.ph_arrow_clockwise), contentDescription = "刷新",
-                            tint = ZhishengTextSecondary, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("刷新", color = ZhishengTextSecondary)
-                    }
-                },
-            )
-            when {
-                state.loading -> LoadingBlock()
-                state.error != null -> ErrorBlock(state.error!!) { refreshTick++ }
-                else -> FeatureHubContent(state)
-            }
+    MochiPageFrame(
+        title = "特色功能",
+        subtitle = (cityName?.let { "$it · " } ?: "") + "Open-Meteo 扩展",
+        onBack = onBack,
+        actions = { MochiBarButton("刷新", onClick = { refreshTick++ }) },
+        overlay = { MetricMeaningDialog(selectedMetric) { selectedMetric = null } },
+    ) {
+        when {
+            state.loading -> item { LoadingBlock() }
+            state.error != null -> item { ErrorBlock(state.error!!) { refreshTick++ } }
+            else -> FeatureHubContent(state) { selectedMetric = it }
         }
     }
 }
@@ -479,102 +462,100 @@ private object FeatureHubFetcher {
 
 @Composable
 private fun LoadingBlock() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    val cs = MochiTheme.colorScheme
+    Box(Modifier.fillMaxWidth().heightIn(min = 260.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = ZhishengMint)
+            CircularProgressIndicator(color = cs.primary)
             Spacer(Modifier.height(12.dp))
-            Text("正在获取特色数据…", color = ZhishengTextSecondary)
+            Text("正在获取特色数据…", color = cs.onSurfaceVariant)
         }
     }
 }
 
 @Composable
 private fun ErrorBlock(message: String, onRetry: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    val cs = MochiTheme.colorScheme
+    Box(Modifier.fillMaxWidth().heightIn(min = 260.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
             Icon(painterResource(R.drawable.ph_info), contentDescription = null,
-                tint = ZhishengOrange, modifier = Modifier.size(32.dp))
+                tint = cs.tertiary, modifier = Modifier.size(32.dp))
             Spacer(Modifier.height(10.dp))
-            Text(message, color = ZhishengTextSecondary, textAlign = TextAlign.Center)
+            Text(message, color = cs.onSurfaceVariant, textAlign = TextAlign.Center)
             Spacer(Modifier.height(14.dp))
-            TextButton(onClick = onRetry) {
-                Icon(painterResource(R.drawable.ph_arrow_clockwise), contentDescription = null,
-                    tint = ZhishengMint, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("重试", color = ZhishengMint)
-            }
+            MochiBarButton("重试", onClick = onRetry)
         }
     }
 }
 
-@Composable
-private fun FeatureHubContent(state: FeatureHubState) {
-    var selectedMetric by remember { mutableStateOf<FeatureMetric?>(null) }
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
-    ) {
-        state.satellite?.let { sat ->
-            FeaturePanel("卫星辐射", R.drawable.ph_sun) {
-                MetricGrid(sat.latest, hint = "点按指标查看含义", onMetric = { selectedMetric = it })
+private fun LazyListScope.FeatureHubContent(state: FeatureHubState, onMetric: (FeatureMetric) -> Unit) {
+    state.satellite?.let { sat ->
+        item {
+            FeaturePanel("卫星辐射") {
+                MetricGrid(sat.latest, hint = "点按指标查看含义", onMetric = onMetric)
                 if (sat.today.isNotEmpty()) {
                     Spacer(Modifier.height(16.dp))
-                    Text("今日", style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
+                    Text("今日", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(10.dp))
-                    MetricGrid(sat.today, onMetric = { selectedMetric = it })
+                    MetricGrid(sat.today, onMetric = onMetric)
                 }
-            }
-        }
-        state.flood?.let { flood ->
-            FeaturePanel("洪水风险", R.drawable.ph_waves) {
-                FloodVisual(flood)
-                Spacer(Modifier.height(16.dp))
-                MetricGrid(flood.today, hint = "点按指标查看含义", onMetric = { selectedMetric = it })
-            }
-        }
-        state.climate?.let { cl ->
-            FeaturePanel("气候对比 · 常年同期", R.drawable.ph_calendar) {
-                ClimatePanel(cl, state.forecast?.highC, state.forecast?.lowC, onMetric = { selectedMetric = it })
-            }
-        }
-        state.seasonal?.let { se ->
-            FeaturePanel("季节趋势 · 集合预报", R.drawable.ph_globe) {
-                SeasonalPanel(se)
-            }
-        }
-        state.forecast?.let { fc ->
-            FeaturePanel("预报扩展字段", R.drawable.ph_database) {
-                Text("逐时（当前小时）· 点按查看含义", style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
-                Spacer(Modifier.height(10.dp))
-                MetricGrid(fc.hourly, onMetric = { selectedMetric = it })
-                if (fc.daily.isNotEmpty()) {
-                    Spacer(Modifier.height(16.dp))
-                    Text("逐日（今日）", style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
-                    Spacer(Modifier.height(10.dp))
-                    MetricGrid(fc.daily, onMetric = { selectedMetric = it })
-                }
-            }
-        }
-        state.elevation?.let { elev ->
-            FeaturePanel("海拔", R.drawable.ph_map_pin) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "%.0f".format(elev),
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = ZhishengMint,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("米", style = MaterialTheme.typography.titleMedium, color = ZhishengTextSecondary)
-                }
-            }
-        }
-        if (state.satellite == null && state.flood == null && state.forecast == null && state.climate == null && state.seasonal == null && state.elevation == null) {
-            Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text("部分扩展接口暂无数据。", color = ZhishengTextTertiary)
             }
         }
     }
-    MetricMeaningDialog(selectedMetric) { selectedMetric = null }
+    state.flood?.let { flood ->
+        item {
+            FeaturePanel("洪水风险") {
+                FloodVisual(flood)
+                Spacer(Modifier.height(16.dp))
+                MetricGrid(flood.today, hint = "点按指标查看含义", onMetric = onMetric)
+            }
+        }
+    }
+    state.climate?.let { cl ->
+        item {
+            FeaturePanel("气候对比 · 常年同期") {
+                ClimatePanel(cl, state.forecast?.highC, state.forecast?.lowC, onMetric = onMetric)
+            }
+        }
+    }
+    state.seasonal?.let { se ->
+        item {
+            FeaturePanel("季节趋势 · 集合预报") { SeasonalPanel(se) }
+        }
+    }
+    state.forecast?.let { fc ->
+        item {
+            FeaturePanel("预报扩展字段") {
+                Text("逐时（当前小时）· 点按查看含义", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                MetricGrid(fc.hourly, onMetric = onMetric)
+                if (fc.daily.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text("逐日（今日）", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(10.dp))
+                    MetricGrid(fc.daily, onMetric = onMetric)
+                }
+            }
+        }
+    }
+    state.elevation?.let { elev ->
+        item {
+            FeaturePanel("海拔") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("%.0f".format(elev), style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold, color = MochiTheme.colorScheme.primary)
+                    Spacer(Modifier.width(6.dp))
+                    Text("米", style = MaterialTheme.typography.titleMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+    if (state.satellite == null && state.flood == null && state.forecast == null && state.climate == null && state.seasonal == null && state.elevation == null) {
+        item {
+            Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text("部分扩展接口暂无数据。", color = MochiTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
 }
 
 // —— 气候对比 · 常年同期 ——
@@ -590,7 +571,7 @@ private fun ClimatePanel(
     // 预报 vs 常年 对比行
     if (forecastHigh != null || forecastLow != null) {
         Spacer(Modifier.height(16.dp))
-        Text("今日预报 vs 常年同期", style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
+        Text("今日预报 vs 常年同期", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             CompareTile("最高", forecastHigh, cl.highC, Modifier.weight(1f))
@@ -610,7 +591,7 @@ private fun ClimatePanel(
             Text(
                 "与常年同期相比：${parts.joinToString("、")}。",
                 style = MaterialTheme.typography.bodySmall,
-                color = ZhishengTextTertiary,
+                color = MochiTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -623,33 +604,33 @@ private fun CompareTile(label: String, forecast: Double?, normal: Double?, modif
     Column(
         modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(ZhishengCardBorder.copy(alpha = .12f))
-            .border(1.dp, ZhishengCardBorder.copy(alpha = .22f), RoundedCornerShape(8.dp))
+            .background(MochiTheme.colorScheme.outlineVariant.copy(alpha = .12f))
+            .border(1.dp, MochiTheme.colorScheme.outlineVariant.copy(alpha = .22f), RoundedCornerShape(8.dp))
             .padding(vertical = 8.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(2.dp))
         if (forecast != null) {
             Text(
                 "${"%.1f".format(forecast)}°C",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = ZhishengMint,
+                color = MochiTheme.colorScheme.primary,
             )
         } else if (normal != null) {
             Text(
                 "${"%.1f".format(normal)}°C",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = ZhishengMint,
+                color = MochiTheme.colorScheme.primary,
             )
         } else {
-            Text("—", style = MaterialTheme.typography.titleMedium, color = ZhishengTextTertiary)
+            Text("—", style = MaterialTheme.typography.titleMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
         }
         normal?.let {
             Spacer(Modifier.height(2.dp))
-            Text("常年 ${"%.1f".format(it)}°C", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
+            Text("常年 ${"%.1f".format(it)}°C", style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -658,37 +639,37 @@ private fun CompareTile(label: String, forecast: Double?, normal: Double?, modif
 
 @Composable
 private fun SeasonalPanel(se: SeasonalSection) {
-    Text(se.summary, style = MaterialTheme.typography.bodyMedium, color = ZhishengTextSecondary)
+    Text(se.summary, style = MaterialTheme.typography.bodyMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(12.dp))
     SeasonalChart(se.temps, se.precipitation)
     Spacer(Modifier.height(8.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("第 1 天", style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
-        Text("第 30 天", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
+        Text("第 1 天", style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
+        Text("第 30 天", style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
     }
     Spacer(Modifier.height(10.dp))
     Text(
         "折线为集合均温，橙柱为每日降水；数据来自 seasonal-api 集合预报（50 个成员）。",
         style = MaterialTheme.typography.bodySmall,
-        color = ZhishengTextTertiary,
+        color = MochiTheme.colorScheme.onSurfaceVariant,
     )
 }
 
 /** 季节折线图：x=天索引，y=均温（薄荷绿折线），降水用橙色柱（底部对齐）。 */
 @Composable
 private fun SeasonalChart(temps: List<Double?>, precipitation: List<Double?>) {
-    val lineColor = ZhishengMint
-    val barColor = ZhishengOrange
+    val lineColor = MochiTheme.colorScheme.primary
+    val barColor = MochiTheme.colorScheme.tertiary
     val validTemps = temps.filterNotNull()
     if (validTemps.isEmpty()) {
-        Text("季节集合预报暂无数据。", style = MaterialTheme.typography.bodySmall, color = ZhishengTextTertiary)
+        Text("季节集合预报暂无数据。", style = MaterialTheme.typography.bodySmall, color = MochiTheme.colorScheme.onSurfaceVariant)
         return
     }
     val minT = validTemps.minOrNull() ?: 0.0
     val maxT = validTemps.maxOrNull() ?: 0.0
     val range = (maxT - minT).takeIf { it > 0.001 } ?: 1.0
     val maxP = (precipitation.filterNotNull().maxOrNull() ?: 0.0).coerceAtLeast(0.001)
-    val refColor = ZhishengText.copy(alpha = .2f)
+    val refColor = MochiTheme.colorScheme.onSurface.copy(alpha = .2f)
     Canvas(Modifier.fillMaxWidth().height(120.dp)) {
         val n = temps.size
         val slot = size.width / n
@@ -737,15 +718,15 @@ private fun SeasonalChart(temps: List<Double?>, precipitation: List<Double?>) {
 
 @Composable
 private fun FloodVisual(flood: FloodSection) {
-    val barColor = ZhishengMint
-    val trackColor = ZhishengCardBorder.copy(alpha = .45f)
-    val bandColor = ZhishengMint.copy(alpha = .22f)
-    val textColor = ZhishengText.copy(alpha = .55f)
+    val barColor = MochiTheme.colorScheme.primary
+    val trackColor = MochiTheme.colorScheme.outlineVariant.copy(alpha = .45f)
+    val bandColor = MochiTheme.colorScheme.primary.copy(alpha = .22f)
+    val textColor = MochiTheme.colorScheme.onSurface.copy(alpha = .55f)
     // 逐日柱状图
     val days = flood.days
     val hasSeries = days.isNotEmpty() && days.any { it != null && it > 0 }
     if (hasSeries) {
-        Text("未来 5 天流量", style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
+        Text("未来 5 天流量", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         Canvas(Modifier.fillMaxWidth().height(72.dp)) {
             val values = days.map { it ?: 0.0 }
@@ -764,8 +745,8 @@ private fun FloodVisual(flood: FloodSection) {
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("今天", style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
-            Text("第 5 天", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
+            Text("今天", style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
+            Text("第 5 天", style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(14.dp))
     }
@@ -774,7 +755,7 @@ private fun FloodVisual(flood: FloodSection) {
     val max = flood.max
     val cur = flood.discharge
     if (min != null && max != null && cur != null && max > min) {
-        Text("今日流量相对历史同期", style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
+        Text("今日流量相对历史同期", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         Canvas(Modifier.fillMaxWidth().height(26.dp)) {
             fun x(v: Double): Float = (((v - min) / (max - min)) * size.width).toFloat().coerceIn(0f, size.width)
@@ -797,9 +778,9 @@ private fun FloodVisual(flood: FloodSection) {
             drawCircle(barColor, 4.dp.toPx(), Offset(cx, size.height * 0.5f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("最小 ${fmt1(min)}", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
-            Text("P25–P75", style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
-            Text("最大 ${fmt1(max)}", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
+            Text("最小 ${fmt1(min)}", style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
+            Text("P25–P75", style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
+            Text("最大 ${fmt1(max)}", style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(14.dp))
     }
@@ -808,18 +789,9 @@ private fun FloodVisual(flood: FloodSection) {
 private fun fmt1(v: Double): String = if (abs(v) >= 100) "%.0f".format(v) else "%.1f".format(v)
 
 @Composable
-private fun FeaturePanel(title: String, iconRes: Int, content: @Composable ColumnScope.() -> Unit) {
-    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).zhishengPanel()) {
-        Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(painterResource(iconRes), contentDescription = null,
-                    tint = ZhishengOrange, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(title, style = MaterialTheme.typography.titleMedium, color = ZhishengText)
-            }
-            Spacer(Modifier.height(14.dp))
-            content()
-        }
+private fun FeaturePanel(title: String, content: @Composable ColumnScope.() -> Unit) {
+    MochiListSection(header = title) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), content = content)
     }
 }
 
@@ -838,8 +810,8 @@ private fun MetricGrid(
                             m,
                             Modifier.weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(ZhishengCardBorder.copy(alpha = .12f))
-                                .border(1.dp, ZhishengCardBorder.copy(alpha = .22f), RoundedCornerShape(8.dp))
+                                .background(MochiTheme.colorScheme.outlineVariant.copy(alpha = .12f))
+                                .border(1.dp, MochiTheme.colorScheme.outlineVariant.copy(alpha = .22f), RoundedCornerShape(8.dp))
                                 .clickable { onMetric(m) }
                                 .padding(vertical = 8.dp, horizontal = 4.dp),
                         )
@@ -853,7 +825,7 @@ private fun MetricGrid(
     }
     if (hint != null) {
         Spacer(Modifier.height(8.dp))
-        Text(hint, style = MaterialTheme.typography.bodySmall, color = ZhishengTextTertiary)
+        Text(hint, style = MaterialTheme.typography.bodySmall, color = MochiTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -864,50 +836,32 @@ private fun MetricTile(m: FeatureMetric, modifier: Modifier) {
             m.value,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = ZhishengMint,
+            color = MochiTheme.colorScheme.primary,
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(2.dp))
-        Text(m.label, style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
+        Text(m.label, style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-/** 点按指标后弹窗：展示数值 + 含义。 */
+/** 点按指标后弹窗：库对话框展示数值与含义。 */
 @Composable
 private fun MetricMeaningDialog(metric: FeatureMetric?, onDismiss: () -> Unit) {
-    if (metric == null) return
-    Dialog(onDismissRequest = onDismiss) {
-        Box(
-            Modifier
-                .widthIn(max = 360.dp)
-                .zhishengPanel(),
-        ) {
-            Column(Modifier.padding(20.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        metric.label,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = ZhishengText,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = onDismiss) {
-                        Text("关闭", color = ZhishengMint)
-                    }
-                }
-                Text(
-                    metric.value,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = ZhishengMint,
-                    fontWeight = FontWeight.Bold,
-                )
-                metric.meaning?.let { meaning ->
-                    Spacer(Modifier.height(10.dp))
-                    Text(meaning, style = MaterialTheme.typography.bodyMedium, color = ZhishengTextSecondary)
-                }
-            }
+    val cs = MochiTheme.colorScheme
+    MochiDialog(
+        visible = metric != null,
+        onDismissRequest = onDismiss,
+        title = metric?.label.orEmpty(),
+        message = metric?.meaning,
+        dismissOnOutsideTap = true,
+        actions = persistentListOf(MochiDialogAction("关闭", MochiDialogActionRole.Cancel)),
+    ) {
+        metric?.let {
+            Text(it.value, Modifier.padding(horizontal = 16.dp),
+                style = MaterialTheme.typography.headlineMedium,
+                color = cs.primary, fontWeight = FontWeight.Bold)
         }
     }
 }

@@ -122,16 +122,19 @@ internal fun rememberMochiUiPrefs(): MochiUiPrefs {
 
 /** 所有 mochi 页面共用的一套配色：由「主题配色」页的 4 项设置生成，改完立即生效。 */
 @Composable
-internal fun rememberMochiColorScheme(): MochiColorScheme {
+internal fun rememberMochiColorScheme(followSystem: Boolean = false): MochiColorScheme {
     val prefs = rememberMochiUiPrefs()
     val appLight = LocalZhishengPalette.current.isLight
     val systemDark = isSystemInDarkTheme()
     val context = LocalContext.current
-    return remember(prefs.colorMode, prefs.seed, prefs.palette, prefs.contrast, appLight, systemDark) {
-        val dark = when (prefs.colorMode) {
-            "light" -> false
-            "dark" -> true
-            "system", "monet" -> systemDark
+    return remember(prefs.colorMode, prefs.seed, prefs.palette, prefs.contrast, appLight, systemDark, followSystem) {
+        val dark = when {
+            // 独立 Activity 的小组件/通知栏设置页没有 ZhishengWeatherTheme，
+            // 默认分支会退化成 appLight 常量；这里强制只看系统深色开关。
+            followSystem -> systemDark
+            prefs.colorMode == "light" -> false
+            prefs.colorMode == "dark" -> true
+            prefs.colorMode == "system" || prefs.colorMode == "monet" -> systemDark
             else -> !appLight
         }
         val seed = if (prefs.colorMode == "monet" && Build.VERSION.SDK_INT >= 31) {

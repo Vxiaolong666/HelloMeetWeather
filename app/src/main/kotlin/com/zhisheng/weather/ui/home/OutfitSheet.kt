@@ -12,20 +12,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +26,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -47,17 +39,42 @@ import com.zhisheng.weather.model.HourlyWeather
 import com.zhisheng.weather.ui.Fmt
 import com.zhisheng.weather.ui.Text
 import com.zhisheng.weather.ui.components.PhosphorIcon
-import com.zhisheng.weather.ui.theme.LocalZhishengPalette
+import com.zhisheng.weather.ui.rememberMochiColorScheme
 import com.zhisheng.weather.ui.weatherPresentationTime
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
+import ui.feice.mochi.basic.MochiBarButton
+import ui.feice.mochi.basic.MochiSegmentedControl
+import ui.feice.mochi.basic.MochiSheet
+import ui.feice.mochi.basic.MochiSheetContent
+import ui.feice.mochi.basic.MochiSheetDetent
+import ui.feice.mochi.basic.MochiSheetHeader
+import ui.feice.mochi.basic.rememberMochiSheetState
+import ui.feice.mochi.list.MochiListCard
+import ui.feice.mochi.list.MochiListSection
+import ui.feice.mochi.theme.MochiTheme
 
 private enum class OutfitPeriod { NOW, NEXT_SIX_HOURS }
 
-// 弹层固定白底 + 深色文字，不跟随深浅主题变化，避免深色主题下白底白字。
-private val SheetInk = Color(0xFF1B2B32)
-private val SheetInkSecondary = Color(0xFF56666E)
-private val SheetAccent = Color(0xFF2E7D72)
-private val SheetSurface = Color(0xFFF1F7F6)
-private val SheetBorder = Color(0xFFD9E4E3)
+private data class OutfitSheetColors(
+    val ink: Color,
+    val secondary: Color,
+    val accent: Color,
+    val surface: Color,
+    val border: Color,
+)
+
+@Composable
+private fun outfitSheetColors(): OutfitSheetColors {
+    val cs = MochiTheme.colorScheme
+    return OutfitSheetColors(
+        ink = cs.onSurface,
+        secondary = cs.onSurfaceVariant,
+        accent = cs.primary,
+        surface = cs.surfaceVariant,
+        border = cs.outlineVariant,
+    )
+}
 
 /** 插画配色：青岚 / 暖阳 / 雾蓝，与推荐档位里的配色名对应。 */
 internal enum class OutfitPaletteStyle(
@@ -197,8 +214,7 @@ internal fun OutfitFigure(
     }
 }
 
-/** 「搭配一下」弹层：与生活指数弹出层一致的标准底部弹层，默认约 80% 高。 */
-@OptIn(ExperimentalMaterial3Api::class)
+/** 「搭配一下」弹层：库底部面板 + 库分段控件 / 分组卡片，人物插画等自定义内容放在卡片内部。 */
 @Composable
 internal fun OutfitStylingSheet(
     cur: CurrentWeather,
@@ -256,212 +272,111 @@ internal fun OutfitStylingSheet(
         append("。")
     }
 
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val fallbackSheet = rememberMochiSheetState(listOf(MochiSheetDetent.Large))
+    val sheet = LocalHomeSheetStates.current?.outfit ?: fallbackSheet
+    LaunchedEffect(Unit) { sheet.show() }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color.White,
-        tonalElevation = 0.dp,
-    ) {
-        // 拖动指示器由 ModalBottomSheet 提供，这里不再重复绘制。
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = screenHeight * 0.8f)
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "天气穿搭",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = SheetInk,
-                    )
-                    Text(
-                        "${cityName ?: "当前位置"} · 参考打开时的天气",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SheetInkSecondary,
-                    )
-                }
-                Text(
-                    "关闭",
-                    Modifier.clickable(role = Role.Button) { onDismiss() },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SheetInkSecondary,
+    MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
+        val c = outfitSheetColors()
+        MochiSheet(state = sheet, onDismiss = onDismiss) {
+            MochiSheetHeader(
+                title = "天气穿搭",
+                actions = { MochiBarButton("关闭", onClick = { sheet.hide() }) },
+            )
+            MochiSheetContent {
+                Text("${cityName ?: "当前位置"} · 参考打开时的天气",
+                    style = MaterialTheme.typography.bodySmall, color = c.secondary)
+                MochiSegmentedControl(
+                    selectedIndex = if (period == OutfitPeriod.NOW) 0 else 1,
+                    onSelect = { period = if (it == 0) OutfitPeriod.NOW else OutfitPeriod.NEXT_SIX_HOURS },
+                    items = persistentListOf("现在出门", "接下来6小时"),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutfitTabChip("现在出门", period == OutfitPeriod.NOW, Modifier.weight(1f)) {
-                    period = OutfitPeriod.NOW
-                }
-                OutfitTabChip("接下来6小时", period == OutfitPeriod.NEXT_SIX_HOURS, Modifier.weight(1f)) {
-                    period = OutfitPeriod.NEXT_SIX_HOURS
-                }
-            }
-            Text(
-                outfit.headline,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = SheetInk,
-            )
-            Text(
-                "体感参考 · ${outfit.feelLabel}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = SheetAccent,
-            )
+                Text(outfit.headline, style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold, color = c.ink)
+                Text("体感参考 · ${outfit.feelLabel}", style = MaterialTheme.typography.bodyMedium, color = c.accent)
 
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(SheetSurface)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "${style.label} · 当前搭配",
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = SheetInkSecondary,
-                    )
-                    OutfitPaletteStyle.entries.forEach { candidate ->
-                        val active = candidate == style
-                        Box(
-                            Modifier
-                                .padding(start = 8.dp)
-                                .size(if (active) 22.dp else 18.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(candidate.accent)
-                                .border(
-                                    2.dp,
-                                    if (active) SheetInk else Color.Transparent,
-                                    RoundedCornerShape(50),
+                MochiListSection(header = "当前搭配") {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${style.label} · 配色", Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelMedium, color = c.secondary)
+                            OutfitPaletteStyle.entries.forEach { candidate ->
+                                val active = candidate == style
+                                Box(
+                                    Modifier
+                                        .padding(start = 8.dp)
+                                        .size(if (active) 22.dp else 18.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(candidate.accent)
+                                        .border(2.dp, if (active) c.ink else Color.Transparent, RoundedCornerShape(50))
+                                        .clickable(role = Role.RadioButton) { style = candidate },
                                 )
-                                .clickable(role = Role.RadioButton) { style = candidate },
-                        )
-                    }
-                }
-                // 固定宽度 + 足够高度，避免宽屏下人物被横向拉扁。
-                Box(
-                    Modifier.fillMaxWidth().height(280.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    OutfitFigure(
-                        style,
-                        Modifier.width(200.dp).fillMaxHeight(),
-                        shortSleeve = adjusted.shortSleeve,
-                        hasOuter = adjusted.outerLayer,
-                    )
-                }
-                pieces.chunked(2).forEach { rowPieces ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        rowPieces.forEach { (icon, label, value) ->
-                            OutfitPiece(
-                                icon = icon,
-                                label = label,
-                                value = value,
-                                selected = label == selectedPart,
-                                onClick = { selectedPart = label },
-                                modifier = Modifier.weight(1f),
+                            }
+                        }
+                        Box(Modifier.fillMaxWidth().height(280.dp), contentAlignment = Alignment.Center) {
+                            OutfitFigure(
+                                style,
+                                Modifier.width(200.dp).fillMaxHeight(),
+                                shortSleeve = adjusted.shortSleeve,
+                                hasOuter = adjusted.outerLayer,
                             )
                         }
-                        if (rowPieces.size == 1) Spacer(Modifier.weight(1f))
+                        pieces.chunked(2).forEach { rowPieces ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                rowPieces.forEach { (icon, label, value) ->
+                                    OutfitPiece(icon, label, value, label == selectedPart,
+                                        { selectedPart = label }, c, Modifier.weight(1f))
+                                }
+                                if (rowPieces.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
+                        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(c.surface.copy(alpha = .45f)).padding(12.dp)) {
+                            Text(outfit.advice, style = MaterialTheme.typography.bodySmall, color = c.secondary)
+                        }
                     }
                 }
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White)
-                        .padding(12.dp),
-                ) {
-                    Text(outfit.advice, style = MaterialTheme.typography.bodySmall, color = SheetInkSecondary)
-                }
-            }
 
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(SheetAccent.copy(alpha = 0.12f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-            ) {
-                Text(outfit.tag, style = MaterialTheme.typography.labelSmall, color = SheetAccent)
-            }
-            OutfitChoiceGroup("出门怎么安排", listOf("日常", "通勤", "走动多"), plan) { plan = it }
-            OutfitChoiceGroup("你平时的冷暖感受", listOf("我怕冷", "刚刚好", "我怕热"), comfort) { comfort = it }
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    "这套搭配的考虑",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = SheetInk,
-                )
-                Text(outfit.advice, style = MaterialTheme.typography.bodyMedium, color = SheetInkSecondary)
-                Text(consideration, style = MaterialTheme.typography.bodyMedium, color = SheetInkSecondary)
-            }
-            HorizontalDivider(color = SheetBorder)
-            Text(
-                if (evidenceOpen) "收起建议依据 ↑" else "查看建议依据 ↓",
-                Modifier.clickable(role = Role.Button) { evidenceOpen = !evidenceOpen },
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = SheetAccent,
-            )
-            if (evidenceOpen) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        "冷暖分级优先参考数据源提供的体感温度，风雨、紫外线和所选时段另作考虑。衣物是搭配示例，可用相近厚薄的现有衣服替换。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SheetInkSecondary,
-                    )
-                    Text(
-                        "体感参考 ${outfit.feelLabel} · 风速 ${Fmt.wind(cur.windSpeed, windUnit) ?: "—"} · 紫外线 ${cur.uvIndex ?: 0}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SheetInkSecondary,
-                    )
-                    listOf(
-                        "体感与穿衣分级 · 深圳市气象局",
-                        "分层穿衣 · 中国天气网",
-                        "紫外线与遮阳 · 世界卫生组织",
-                    ).forEach { source ->
-                        Text(source, style = MaterialTheme.typography.bodySmall, color = SheetAccent)
+                MochiListSection(header = "出门偏好") {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(outfit.tag, style = MaterialTheme.typography.labelSmall, color = c.accent)
+                        OutfitChoiceGroup("出门怎么安排", listOf("日常", "通勤", "走动多"), plan, c) { plan = it }
+                        OutfitChoiceGroup("你平时的冷暖感受", listOf("我怕冷", "刚刚好", "我怕热"), comfort, c) { comfort = it }
                     }
-                    Text(
-                        "建议用于日常出门参考，个人活动量与冷暖感受仍需自行调整。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SheetInkSecondary,
-                    )
                 }
+
+                MochiListSection(header = "这套搭配的考虑") {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(outfit.advice, style = MaterialTheme.typography.bodyMedium, color = c.secondary)
+                        Text(consideration, style = MaterialTheme.typography.bodyMedium, color = c.secondary)
+                    }
+                }
+
+                MochiBarButton(if (evidenceOpen) "收起建议依据" else "查看建议依据",
+                    onClick = { evidenceOpen = !evidenceOpen })
+                if (evidenceOpen) {
+                    MochiListCard {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("冷暖分级优先参考数据源提供的体感温度，风雨、紫外线和所选时段另作考虑。衣物是搭配示例，可用相近厚薄的现有衣服替换。",
+                                style = MaterialTheme.typography.bodySmall, color = c.secondary)
+                            Text("体感参考 ${outfit.feelLabel} · 风速 ${Fmt.wind(cur.windSpeed, windUnit) ?: "—"} · 紫外线 ${cur.uvIndex ?: 0}",
+                                style = MaterialTheme.typography.labelSmall, color = c.secondary)
+                            listOf(
+                                "体感与穿衣分级 · 深圳市气象局",
+                                "分层穿衣 · 中国天气网",
+                                "紫外线与遮阳 · 世界卫生组织",
+                            ).forEach { source ->
+                                Text(source, style = MaterialTheme.typography.bodySmall, color = c.accent)
+                            }
+                            Text("建议用于日常出门参考，个人活动量与冷暖感受仍需自行调整。",
+                                style = MaterialTheme.typography.bodySmall, color = c.secondary)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
             }
-            Spacer(Modifier.height(16.dp))
         }
-    }
-}
-
-@Composable
-private fun OutfitTabChip(text: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
-    Box(
-        modifier
-            .clip(shape)
-            .background(if (selected) SheetBorder.copy(alpha = 0.6f) else Color.Transparent)
-            .border(1.dp, if (selected) Color.Transparent else SheetBorder, shape)
-            .clickable(role = Role.Tab) { onClick() }
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (selected) SheetInk else SheetInkSecondary,
-        )
     }
 }
 
@@ -470,30 +385,18 @@ private fun OutfitChoiceGroup(
     title: String,
     options: List<String>,
     selected: String,
+    colors: OutfitSheetColors,
     onSelect: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = SheetInk)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            options.forEach { option ->
-                val active = option == selected
-                val shape = RoundedCornerShape(18.dp)
-                Box(
-                    Modifier
-                        .clip(shape)
-                        .background(if (active) SheetBorder.copy(alpha = 0.6f) else Color.Transparent)
-                        .border(1.dp, if (active) Color.Transparent else SheetBorder, shape)
-                        .clickable(role = Role.RadioButton) { onSelect(option) }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    Text(
-                        option,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (active) SheetInk else SheetInkSecondary,
-                    )
-                }
-            }
-        }
+        Text(title, style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold, color = colors.ink)
+        MochiSegmentedControl(
+            selectedIndex = options.indexOf(selected).coerceAtLeast(0),
+            onSelect = { onSelect(options[it]) },
+            items = options.toImmutableList(),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -504,33 +407,25 @@ private fun OutfitPiece(
     value: String,
     selected: Boolean,
     onClick: () -> Unit,
+    colors: OutfitSheetColors,
     modifier: Modifier,
 ) {
     val shape = RoundedCornerShape(14.dp)
     Row(
         modifier
             .clip(shape)
-            .background(if (selected) SheetAccent.copy(alpha = 0.12f) else Color.Transparent)
-            .border(
-                1.dp,
-                if (selected) SheetAccent.copy(alpha = 0.45f) else Color.Transparent,
-                shape,
-            )
+            .background(if (selected) colors.accent.copy(alpha = 0.12f) else Color.Transparent)
+            .border(1.dp, if (selected) colors.accent.copy(alpha = 0.45f) else Color.Transparent, shape)
             .clickable(role = Role.RadioButton) { onClick() }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        PhosphorIcon(icon, null, Modifier.size(18.dp), if (selected) SheetAccent else SheetInkSecondary)
+        PhosphorIcon(icon, null, Modifier.size(18.dp), if (selected) colors.accent else colors.secondary)
         Column {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = SheetInkSecondary)
-            Text(
-                value,
-                style = MaterialTheme.typography.titleSmall,
-                color = SheetInk,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
+            Text(label, style = MaterialTheme.typography.labelSmall, color = colors.secondary)
+            Text(value, style = MaterialTheme.typography.titleSmall, color = colors.ink,
+                fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }

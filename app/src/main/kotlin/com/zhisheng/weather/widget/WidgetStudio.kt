@@ -81,10 +81,16 @@ import ui.feice.mochi.basic.MochiBarButton
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.basic.MochiSlider
 import ui.feice.mochi.basic.MochiSwitch
+import ui.feice.mochi.basic.MochiBottomToolbar
+import ui.feice.mochi.basic.MochiButton
+import ui.feice.mochi.basic.MochiButtonDefaults
 import ui.feice.mochi.list.MochiListCard
+import ui.feice.mochi.list.MochiListSection
+import ui.feice.mochi.navigation.MochiLazyCompactTitleScaffold
 import ui.feice.mochi.list.MochiListDefaults
 import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.navigation.MochiTitleBar
+import ui.feice.mochi.theme.MochiDefaults
 import ui.feice.mochi.theme.MochiTheme
 
 private data class StudioColors(val bg: Color, val panel: Color, val ink: Color, val muted: Color, val accent: Color, val edge: Color, val classic: Boolean) {
@@ -93,6 +99,36 @@ private data class StudioColors(val bg: Color, val panel: Color, val ink: Color,
 private val LightStudioColors = StudioColors(Color(0xFFEDF4F5), Color.White, Color(0xFF203A43), Color(0xFF647D85), Color(0xFF315F6D), Color(0xFFDCE7E9), false)
 private val ClassicStudioColors = StudioColors(Color(0xFF141B1B), Color(0xFF1D2827), Color(0xFFE5EDE7), Color(0xFF9EAFA7), Color(0xFFABD1BD), Color(0xFF344340), true)
 private val LocalStudio = staticCompositionLocalOf { LightStudioColors }
+
+/** 三个下级设置页统一取组件库主题色：底色、卡片、文字和强调色都跟随「主题配色」设置。 */
+@Composable
+private fun studioColors(classic: Boolean): StudioColors {
+    val cs = MochiTheme.colorScheme
+    return StudioColors(
+        bg = MochiDefaults.groupedBackground(),
+        panel = cs.surface,
+        ink = cs.onSurface,
+        muted = cs.onSurfaceVariant,
+        accent = cs.primary,
+        edge = cs.outlineVariant,
+        classic = classic,
+    )
+}
+/** 栏按钮文字显式指定前景色：这三个页面是独立 Activity，不依赖默认内容色（会落回纯黑）。深色模式下即白字。 */
+@Composable private fun StudioBarButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val foreground = MochiTheme.colorScheme.onSurface
+    MochiBarButton(
+        text,
+        onClick,
+        modifier = modifier,
+        enabled = enabled,
+        colors = MochiButtonDefaults.barColors().copy(
+            content = foreground,
+            disabledContent = foreground.copy(alpha = 0.38f),
+        ),
+    )
+}
+
 private val configSaver = Saver<WidgetConfig, String>(save = { Json.encodeToString(WidgetConfig.serializer(), it) }, restore = { Json.decodeFromString<WidgetConfig>(it) })
 
 // The carousel must keep the controls below it in the same place on every page.
@@ -107,319 +143,245 @@ internal fun WidgetStudio(style: WidgetStyle, editingId: Int?, initialKind: Widg
                           onApply: (WidgetKind, WidgetConfig) -> Unit, previewData: WidgetSnapshot? = null,
                           pinState: WidgetPinState = WidgetPinState.IDLE, onAddHelp: (WidgetKind) -> Unit = {}) {
     val classic = style == WidgetStyle.CLASSIC
-    val colors = if (classic) ClassicStudioColors else LightStudioColors
-    ProvideWeatherPresentationClock {
-    CompositionLocalProvider(LocalStudio provides colors) {
-        MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
-        MaterialTheme(colorScheme = if (classic) darkColorScheme(primary = colors.accent, surface = colors.panel, background = colors.bg, onSurface = colors.ink, onPrimary = colors.bg)
-            else lightColorScheme(primary = colors.accent, surface = colors.panel, background = colors.bg, onSurface = colors.ink, onPrimary = Color.White)) {
-            var config by rememberSaveable(stateSaver = configSaver) { mutableStateOf(initialConfig) }
-            var tab by rememberSaveable { mutableIntStateOf(0) }
-            var backdrop by rememberSaveable { mutableIntStateOf(0) }
-            var largePreview by rememberSaveable { mutableStateOf(false) }
-            var previewWall by rememberSaveable { mutableStateOf(false) }
-            val pager = rememberPagerState(initialPage = initialKind.ordinal, pageCount = { WidgetKind.entries.size })
-            val scope = rememberCoroutineScope()
-            val context = LocalContext.current
-            val inspection = LocalInspectionMode.current
-            val configuration = LocalConfiguration.current
-            val desktopSize = remember(editingId, configuration.orientation, configuration.screenWidthDp, configuration.screenHeightDp) {
-                if (editingId == null || inspection) null else runCatching {
-                    widgetEditorSize(AppWidgetManager.getInstance(context).getAppWidgetOptions(editingId), initialKind,
-                        configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
-                }.getOrNull()
-            }
-            var data by remember { mutableStateOf(previewData) }
-            LaunchedEffect(config.locationMode, config.cityKey, selected, cities, locatedKey) {
-                if (!inspection && previewData == null) data = withContext(Dispatchers.IO) { WidgetRuntime.snapshot(context, config) }
-            }
-            val sample = remember { widgetPreviewSample() }
-            val preview = data?.takeIf { it.weather.current != null } ?: sample
-            val kind = WidgetKind.entries[pager.currentPage]
-            val sourceLayer = rememberGraphicsLayer()
-            var sourceOrigin by remember { mutableStateOf(Offset.Zero) }
-            var footerPixels by remember { mutableFloatStateOf(0f) }
-            val density = LocalDensity.current
-            val ownerView = LocalView.current
-            val footerClearance = with(density) { footerPixels.toDp() } + 16.dp
-            BoxWithConstraints(Modifier.fillMaxSize().background(colors.bg)) {
-            val short = maxHeight < 500.dp
-            val compact = short || (density.fontScale > 1.2f && maxHeight < 800.dp)
-            val splitKindHeading = maxWidth < 360.dp || density.fontScale > 1.2f
-            val previewHeight = minOf(previewStageHeight(largePreview).toFloat(),
-                (maxHeight.value - if (short) 280f else 380f).coerceAtLeast(64f)).dp
-            Column(Modifier.fillMaxSize().onGloballyPositioned { sourceOrigin = it.positionInRoot() }
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .drawWithContent {
-                    // Capture the full opaque scene BEFORE the display fade. The glass needs the
-                    // scrolling controls beneath it, not their transparent, already-masked version.
-                    sourceLayer.record {
-                        drawRect(colors.bg)
-                        this@drawWithContent.drawContent()
-                    }
-                    drawLayer(sourceLayer)
-                    val edge = (size.height - footerPixels).coerceAtLeast(0f)
-                    drawRect(Brush.verticalGradient(
-                        0f to Color.White,
-                        ((edge - 14.dp.toPx()) / size.height.coerceAtLeast(1f)).coerceIn(0f, 1f) to Color.White,
-                        ((edge + 12.dp.toPx()) / size.height.coerceAtLeast(1f)).coerceIn(0f, 1f) to Color.Transparent,
-                        1f to Color.Transparent), blendMode = BlendMode.DstIn)
-                }) {
-                Row(Modifier.fillMaxWidth().height(if (compact) 52.dp else 62.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    MochiBackButton(onClick = onClose)
-                    Text(if (compact) style.title else "${style.title}小组件", color = colors.ink, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-                        modifier = Modifier.weight(1f))
-                    MochiBarButton("试壁纸", onClick = {
-                        backdrop = (backdrop + 1) % 3
-                        if (compact) largePreview = true
-                    })
-                    Text(if (editingId == null) "${pager.currentPage + 1}/5" else "编辑", color = colors.muted, fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 4.dp, end = 10.dp))
-                }
-                if (!compact) Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(previewHeight).clip(colors.shape)
-                    .background(Brush.linearGradient(studioBackdropColors(style, backdrop)))) {
-                    HorizontalPager(state = pager, userScrollEnabled = editingId == null, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1) { page ->
-                        NativeWidgetPreview(
-                            style,
-                            WidgetKind.entries[page],
-                            config,
-                            preview,
-                            Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp,
-                                top = if (WidgetKind.entries[page] == WidgetKind.SCENE) 12.dp else 24.dp, bottom = 28.dp),
-                            previewBackground = studioPreviewBackground(style, backdrop).toArgb(),
-                            hostSize = desktopSize.takeIf { WidgetKind.entries[page] == initialKind },
-                        )
-                    }
-                    Text(if (desktopSize != null) "按桌面提供的尺寸缩放预览" else "参考预览，实际尺寸以桌面为准",
-                        color = if (backdrop == 1 || classic) Color(0xFFF8FCFF) else Color(0xFF203A43), fontSize = 10.sp,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 5.dp))
-                }
-                val kindHeading: @Composable (Modifier) -> Unit = { headingModifier ->
-                    Column(headingModifier) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(kind.name(style), color = colors.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = if (splitKindHeading) Modifier.weight(1f) else Modifier)
-                            if (editingId == null) Row(Modifier.padding(start = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                WidgetKind.entries.forEachIndexed { index, _ ->
-                                    Box(Modifier.size(width = if (pager.currentPage == index) 16.dp else 5.dp, height = 5.dp)
-                                        .clip(CircleShape).background(colors.accent.copy(alpha = if (pager.currentPage == index) 1f else .28f)))
-                                }
-                            }
-                        }
-                        if (!short) {
-                            val place = if (data?.weather?.current == null) "示例天气" else data?.city?.name.orEmpty()
-                            Text("$place · ${kind.columns} × ${kind.rows}" + if (compact) "" else " · 左右滑动换款式",
-                                color = colors.muted, fontSize = 12.sp, maxLines = if (splitKindHeading) 2 else 1,
-                                overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
-                        }
-                    }
-                }
-                val previewActions: @Composable () -> Unit = {
-                    if (editingId == null) TextButton(onClick = { previewWall = true }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("款式一览", fontSize = 12.sp, color = colors.accent)
-                    }
-                    TextButton(onClick = { largePreview = !largePreview }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text(if (compact) "查看预览" else if (largePreview) "缩小预览" else "放大预览", fontSize = 12.sp, color = colors.accent)
-                    }
-                }
-                if (splitKindHeading) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-                        kindHeading(Modifier.fillMaxWidth())
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically) { previewActions() }
-                    }
-                } else {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        kindHeading(Modifier.weight(1f))
-                        previewActions()
-                    }
-                }
-                MochiSegmentedControl(
-                    selectedIndex = tab,
-                    onSelect = { tab = it },
-                    items = persistentListOf("外观", "地点", "内容", "点击"),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-                )
-                Column(Modifier.weight(1f).fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = footerClearance),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    when (tab) {
-                        0 -> {
-                            Panel {
-                                LabelValue("可读预设", "")
-                                Text(if (editingId == null) "先在预览中试用，添加时用于新组件。" else "先在预览中试用，保存修改后用于当前组件。",
-                                    color = colors.muted, fontSize = 11.sp)
-                                Row {
-                                    TextButton(onClick = { config = widgetReadablePreset(config) }) { Text("清晰阅读") }
-                                    TextButton(onClick = { config = widgetTransparentPreset(config) }) { Text("透明护字") }
-                                }
-                                LabelValue("背景不透明度", "${config.opacity}%")
-                                StudioSlider(config.opacity.toFloat(), { config = config.copy(opacity = it.roundToInt()) }, 0f..100f)
-                                Choice(listOf("透明" to "0", "轻透" to "45", "柔光" to "80", "实色" to "100"), config.opacity.toString()) { config = config.copy(opacity = it.toInt()) }
-                                Spacer(Modifier.height(16.dp))
-                                LabelValue("底色", "")
-                                Choice(listOf("浅色" to "light", "深色" to "dark", "系统" to "system"), config.theme) { config = config.copy(theme = it) }
-                                Text("0% 完全无底色；100% 遮住壁纸。桌面组件只能绘制自己的底色，无法实时模糊桌面壁纸。", fontSize = 11.sp, color = colors.muted)
-                            }
-                            Panel {
-                                LabelValue("天气图标", "无界为默认")
-                                IconSetPicker(config.iconSet) { config = config.copy(iconSet = it) }
-                            }
-                            Panel {
-                                LabelValue("文字颜色", "")
-                                Choice(listOf("自动" to "auto", "浅色字" to "light", "深色字" to "dark"), config.text) { config = config.copy(text = it) }
-                                Text("自动只参考壁纸整体明暗；复杂壁纸可选浅色字配深色壁纸，或深色字配浅色壁纸。图标彩色表示天气种类；降水图显示毫米/小时，百分比是降水概率。", fontSize = 11.sp, color = colors.muted, modifier = Modifier.padding(top = 10.dp))
-                                Toggle("透明时增强文字轮廓", config.protectText) { config = config.copy(protectText = it) }
-                                Spacer(Modifier.height(14.dp))
-                                LabelValue("数字大小", "${(config.textScale * 100).roundToInt()}%")
-                                StudioSlider(config.textScale, { config = config.copy(textScale = it) }, WidgetMinimumNumberScale..WidgetMaximumNumberScale)
-                                Text("调节温度、时间和天气读数；小读数会保留清晰易读的大小。", fontSize = 11.sp, color = colors.muted)
-                                Text("最多 200%，实际大小受组件空间限制；隐藏时钟或预报可腾出空间。", fontSize = 11.sp, color = colors.muted)
-                                Spacer(Modifier.height(14.dp))
-                                LabelValue("说明文字大小", "${(config.detailScale * 100).roundToInt()}%")
-                                StudioSlider(config.detailScale, { config = config.copy(detailScale = it) }, .85f..1.5f)
-                                Toggle("说明文字加粗", config.boldText) { config = config.copy(boldText = it) }
-
-                            }
-                        }
-                        1 -> {
-                            CitySearch(config) { config = it }
-                            Panel {
-                                PlaceRow("跟随当前城市", selected?.displayName ?: "在应用中选择地点", config.locationMode == "selected") { config = config.copy(locationMode = "selected", cityKey = "", fixedCity = null) }
-                                PlaceRow("跟随定位", cities.firstOrNull { it.locationKey == locatedKey }?.displayName ?: "先在应用中开启定位", config.locationMode == "located") { config = config.copy(locationMode = "located", cityKey = "", fixedCity = null) }
-                            }
-                            if (cities.isNotEmpty()) Panel {
-                                LabelValue("固定地点", "收藏优先")
-                                cities.sortedByDescending { it.isFavorite }.forEach { city ->
-                                    PlaceRow(city.displayName, if (city.isFavorite) "收藏 · ${city.contextLabel}" else city.contextLabel, config.locationMode == "fixed" && config.cityKey == city.locationKey) {
-                                        WidgetStore.rememberCity(context, city)
-                                        config = config.copy(locationMode = "fixed", cityKey = city.locationKey, fixedCity = city)
-                                    }
-                                }
-                            }
-                            Text("固定地点的小组件会独立显示该地天气，切换应用城市不会改变它。", fontSize = 12.sp, color = colors.muted)
-                        }
-                        2 -> {
-                            widgetEditorSizeNotice(kind, desktopSize, config)?.let { notice ->
-                                Panel { Text(notice, color = colors.muted, fontSize = 12.sp) }
-                            }
-                            Panel {
-                                if (kind == WidgetKind.PULSE || kind == WidgetKind.SCENE || (kind == WidgetKind.WEEK && !classic)) {
-                                    Toggle("显示时钟和日期", config.showClock) { config = config.copy(showClock = it) }
-                                    Toggle("24 小时制", config.clock24) { config = config.copy(clock24 = it) }
-                                }
-                                if (kind in listOf(WidgetKind.SCENE, WidgetKind.WEEK, WidgetKind.BAND)) Toggle("显示天气预报", config.showForecast) { config = config.copy(showForecast = it) }
-                                if (kind == WidgetKind.SCENE) Toggle("短时降水柱图", config.showPrecipitation) { config = config.copy(showPrecipitation = it) }
-                                if (kind == WidgetKind.SCENE || (kind == WidgetKind.WEEK && !classic)) Toggle("农历", config.showLunar) { config = config.copy(showLunar = it) }
-                                if (kind == WidgetKind.SCENE) Toggle("天气娘提示", config.showWeatherGirl) { config = config.copy(showWeatherGirl = it) }
-                                if (kind == WidgetKind.NOW) Toggle("空气质量", config.showAir) { config = config.copy(showAir = it) }
-                                Choice(listOf("摄氏 °C" to "c", "华氏 °F" to "f"), config.tempUnit) { config = config.copy(tempUnit = it) }
-                            }
-                            if (kind == WidgetKind.SCENE) Panel {
-                                LabelValue("天气读数", "长按拖动排序 · 最多六项")
-                                MetricOrder(config.metrics) { config = config.copy(metrics = it) }
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    metricLabels.filterKeys { it !in config.metrics }.forEach { (key, label) ->
-                                        TextButton(onClick = { config = config.copy(metrics = (config.metrics + key).take(6)) }, enabled = config.metrics.size < 6) { Text("+ $label", fontSize = 12.sp) }
-                                    }
-                                }
-                            }
-                            Panel {
-                                LabelValue("通知栏天气", "")
-                                Toggle("常驻天气速览", notification.enabled && notification.style == style.key) {
-                                    onNotification(if (it) notification.copy(enabled = true, style = style.key, config = config) else notification.copy(enabled = false))
-                                }
-                                Text("开启时采用当前地点与单位设置，之后独立于桌面组件。", color = colors.muted, fontSize = 11.sp)
-                                if (notification.enabled && notification.style == style.key) TextButton(onClick = { onNotification(notification.copy(config = config)) }) { Text("将当前设置用于通知栏", fontSize = 12.sp) }
-                            }
-                        }
-                        3 -> {
-                            Panel {
-                                LabelValue("点击时间", "")
-                                Choice(listOf("系统时钟" to "clock", "天气" to "app", "编辑组件" to "settings", "无操作" to "none"), config.clickTime) { config = config.copy(clickTime = it) }
-                                Spacer(Modifier.height(16.dp)); LabelValue("点击日期", "")
-                                Choice(listOf("系统日历" to "calendar", "天气" to "app", "编辑组件" to "settings", "无操作" to "none"), config.clickDate) { config = config.copy(clickDate = it) }
-                                Spacer(Modifier.height(16.dp)); LabelValue("点击天气与空白区域", "")
-                                Choice(listOf("天气主页" to "app", "编辑组件" to "settings", "无操作" to "none"), config.clickWeather) { config = config.copy(clickWeather = it) }
-                            }
-                            Panel {
-                                LabelValue("天气刷新间隔", "")
-                                Choice(listOf("30 分钟" to "30", "1 小时" to "60", "2 小时" to "120"), config.intervalMinutes.toString()) { config = config.copy(intervalMinutes = it.toInt()) }
-                                Text("系统省电模式可能延后天气刷新；时钟由桌面自动走时。", color = colors.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
-                            }
-                        }
-                    }
-                    if (editingId == null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        TextButton(onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage + 4) % 5) } }) { Text("上一个") }
-                        TextButton(onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage + 1) % 5) } }) { Text("下一个") }
-                    }
-                    if (editingId == null) {
-                        val feedback = when (pinState) {
-                            WidgetPinState.PREPARING -> "正在准备小组件…"
-                            WidgetPinState.WAITING -> "请在桌面弹窗中确认添加，返回后会检查结果"
-                            WidgetPinState.ADDED -> "已添加到桌面"
-                            WidgetPinState.UNCONFIRMED -> "尚未收到添加确认，可查看桌面或打开添加帮助"
-                            WidgetPinState.IDLE -> null
-                            else -> "暂时无法直接添加，请查看添加帮助"
-                        }
-                        if (feedback != null) Text(feedback, fontSize = 12.sp, color = colors.muted)
-                    }
-                }
-            }
-            // The same optical material as home/settings, sampling content rather than an opaque footer block.
-            ZhishengWeatherTheme(isLight = !classic, homeSurfaceStyle = HomeSurfaceStyle.FRAGRANCE_GLASS, softGlow = false) {
-            CompositionLocalProvider(LocalHomeBackdrop provides HomeBackdrop(sourceLayer, sourceOrigin, ownerView)) {
-                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                    .onGloballyPositioned { footerPixels = it.size.height.toFloat() }.navigationBarsPadding()
-                    .padding(start = 22.dp, end = 22.dp, bottom = 10.dp)
-                    .zhishengGlassActionBar(light = !classic).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(onClick = { onApply(kind, config) }, enabled = pinState !in setOf(WidgetPinState.PREPARING, WidgetPinState.WAITING),
-                        shape = RoundedCornerShape(26.dp), modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = colors.accent,
-                            disabledContainerColor = Color.Transparent, disabledContentColor = colors.muted)) {
-                        PhosphorIcon(if (editingId == null) R.drawable.ph_plus else R.drawable.ph_check, null, Modifier.size(18.dp), colors.accent)
-                        Spacer(Modifier.width(10.dp)); Text(when {
-                            pinState == WidgetPinState.PREPARING -> "正在准备…"
-                            pinState == WidgetPinState.WAITING -> "等待桌面确认"
-                            editingId != null -> "保存修改"
-                            pinState == WidgetPinState.ADDED -> "再添加一个"
-                            pinState == WidgetPinState.IDLE -> "添加到桌面"
-                            else -> "重试添加"
-                        }, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                    }
-                    if (editingId == null) {
-                    Box(Modifier.width(1.dp).height(18.dp).background(colors.accent.copy(alpha = .12f)))
-                    TextButton(onClick = { onAddHelp(kind) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("添加帮助", color = colors.muted, fontSize = 12.sp, maxLines = 1)
-                    }
-                    }
-                }
-            }
-            }
-            if (previewWall || (compact && largePreview)) {
-                val allKinds = previewWall
-                val dismiss = { if (allKinds) previewWall = false else largePreview = false }
-                ZhishengWeatherTheme(isLight = !classic, homeSurfaceStyle = HomeSurfaceStyle.FRAGRANCE_GLASS, softGlow = false) {
-                    CompositionLocalProvider(LocalHomeBackdrop provides HomeBackdrop(sourceLayer, sourceOrigin, ownerView)) {
-                        WeatherOverlayDialog(onDismiss = dismiss) { panelModifier ->
-                            WidgetPreviewDialogContent(style, kind, config, preview, backdrop, allKinds,
-                                desktopSize, onTryWallpaper = { backdrop = (backdrop + 1) % 3 },
-                                onSelect = { candidate ->
-                                    previewWall = false
-                                    scope.launch { pager.animateScrollToPage(candidate.ordinal) }
-                                }, onDone = dismiss,
-                                previewLabel = if (data?.weather?.current == null) "示例天气" else preview.city.name,
-                                modifier = panelModifier)
-                        }
-                    }
-                }
-            }
-            }
-        }
-        }
+    val context = LocalContext.current
+    val inspection = LocalInspectionMode.current
+    val configuration = LocalConfiguration.current
+    val ownerView = LocalView.current
+    var config by rememberSaveable(stateSaver = configSaver) { mutableStateOf(initialConfig) }
+    var backdrop by rememberSaveable { mutableIntStateOf(0) }
+    var largePreview by rememberSaveable { mutableStateOf(false) }
+    var previewWall by rememberSaveable { mutableStateOf(false) }
+    val pager = rememberPagerState(initialPage = initialKind.ordinal, pageCount = { WidgetKind.entries.size })
+    val scope = rememberCoroutineScope()
+    val desktopSize = remember(editingId, configuration.orientation, configuration.screenWidthDp, configuration.screenHeightDp) {
+        if (editingId == null || inspection) null else runCatching {
+            widgetEditorSize(AppWidgetManager.getInstance(context).getAppWidgetOptions(editingId), initialKind,
+                configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
+        }.getOrNull()
     }
+    var data by remember { mutableStateOf(previewData) }
+    LaunchedEffect(config.locationMode, config.cityKey, selected, cities, locatedKey) {
+        if (!inspection && previewData == null) data = withContext(Dispatchers.IO) { WidgetRuntime.snapshot(context, config) }
+    }
+    val sample = remember { widgetPreviewSample() }
+    val preview = data?.takeIf { it.weather.current != null } ?: sample
+    val kind = WidgetKind.entries[pager.currentPage]
+    val sourceLayer = rememberGraphicsLayer()
+    var sourceOrigin by remember { mutableStateOf(Offset.Zero) }
+
+    ProvideWeatherPresentationClock {
+        MochiTheme(colors = rememberMochiColorScheme(followSystem = true), systemBarAppearance = true) {
+            val colors = studioColors(classic)
+            CompositionLocalProvider(LocalStudio provides colors) {
+                val dark = MochiTheme.colorScheme.isDark
+                MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = colors.accent, surface = colors.panel, background = colors.bg, onSurface = colors.ink, onPrimary = MochiTheme.colorScheme.onPrimary)
+                    else lightColorScheme(primary = colors.accent, surface = colors.panel, background = colors.bg, onSurface = colors.ink, onPrimary = MochiTheme.colorScheme.onPrimary)) {
+                    // 供「款式一览 / 放大预览」弹窗采样页面做玻璃材质。
+                    Box(Modifier.fillMaxSize().background(colors.bg)
+                        .onGloballyPositioned { sourceOrigin = it.positionInRoot() }
+                        .drawWithContent {
+                            sourceLayer.record { drawRect(colors.bg); this@drawWithContent.drawContent() }
+                            drawLayer(sourceLayer)
+                        }) {
+                        MochiLazyCompactTitleScaffold(
+                            title = "${style.title}小组件",
+                            subtitle = "${kind.name(style)} · ${kind.columns} × ${kind.rows}",
+                            navigationIcon = { MochiBackButton(onClick = onClose) },
+                            actions = { StudioBarButton("试壁纸", onClick = { backdrop = (backdrop + 1) % 3 }) },
+                            content = {
+                                item {
+                                    MochiListSection(header = "组件预览") {
+                                        SectionBody {
+                                            Box(Modifier.fillMaxWidth().height(previewStageHeight(false).dp).clip(colors.shape)
+                                                .background(Brush.linearGradient(studioBackdropColors(style, backdrop)))) {
+                                                HorizontalPager(state = pager, userScrollEnabled = editingId == null,
+                                                    modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1) { page ->
+                                                    val pageKind = WidgetKind.entries[page]
+                                                    NativeWidgetPreview(style, pageKind, config, preview,
+                                                        Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp,
+                                                            top = if (pageKind == WidgetKind.SCENE) 12.dp else 24.dp, bottom = 28.dp),
+                                                        previewBackground = studioPreviewBackground(style, backdrop).toArgb(),
+                                                        hostSize = desktopSize.takeIf { pageKind == initialKind })
+                                                }
+                                                Text(if (desktopSize != null) "按桌面提供的尺寸缩放预览" else "参考预览，实际尺寸以桌面为准",
+                                                    color = if (backdrop == 1 || classic) Color(0xFFF8FCFF) else Color(0xFF203A43),
+                                                    fontSize = 10.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 5.dp))
+                                            }
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(kind.name(style), color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                                if (editingId == null) WidgetKind.entries.forEachIndexed { index, _ ->
+                                                    Box(Modifier.size(width = if (pager.currentPage == index) 16.dp else 5.dp, height = 5.dp)
+                                                        .clip(CircleShape).background(colors.accent.copy(alpha = if (pager.currentPage == index) 1f else .28f)))
+                                                }
+                                            }
+                                            Text((if (data?.weather?.current == null) "示例天气" else data?.city?.name.orEmpty()) + " · 左右滑动换款式",
+                                                color = colors.muted, fontSize = 12.sp)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                StudioBarButton("款式一览", onClick = { previewWall = true })
+                                                StudioBarButton(if (largePreview) "缩小预览" else "放大预览", onClick = { largePreview = !largePreview })
+                                            }
+                                            if (editingId == null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                                                StudioBarButton("上一个", onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage + 4) % 5) } })
+                                                StudioBarButton("下一个", onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage + 1) % 5) } })
+                                            }
+                                        }
+                                    }
+                                }
+                                item {
+                                    MochiListSection(header = "外观") {
+                                        SectionBody {
+                                            LabelValue("可读预设", "")
+                                            Text(if (editingId == null) "先在预览中试用，添加时用于新组件。" else "先在预览中试用，保存修改后用于当前组件。", color = colors.muted, fontSize = 11.sp)
+                                            Row {
+                                                StudioBarButton("清晰阅读", onClick = { config = widgetReadablePreset(config) })
+                                                StudioBarButton("透明护字", onClick = { config = widgetTransparentPreset(config) })
+                                            }
+                                            LabelValue("背景不透明度", "${config.opacity}%")
+                                            StudioSlider(config.opacity.toFloat(), { config = config.copy(opacity = it.roundToInt()) }, 0f..100f)
+                                            Choice(listOf("透明" to "0", "轻透" to "45", "柔光" to "80", "实色" to "100"), config.opacity.toString()) { config = config.copy(opacity = it.toInt()) }
+                                            LabelValue("底色", "")
+                                            Choice(listOf("浅色" to "light", "深色" to "dark", "系统" to "system"), config.theme) { config = config.copy(theme = it) }
+                                            Text("0% 完全无底色；100% 遮住壁纸。桌面组件只能绘制自己的底色，无法实时模糊桌面壁纸。", fontSize = 11.sp, color = colors.muted)
+                                            LabelValue("天气图标", "无界为默认")
+                                            IconSetPicker(config.iconSet) { config = config.copy(iconSet = it) }
+                                            LabelValue("文字颜色", "")
+                                            Choice(listOf("自动" to "auto", "浅色字" to "light", "深色字" to "dark"), config.text) { config = config.copy(text = it) }
+                                            Text("自动只参考壁纸整体明暗；复杂壁纸可选浅色字配深色壁纸，或深色字配浅色壁纸。图标彩色表示天气种类；降水图显示毫米/小时，百分比是降水概率。", fontSize = 11.sp, color = colors.muted)
+                                            Toggle("透明时增强文字轮廓", config.protectText) { config = config.copy(protectText = it) }
+                                            LabelValue("数字大小", "${(config.textScale * 100).roundToInt()}%")
+                                            StudioSlider(config.textScale, { config = config.copy(textScale = it) }, WidgetMinimumNumberScale..WidgetMaximumNumberScale)
+                                            Text("调节温度、时间和天气读数；小读数会保留清晰易读的大小。", fontSize = 11.sp, color = colors.muted)
+                                            Text("最多 200%，实际大小受组件空间限制；隐藏时钟或预报可腾出空间。", fontSize = 11.sp, color = colors.muted)
+                                            LabelValue("说明文字大小", "${(config.detailScale * 100).roundToInt()}%")
+                                            StudioSlider(config.detailScale, { config = config.copy(detailScale = it) }, .85f..1.5f)
+                                            Toggle("说明文字加粗", config.boldText) { config = config.copy(boldText = it) }
+                                        }
+                                    }
+                                }
+                                item {
+                                    MochiListSection(header = "地点") {
+                                        SectionBody {
+                                            CitySearch(config, { config = it }, boxed = false)
+                                            PlaceRow("跟随当前城市", selected?.displayName ?: "在应用中选择地点", config.locationMode == "selected") { config = config.copy(locationMode = "selected", cityKey = "", fixedCity = null) }
+                                            PlaceRow("跟随定位", cities.firstOrNull { it.locationKey == locatedKey }?.displayName ?: "先在应用中开启定位", config.locationMode == "located") { config = config.copy(locationMode = "located", cityKey = "", fixedCity = null) }
+                                            if (cities.isNotEmpty()) {
+                                                LabelValue("固定地点", "收藏优先")
+                                                cities.sortedByDescending { it.isFavorite }.forEach { city ->
+                                                    PlaceRow(city.displayName, if (city.isFavorite) "收藏 · ${city.contextLabel}" else city.contextLabel, config.locationMode == "fixed" && config.cityKey == city.locationKey) {
+                                                        WidgetStore.rememberCity(context, city)
+                                                        config = config.copy(locationMode = "fixed", cityKey = city.locationKey, fixedCity = city)
+                                                    }
+                                                }
+                                            }
+                                            Text("固定地点的小组件会独立显示该地天气，切换应用城市不会改变它。", fontSize = 12.sp, color = colors.muted)
+                                        }
+                                    }
+                                }
+                                item {
+                                    MochiListSection(header = "内容") {
+                                        SectionBody {
+                                            widgetEditorSizeNotice(kind, desktopSize, config)?.let { Text(it, color = colors.muted, fontSize = 12.sp) }
+                                            if (kind == WidgetKind.PULSE || kind == WidgetKind.SCENE || (kind == WidgetKind.WEEK && !classic)) {
+                                                Toggle("显示时钟和日期", config.showClock) { config = config.copy(showClock = it) }
+                                                Toggle("24 小时制", config.clock24) { config = config.copy(clock24 = it) }
+                                            }
+                                            if (kind in listOf(WidgetKind.SCENE, WidgetKind.WEEK, WidgetKind.BAND)) Toggle("显示天气预报", config.showForecast) { config = config.copy(showForecast = it) }
+                                            if (kind == WidgetKind.SCENE) Toggle("短时降水柱图", config.showPrecipitation) { config = config.copy(showPrecipitation = it) }
+                                            if (kind == WidgetKind.SCENE || (kind == WidgetKind.WEEK && !classic)) Toggle("农历", config.showLunar) { config = config.copy(showLunar = it) }
+                                            if (kind == WidgetKind.SCENE) Toggle("天气娘提示", config.showWeatherGirl) { config = config.copy(showWeatherGirl = it) }
+                                            if (kind == WidgetKind.NOW) Toggle("空气质量", config.showAir) { config = config.copy(showAir = it) }
+                                            Choice(listOf("摄氏 °C" to "c", "华氏 °F" to "f"), config.tempUnit) { config = config.copy(tempUnit = it) }
+                                            if (kind == WidgetKind.SCENE) {
+                                                LabelValue("天气读数", "长按拖动排序 · 最多六项")
+                                                MetricOrder(config.metrics) { config = config.copy(metrics = it) }
+                                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    metricLabels.filterKeys { it !in config.metrics }.forEach { (key, label) ->
+                                                        TextButton(onClick = { config = config.copy(metrics = (config.metrics + key).take(6)) }, enabled = config.metrics.size < 6) { Text("+ $label", fontSize = 12.sp, color = MochiTheme.colorScheme.onSurface) }
+                                                    }
+                                                }
+                                            }
+                                            LabelValue("通知栏天气", "")
+                                            Toggle("常驻天气速览", notification.enabled && notification.style == style.key) {
+                                                onNotification(if (it) notification.copy(enabled = true, style = style.key, config = config) else notification.copy(enabled = false))
+                                            }
+                                            Text("开启时采用当前地点与单位设置，之后独立于桌面组件。", color = colors.muted, fontSize = 11.sp)
+                                            if (notification.enabled && notification.style == style.key) StudioBarButton("将当前设置用于通知栏", onClick = { onNotification(notification.copy(config = config)) })
+                                        }
+                                    }
+                                }
+                                item {
+                                    MochiListSection(header = "点击与刷新") {
+                                        SectionBody {
+                                            LabelValue("点击时间", "")
+                                            Choice(listOf("系统时钟" to "clock", "天气" to "app", "编辑组件" to "settings", "无操作" to "none"), config.clickTime) { config = config.copy(clickTime = it) }
+                                            LabelValue("点击日期", "")
+                                            Choice(listOf("系统日历" to "calendar", "天气" to "app", "编辑组件" to "settings", "无操作" to "none"), config.clickDate) { config = config.copy(clickDate = it) }
+                                            LabelValue("点击天气与空白区域", "")
+                                            Choice(listOf("天气主页" to "app", "编辑组件" to "settings", "无操作" to "none"), config.clickWeather) { config = config.copy(clickWeather = it) }
+                                            LabelValue("天气刷新间隔", "")
+                                            Choice(listOf("30 分钟" to "30", "1 小时" to "60", "2 小时" to "120"), config.intervalMinutes.toString()) { config = config.copy(intervalMinutes = it.toInt()) }
+                                            Text("系统省电模式可能延后天气刷新；时钟由桌面自动走时。", color = colors.muted, fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+                                item {
+                                    if (editingId == null) {
+                                        val feedback = when (pinState) {
+                                            WidgetPinState.PREPARING -> "正在准备小组件…"
+                                            WidgetPinState.WAITING -> "请在桌面弹窗中确认添加，返回后会检查结果"
+                                            WidgetPinState.ADDED -> "已添加到桌面"
+                                            WidgetPinState.UNCONFIRMED -> "尚未收到添加确认，可查看桌面或打开添加帮助"
+                                            WidgetPinState.IDLE -> null
+                                            else -> "暂时无法直接添加，请查看添加帮助"
+                                        }
+                                        if (feedback != null) Text(feedback, fontSize = 12.sp, color = colors.muted)
+                                    }
+                                    Spacer(Modifier.height(80.dp))
+                                }
+                            },
+                        )
+                        MochiBottomToolbar(Modifier.align(Alignment.BottomCenter)) {
+                            MochiButton(
+                                onClick = { onApply(kind, config) },
+                                enabled = pinState !in setOf(WidgetPinState.PREPARING, WidgetPinState.WAITING),
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                PhosphorIcon(if (editingId == null) R.drawable.ph_plus else R.drawable.ph_check, null,
+                                    Modifier.size(18.dp), Color.White)
+                                Text(when {
+                                    pinState == WidgetPinState.PREPARING -> "正在准备…"
+                                    pinState == WidgetPinState.WAITING -> "等待桌面确认"
+                                    editingId != null -> "保存修改"
+                                    pinState == WidgetPinState.ADDED -> "再添加一个"
+                                    pinState == WidgetPinState.IDLE -> "添加到桌面"
+                                    else -> "重试添加"
+                                }, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Color.White)
+                            }
+                            if (editingId == null) StudioBarButton("添加帮助", onClick = { onAddHelp(kind) })
+                        }
+                        if (previewWall || largePreview) {
+                            val allKinds = previewWall
+                            val dismiss = { if (allKinds) previewWall = false else largePreview = false }
+                            ZhishengWeatherTheme(isLight = !classic, homeSurfaceStyle = HomeSurfaceStyle.FRAGRANCE_GLASS, softGlow = false) {
+                                CompositionLocalProvider(LocalHomeBackdrop provides HomeBackdrop(sourceLayer, sourceOrigin, ownerView)) {
+                                    WeatherOverlayDialog(onDismiss = dismiss) { panelModifier ->
+                                        WidgetPreviewDialogContent(style, kind, config, preview, backdrop, allKinds,
+                                            desktopSize, onTryWallpaper = { backdrop = (backdrop + 1) % 3 },
+                                            onSelect = { candidate ->
+                                                previewWall = false
+                                                scope.launch { pager.animateScrollToPage(candidate.ordinal) }
+                                            }, onDone = dismiss,
+                                            previewLabel = if (data?.weather?.current == null) "示例天气" else preview.city.name,
+                                            modifier = panelModifier)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -503,7 +465,6 @@ internal fun WidgetPreviewDialogContent(style: WidgetStyle, kind: WidgetKind, co
 @Composable
 internal fun NotificationStudio(value: NotificationSettings, cities: List<City>, selected: City?, locatedKey: String?,
                                 onChange: (NotificationSettings) -> Unit, onClose: () -> Unit) {
-    val c = LocalStudio.current
     val context = LocalContext.current
     val inspection = LocalInspectionMode.current
     var snapshot by remember { mutableStateOf<WidgetSnapshot?>(null) }
@@ -512,91 +473,110 @@ internal fun NotificationStudio(value: NotificationSettings, cities: List<City>,
     }
     val sample = remember { widgetPreviewSample() }
     fun change(config: WidgetConfig) = onChange(value.copy(config = config))
-    MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
-    MaterialTheme(colorScheme = lightColorScheme(primary = c.accent, surface = c.panel, onSurface = c.ink)) {
-        Column(Modifier.fillMaxSize().background(c.bg).navigationBarsPadding()) {
-            MochiTitleBar(
-                title = "通知栏天气",
-                navigationIcon = { MochiBackButton(onClick = onClose) },
-                background = c.bg,
-            )
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Panel {
-                    Toggle("常驻天气速览", value.enabled) { onChange(value.copy(enabled = it)) }
-                    Text("当前天气、体感、风力、湿度、空气质量、降水概率与未来三日预报。", fontSize = 13.sp, color = c.muted)
-                    Toggle("天气预警提醒", value.alertsEnabled) { onChange(value.copy(alertsEnabled = it)) }
-                    Text("提醒下方所选地点的新预警及更新。约每 30 分钟检查，受网络和系统省电影响；不保证即时送达。", fontSize = 13.sp, color = c.muted)
-                    var permissionVersion by remember { mutableIntStateOf(0) }
-                    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-                    DisposableEffect(owner) {
-                        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-                            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) permissionVersion++
-                        }
-                        owner.lifecycle.addObserver(observer)
-                        onDispose { owner.lifecycle.removeObserver(observer) }
-                    }
-                    val permissionState = remember(permissionVersion, value.enabled, value.alertsEnabled) {
-                        // Layoutlib (snapshot tests, Compose previews) has no notification service and
-                        // answers with an AssertionError; this page still has to render there.
-                        runCatching {
-                            val manager = context.getSystemService(android.app.NotificationManager::class.java)
-                            when {
-                                !androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() -> "系统通知权限未开启"
-                                value.enabled && manager?.getNotificationChannel(WidgetNotification.CHANNEL)?.importance == android.app.NotificationManager.IMPORTANCE_NONE -> "常驻天气渠道已关闭"
-                                value.alertsEnabled && manager?.getNotificationChannel(WeatherAlertNotification.CHANNEL)?.importance == android.app.NotificationManager.IMPORTANCE_NONE -> "天气预警渠道已关闭"
-                                else -> "系统通知权限已开启"
-                            }
-                        }.getOrNull()
-                    }
-                    permissionState?.let {
-                        Text(it, color = c.accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    }
-                    MochiBarButton("系统通知权限与渠道", onClick = {
-                        val action = android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS
-                        context.startActivity(android.content.Intent(action)
-                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
-                            .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, WidgetNotification.CHANNEL))
-                    })
-                }
-                Panel {
-                    LabelValue("展开预览", if (snapshot?.weather?.current == null) "示例天气" else "")
-                    Box(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(22.dp))
-                        .background(c.bg).border(1.dp, c.edge, RoundedCornerShape(22.dp)).padding(8.dp)) {
-                        AndroidView(modifier = Modifier.fillMaxWidth().height(244.dp).clip(RoundedCornerShape(17.dp)),
-                            factory = { FrameLayout(it).apply { clipToOutline = true } }, update = { host ->
-                                host.removeAllViews()
-                                val night = host.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
-                                val surface = if (night) android.graphics.Color.rgb(38, 40, 43) else android.graphics.Color.rgb(249, 250, 252)
-                                host.background = GradientDrawable().apply {
-                                    setColor(surface)
-                                    cornerRadius = 17f * host.resources.displayMetrics.density
+
+    ProvideWeatherPresentationClock {
+        MochiTheme(colors = rememberMochiColorScheme(followSystem = true), systemBarAppearance = true) {
+            val c = studioColors(false)
+            CompositionLocalProvider(LocalStudio provides c) {
+                val dark = MochiTheme.colorScheme.isDark
+                MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = c.accent, surface = c.panel, onSurface = c.ink)
+                    else lightColorScheme(primary = c.accent, surface = c.panel, onSurface = c.ink)) {
+                    Box(Modifier.fillMaxSize().background(c.bg)) {
+                        MochiLazyCompactTitleScaffold(
+                            title = "通知栏天气",
+                            navigationIcon = { MochiBackButton(onClick = onClose) },
+                            actions = { StudioBarButton("保存", onClick = onClose) },
+                            content = {
+                                item {
+                                    MochiListSection(header = "通知与权限") {
+                                        SectionBody {
+                                            Toggle("常驻天气速览", value.enabled) { onChange(value.copy(enabled = it)) }
+                                            Text("当前天气、体感、风力、湿度、空气质量、降水概率与未来三日预报。", fontSize = 13.sp, color = c.muted)
+                                            Toggle("天气预警提醒", value.alertsEnabled) { onChange(value.copy(alertsEnabled = it)) }
+                                            Text("提醒下方所选地点的新预警及更新。约每 30 分钟检查，受网络和系统省电影响；不保证即时送达。", fontSize = 13.sp, color = c.muted)
+                                            var permissionVersion by remember { mutableIntStateOf(0) }
+                                            val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                                            DisposableEffect(owner) {
+                                                val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                                                    if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) permissionVersion++
+                                                }
+                                                owner.lifecycle.addObserver(observer)
+                                                onDispose { owner.lifecycle.removeObserver(observer) }
+                                            }
+                                            val permissionState = remember(permissionVersion, value.enabled, value.alertsEnabled) {
+                                                runCatching {
+                                                    val manager = context.getSystemService(android.app.NotificationManager::class.java)
+                                                    when {
+                                                        !androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() -> "系统通知权限未开启"
+                                                        value.enabled && manager?.getNotificationChannel(WidgetNotification.CHANNEL)?.importance == android.app.NotificationManager.IMPORTANCE_NONE -> "常驻天气渠道已关闭"
+                                                        value.alertsEnabled && manager?.getNotificationChannel(WeatherAlertNotification.CHANNEL)?.importance == android.app.NotificationManager.IMPORTANCE_NONE -> "天气预警渠道已关闭"
+                                                        else -> "系统通知权限已开启"
+                                                    }
+                                                }.getOrNull()
+                                            }
+                                            permissionState?.let { Text(it, color = c.accent, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
+                                            StudioBarButton("系统通知权限与渠道", onClick = {
+                                                val action = android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                                                context.startActivity(android.content.Intent(action)
+                                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                                    .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, WidgetNotification.CHANNEL))
+                                            })
+                                        }
+                                    }
                                 }
-                                val views = WidgetNotification.views(host.context, value, snapshot ?: sample, true, System.currentTimeMillis())
-                                host.addView(views.apply(host.context, host), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                            })
+                                item {
+                                    MochiListSection(header = "展开预览") {
+                                        SectionBody {
+                                            LabelValue("通知栏展开效果", if (snapshot?.weather?.current == null) "示例天气" else "")
+                                            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                                                .background(c.bg).border(1.dp, c.edge, RoundedCornerShape(22.dp)).padding(8.dp)) {
+                                                AndroidView(modifier = Modifier.fillMaxWidth().height(244.dp).clip(RoundedCornerShape(17.dp)),
+                                                    factory = { FrameLayout(it).apply { clipToOutline = true } }, update = { host ->
+                                                        host.removeAllViews()
+                                                        val night = host.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                                                        val surface = if (night) android.graphics.Color.rgb(38, 40, 43) else android.graphics.Color.rgb(249, 250, 252)
+                                                        host.background = GradientDrawable().apply {
+                                                            setColor(surface)
+                                                            cornerRadius = 17f * host.resources.displayMetrics.density
+                                                        }
+                                                        val views = WidgetNotification.views(host.context, value, snapshot ?: sample, true, System.currentTimeMillis())
+                                                        host.addView(views.apply(host.context, host), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                                                    })
+                                            }
+                                            Text("通知背景和文字颜色跟随系统；修改即时保存。", fontSize = 11.sp, color = c.muted)
+                                        }
+                                    }
+                                }
+                                item {
+                                    MochiListSection(header = "天气地点") {
+                                        SectionBody {
+                                            CitySearch(value.config, ::change, boxed = false)
+                                            PlaceRow("跟随当前城市", selected?.displayName ?: "在应用中选择", value.config.locationMode == "selected") { change(value.config.copy(locationMode = "selected", cityKey = "", fixedCity = null)) }
+                                            PlaceRow("跟随定位", cities.firstOrNull { it.locationKey == locatedKey }?.displayName ?: "先在应用中开启定位", value.config.locationMode == "located") { change(value.config.copy(locationMode = "located", cityKey = "", fixedCity = null)) }
+                                            cities.sortedByDescending { it.isFavorite }.forEach { city ->
+                                                PlaceRow(city.displayName, if (city.isFavorite) "收藏" else city.contextLabel, value.config.locationMode == "fixed" && value.config.cityKey == city.locationKey) {
+                                                    change(value.config.copy(locationMode = "fixed", cityKey = city.locationKey, fixedCity = city))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                item {
+                                    MochiListSection(header = "图标与单位") {
+                                        SectionBody {
+                                            LabelValue("天气图标", "")
+                                            IconSetPicker(value.config.iconSet) { change(value.config.copy(iconSet = it)) }
+                                            Choice(listOf("摄氏 °C" to "c", "华氏 °F" to "f"), value.config.tempUnit) { change(value.config.copy(tempUnit = it)) }
+                                        }
+                                    }
+                                }
+                                item { Spacer(Modifier.height(24.dp)) }
+                            },
+                        )
                     }
-                    Text("通知背景和文字颜色跟随系统；修改即时保存。", modifier = Modifier.padding(top = 8.dp), fontSize = 11.sp, color = c.muted)
-                }
-                Panel {
-                    LabelValue("天气地点", "")
-                    PlaceRow("跟随当前城市", selected?.displayName ?: "在应用中选择", value.config.locationMode == "selected") { change(value.config.copy(locationMode = "selected", cityKey = "", fixedCity = null)) }
-                    PlaceRow("跟随定位", cities.firstOrNull { it.locationKey == locatedKey }?.displayName ?: "先在应用中开启定位", value.config.locationMode == "located") { change(value.config.copy(locationMode = "located", cityKey = "", fixedCity = null)) }
-                    cities.sortedByDescending { it.isFavorite }.forEach { city ->
-                        PlaceRow(city.displayName, if (city.isFavorite) "收藏" else city.contextLabel, value.config.locationMode == "fixed" && value.config.cityKey == city.locationKey) {
-                            change(value.config.copy(locationMode = "fixed", cityKey = city.locationKey, fixedCity = city))
-                        }
-                    }
-                }
-                CitySearch(value.config, ::change)
-                Panel {
-                    LabelValue("天气图标", "")
-                    IconSetPicker(value.config.iconSet) { change(value.config.copy(iconSet = it)) }
-                    Spacer(Modifier.height(16.dp))
-                    Choice(listOf("摄氏 °C" to "c", "华氏 °F" to "f"), value.config.tempUnit) { change(value.config.copy(tempUnit = it)) }
                 }
             }
         }
-    }
     }
 }
 
@@ -671,7 +651,7 @@ internal fun NativeWidgetPreview(style: WidgetStyle, kind: WidgetKind, config: W
     }
 }
 
-@Composable private fun CitySearch(config: WidgetConfig, change: (WidgetConfig) -> Unit) {
+@Composable private fun CitySearch(config: WidgetConfig, change: (WidgetConfig) -> Unit, boxed: Boolean = true) {
     val context = LocalContext.current
     val c = LocalStudio.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -689,7 +669,7 @@ internal fun NativeWidgetPreview(style: WidgetStyle, kind: WidgetKind, config: W
         catch (e: Exception) { error = true; results = emptyList() }
         finally { searching = false }
     }
-    Panel {
+    val body: @Composable ColumnScope.() -> Unit = {
         OutlinedTextField(query, { query = it }, label = { Text("搜索地点", fontSize = 12.sp) }, singleLine = true,
             modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         if (searching) Text("正在查找…", color = c.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
@@ -703,19 +683,16 @@ internal fun NativeWidgetPreview(style: WidgetStyle, kind: WidgetKind, config: W
             }
         }
     }
+    if (boxed) Panel(body) else Column(Modifier.fillMaxWidth(), content = body)
+}
+
+@Composable private fun SectionBody(content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
 }
 
 @Composable private fun Panel(content: @Composable ColumnScope.() -> Unit) {
-    val c = LocalStudio.current
-    // 外层用组件库分组卡片，卡片内保留编辑器原有的自定义内容与配色。
-    MochiListCard(
-        colors = MochiListDefaults.colors(
-            container = c.panel, content = c.ink, secondary = c.muted,
-            divider = c.edge, highlight = c.accent.copy(alpha = .1f),
-            accent = c.accent, destructive = Color(0xFFB3261E),
-        ),
-        showDividers = false,
-    ) {
+    // 统一用组件库分组卡片承载，自定义内容（天气预览、图标选择、排序等）原样放在卡片内部。
+    MochiListCard(showDividers = false) {
         Column(Modifier.fillMaxWidth().padding(16.dp), content = content)
     }
 }
@@ -776,7 +753,7 @@ internal fun NativeWidgetPreview(style: WidgetStyle, kind: WidgetKind, config: W
                     }, verticalAlignment = Alignment.CenterVertically) {
                     Text("≡", color = c.muted, fontSize = 21.sp, modifier = Modifier.padding(end = 12.dp))
                     Text(metricLabels[key].orEmpty(), color = c.ink, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { val i = metrics.indexOf(key); if (i > 0) change(metrics.toMutableList().apply { add(i - 1, removeAt(i)) }) }, enabled = metrics.indexOf(key) > 0, contentPadding = PaddingValues(4.dp)) { Text("上移", fontSize = 10.sp) }
+                    TextButton(onClick = { val i = metrics.indexOf(key); if (i > 0) change(metrics.toMutableList().apply { add(i - 1, removeAt(i)) }) }, enabled = metrics.indexOf(key) > 0, contentPadding = PaddingValues(4.dp)) { Text("上移", fontSize = 10.sp, color = MochiTheme.colorScheme.onSurface) }
                     IconButton(onClick = { change(metrics - key) }, modifier = Modifier.size(48.dp)) { PhosphorIcon(R.drawable.ph_x, "移除${metricLabels[key]}", Modifier.size(14.dp), c.muted) }
                 }
             }

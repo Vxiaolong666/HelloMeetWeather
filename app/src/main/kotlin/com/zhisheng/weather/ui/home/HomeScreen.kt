@@ -100,7 +100,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -249,6 +248,16 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import androidx.compose.runtime.compositionLocalOf
+import ui.feice.mochi.basic.MochiSheetDetent
+import ui.feice.mochi.basic.MochiSheetState
+import ui.feice.mochi.basic.mochiSheetBackdrop
+import ui.feice.mochi.basic.rememberMochiSheetState
+
+/** 首页两个底部面板共用的状态：根节点据此按 iOS 卡片堆叠缩放退后。 */
+internal data class HomeSheetStates(val outfit: MochiSheetState, val advice: MochiSheetState)
+
+internal val LocalHomeSheetStates = compositionLocalOf<HomeSheetStates?> { null }
 
 // ═══════════════════════════════════════════════════════════
 // 枳生天气 · 磷光数据终端主屏
@@ -407,6 +416,10 @@ fun HomeScreen(
         if (from != null && to != null) SkyPagingTransition(from, to) else null
     }
 
+    val outfitSheet = rememberMochiSheetState(listOf(MochiSheetDetent.Large))
+    val adviceSheet = rememberMochiSheetState(listOf(MochiSheetDetent.Medium, MochiSheetDetent.Large))
+    val homeSheets = remember(outfitSheet, adviceSheet) { HomeSheetStates(outfitSheet, adviceSheet) }
+    CompositionLocalProvider(LocalHomeSheetStates provides homeSheets) {
     MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
     MochiSidebarLayout(
         state = sidebar,
@@ -437,7 +450,9 @@ fun HomeScreen(
         // Push 样式由组件把主页面整体右推并叠加 pushScrim 压暗；主页面必须始终可见，
         // 否则侧边栏右边缘贴住的是一片空白，和主界面接不上（demo 的 content 从不做隐藏）。
         NaturalWeatherSurface(atmosphereWeather, uiState.prefs.ambience, night,
-            modifier = Modifier.fillMaxSize(), active = ambienceActive && !sidebar.isOpen,
+            modifier = Modifier.fillMaxSize()
+                .mochiSheetBackdrop(outfitSheet).mochiSheetBackdrop(adviceSheet),
+            active = ambienceActive && !sidebar.isOpen,
             parallax = { ambienceParallax.floatValue }, city = atmosphereCity,
             pagingTransition = skyTransition,
             pagingFraction = { cityPager?.let { p ->
@@ -623,6 +638,7 @@ fun HomeScreen(
             )
             if (uiState.prefs.scanlines) Scanlines()
         }
+    }
     }
     }
 }
@@ -1204,11 +1220,6 @@ internal fun TopBar(
             )
             indicator()
         }
-        // 首页右侧的城市切换入口：点开 demo 风格侧边栏，城市列表由侧边栏承载。
-        IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
-            if (isPhosphorVista) PhosphorIcon(R.drawable.ph_buildings, "城市切换", Modifier.size(20.dp), ZhishengTextSecondary)
-            else Icon(Icons.Filled.Place, contentDescription = "城市切换", tint = ZhishengOrange, modifier = Modifier.size(20.dp))
-        }
         // 刷新中持续旋转：原来是静态 360f，视觉上等于没转（v0.0.2）
         val angle = if (loading && LocalCityPageMotionRunning.current) {
             val spin = rememberInfiniteTransition(label = "spin")
@@ -1237,21 +1248,14 @@ internal fun TopBar(
                 modifier = Modifier.size(20.dp).rotate(if (loading) angle else 0f),
             )
         }
-        IconButton(
-            onClick = onSettings,
-            modifier = Modifier.size(48.dp),
-        ) {
-            if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, "设置", Modifier.size(20.dp), ZhishengTextSecondary)
-            else Icon(Icons.Filled.Settings, contentDescription = "设置", tint = ZhishengTextSecondary, modifier = Modifier.size(20.dp))
-        }
-        // 独立的第二套设置页入口：紧跟在原设置按钮右侧，原入口行为不变。
+        // 唯一的设置入口：新版设置页，齿轮图标。
         LocalMochiSettingsEntry.current?.let { onMochiSettings ->
             IconButton(
                 onClick = onMochiSettings,
                 modifier = Modifier.size(48.dp),
             ) {
-                if (isPhosphorVista) PhosphorIcon(R.drawable.ph_sparkle, "新设置", Modifier.size(20.dp), ZhishengMint)
-                else Icon(Icons.Filled.Settings, contentDescription = "新设置", tint = ZhishengMint, modifier = Modifier.size(20.dp))
+                if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, "设置", Modifier.size(20.dp), ZhishengMint)
+                else Icon(Icons.Filled.Settings, contentDescription = "设置", tint = ZhishengMint, modifier = Modifier.size(20.dp))
             }
         }
     }

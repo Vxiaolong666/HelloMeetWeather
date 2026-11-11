@@ -76,7 +76,6 @@ import com.zhisheng.weather.ui.WeatherViewModel
 import com.zhisheng.weather.ui.ProvideWeatherPresentationClock
 import com.zhisheng.weather.ui.weatherPresentationTime
 import com.zhisheng.weather.ui.home.HomeScreen
-import com.zhisheng.weather.ui.SettingsScreen
 import com.zhisheng.weather.ui.MochiSettingsScreen
 import com.zhisheng.weather.ui.LocalMochiSettingsEntry
 import com.zhisheng.weather.ui.MochiAtmosphereLabScreen
@@ -202,7 +201,7 @@ class MainActivity : ComponentActivity() {
                 // 冷启动统一回主页（横放时由 standbyActive 展示气象时钟）；快捷方式仍由 command 明确跳转。
                 var screen by rememberSaveable { mutableStateOf(AppScreen.HOME) }
                 // 大气实验室 / 自有服务 / 天气来源是两套设置共用的跨页二级页，返回时需回到打开它的那套设置。
-                var settingsReturnTo by rememberSaveable { mutableStateOf(AppScreen.SETTINGS) }
+                var settingsReturnTo by rememberSaveable { mutableStateOf(AppScreen.MOCHI_SETTINGS) }
                 // 从首页五日卡片进入时携带的日期；null 表示按默认（今天）选中。
                 var forecastDate by rememberSaveable { mutableStateOf<Long?>(null) }
                 var cityPickedRequest by rememberSaveable { mutableIntStateOf(0) }
@@ -387,8 +386,8 @@ class MainActivity : ComponentActivity() {
                         }
                         ACTION_SEARCH -> screen = AppScreen.SEARCH
                         ACTION_SETTINGS -> {
-                            settingsReturnTo = AppScreen.SETTINGS
-                            screen = AppScreen.SETTINGS
+                            settingsReturnTo = AppScreen.MOCHI_SETTINGS
+                            screen = AppScreen.MOCHI_SETTINGS
                         }
                         ACTION_TYPHOON -> screen = if (ReleaseFeatures.typhoon) AppScreen.TYPHOON else AppScreen.HOME
                         ACTION_REFRESH -> {
@@ -497,8 +496,8 @@ class MainActivity : ComponentActivity() {
                         style = landscapeStandbyStyle,
                         onRefresh = { vm.refreshFromUser() },
                         onSettings = {
-                            settingsReturnTo = AppScreen.SETTINGS
-                            screen = AppScreen.SETTINGS
+                            settingsReturnTo = AppScreen.MOCHI_SETTINGS
+                            screen = AppScreen.MOCHI_SETTINGS
                         },
                     )
                 } else {
@@ -547,8 +546,8 @@ class MainActivity : ComponentActivity() {
                                 startupPromptsSuppressed = false
                             },
                             onSettingsClick = {
-                                settingsReturnTo = AppScreen.SETTINGS
-                                screen = AppScreen.SETTINGS
+                                settingsReturnTo = AppScreen.MOCHI_SETTINGS
+                                screen = AppScreen.MOCHI_SETTINGS
                             },
                             onHistoryClick = { screen = AppScreen.HISTORY },
                             onRadarClick = { if (ReleaseFeatures.radar) screen = AppScreen.RADAR },
@@ -569,7 +568,7 @@ class MainActivity : ComponentActivity() {
                         )
                         }
                         val overlayVisible = screen != AppScreen.HOME
-                        var overlayScreen by remember { mutableStateOf(AppScreen.SETTINGS) }
+                        var overlayScreen by remember { mutableStateOf(AppScreen.MOCHI_SETTINGS) }
                         var overlayWasVisible by remember { mutableStateOf(false) }
                         var overlayOrigin by remember { mutableStateOf(TransformOrigin.Center) }
                         if (overlayVisible != overlayWasVisible) {
@@ -599,29 +598,6 @@ class MainActivity : ComponentActivity() {
                                 overlayState.SaveableStateProvider(dest.name) {
                                 when (dest) {
                                     AppScreen.HOME -> Box(Modifier.fillMaxSize())
-                                    AppScreen.SETTINGS -> Box(Modifier.fillMaxSize()) {
-                                    SettingsScreen(
-                                        onBack = { screen = AppScreen.HOME },
-                                        onLocate = { vm.locateCurrentCity() },
-                                        locating = uiState.locating,
-                                        locateMessage = uiState.locateMessage,
-                                        onClearLocateMessage = { vm.clearLocateMessage() },
-                                        activeSource = uiState.weather?.dataSource,
-                                        activeWeather = uiState.weather,
-                                        activeSupplementSources = uiState.weather?.let { weather ->
-                                            weather.blockSources.values
-                                                .filter { it.isNotBlank() && it != weather.dataSource }
-                                                .distinct()
-                                        }.orEmpty(),
-                                        activeCityName = uiState.selectedCity?.name,
-                                        activeCityLatitude = uiState.selectedCity?.latitude,
-                                        activeCityLongitude = uiState.selectedCity?.longitude,
-                                        sourceLoading = uiState.loading,
-                                        onAtmosphereLab = { if (ReleaseFeatures.weatherAtmosphere) screen = AppScreen.ATMOSPHERE_LAB },
-                                        onManageProviders = { screen = AppScreen.PROVIDER_ACCESS },
-                                        onOpenWeatherSource = { screen = AppScreen.WEATHER_SOURCE },
-                                    )
-                                    }
                                     AppScreen.MOCHI_SETTINGS -> Box(Modifier.fillMaxSize()) {
                                     MochiSettingsScreen(
                                         onBack = { screen = AppScreen.HOME },
