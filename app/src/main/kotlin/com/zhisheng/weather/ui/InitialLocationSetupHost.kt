@@ -6,7 +6,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -190,8 +190,19 @@ internal fun InitialLocationSetupHost(
         // Keep one window/scrim through consent, permission and the fix. The first
         // choice stays in place while busy instead of jumping to a smaller dialog.
         WeatherOverlayDialog(onDismiss = { leave(onDismiss) }, maxWidth = 480.dp) { modifier ->
-            Crossfade(targetState = welcome, modifier = modifier.animateContentSize(tween(motionMs)),
-                animationSpec = tween(motionMs), label = "location-setup-stage") { showWelcome ->
+            // 引导页内部阶段切换也走全站统一的转场配置，避免只有部分页面响应设置。
+            AnimatedContent(
+                targetState = welcome,
+                modifier = modifier.animateContentSize(tween(motionMs)),
+                transitionSpec = {
+                    screenTransition(
+                        MochiTransitionConfig.motionEnabled,
+                        MochiTransitionConfig.style,
+                        MochiTransitionConfig.swipeBack,
+                    )
+                },
+                label = "location-setup-stage",
+            ) { showWelcome ->
                 if (showWelcome) LocationWelcomePanel(
                     onSharedLocation = {
                         if (operation?.isActive != true) {

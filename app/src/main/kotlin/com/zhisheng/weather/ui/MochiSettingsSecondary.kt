@@ -39,6 +39,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import ui.feice.mochi.basic.MochiBarButton
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
@@ -124,7 +125,7 @@ fun MochiWeatherSourceScreen(
         }
     }
 
-    MochiPageFrame(title = "天气来源", onBack = onBack, subtitle = "WEATHER SOURCE") {
+    MochiPageFrame(title = "天气来源", onBack = onBack, subtitle = "WEATHER SOURCE", showSave = true) {
         item {
             MochiListSection(header = "当前主源", footer = primary.desc) {
                 MochiListRow(title = primary.cn, subtitle = "主天气数据当前从此来源获取")
@@ -316,7 +317,7 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
     val total = groups.sumOf { it.items.size }
     val connected = groups.sumOf { group -> group.items.count { it.ready } }
 
-    MochiPageFrame(title = "服务接入", onBack = onBack, subtitle = "PROVIDER ACCESS") {
+    MochiPageFrame(title = "服务接入", onBack = onBack, subtitle = "PROVIDER ACCESS", showSave = true) {
         item {
             MochiListSection(header = "自有服务凭据", footer = "凭据仅保存在本机") {
                 MochiListRow(title = "已接入 $connected / $total")
@@ -402,6 +403,7 @@ fun MochiAtmosphereLabScreen(initialLevel: AmbienceLevel, onBack: () -> Unit) {
         )
     }
     val colors = rememberMochiColorScheme()
+    val toast = LocalMochiToast.current
 
     CompositionLocalProvider(LocalWeatherContinuity provides null) {
         MochiTheme(colors = colors, systemBarAppearance = false) {
@@ -415,7 +417,13 @@ fun MochiAtmosphereLabScreen(initialLevel: AmbienceLevel, onBack: () -> Unit) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             MochiBackButton(onClick = onBack)
-                            Text("氛围实验室")
+                            Text("氛围实验室", Modifier.weight(1f))
+                            MochiBarButton("保存", onClick = {
+                                toast?.show("设置已保存", icon = { tint ->
+                                    PhosphorIcon(R.drawable.ph_check, null, Modifier.size(20.dp), tint)
+                                })
+                                onBack()
+                            })
                         }
                         MochiSegmentedControl(
                             selectedIndex = AmbienceLevel.entries.indexOf(level).coerceAtLeast(0),

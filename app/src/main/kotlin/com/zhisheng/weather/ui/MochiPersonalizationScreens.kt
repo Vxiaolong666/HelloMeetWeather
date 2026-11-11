@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,16 +39,29 @@ import com.zhisheng.weather.data.SettingsRepository
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ui.feice.mochi.basic.MochiActivityIndicator
+import ui.feice.mochi.basic.MochiBarIconButton
 import ui.feice.mochi.basic.MochiButton
+import ui.feice.mochi.basic.MochiButtonDefaults
 import ui.feice.mochi.basic.MochiButtonGroup
 import ui.feice.mochi.basic.MochiButtonStyle
 import ui.feice.mochi.basic.MochiSegmentedControl
+import ui.feice.mochi.basic.MochiSheet
+import ui.feice.mochi.basic.MochiSheetContent
+import ui.feice.mochi.basic.MochiSheetDetent
+import ui.feice.mochi.basic.MochiSheetHeader
+import ui.feice.mochi.basic.MochiSlider
+import ui.feice.mochi.basic.MochiSliderDefaults
 import ui.feice.mochi.basic.MochiSwitch
 import ui.feice.mochi.basic.MochiTabBar
 import ui.feice.mochi.basic.MochiTabBarBehavior
 import ui.feice.mochi.basic.MochiTabBarDefaults
 import ui.feice.mochi.basic.MochiTabItem
+import ui.feice.mochi.basic.mochiSheetBackdrop
+import ui.feice.mochi.basic.rememberMochiSheetState
+import ui.feice.mochi.effect.content.MochiBlurText
 import ui.feice.mochi.effect.elastic.mochiPressDeform
 import ui.feice.mochi.effect.glow.mochiPressGlow
 import ui.feice.mochi.effect.glow.rememberMochiGlowState
@@ -58,7 +72,6 @@ import ui.feice.mochi.list.MochiListSection
 import ui.feice.mochi.list.MochiListSliderRow
 import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.navigation.MochiLazyCompactTitleScaffold
-import ui.feice.mochi.picker.MochiColorWell
 import ui.feice.mochi.picker.MochiSeedPalette
 import ui.feice.mochi.theme.MochiHdr
 import ui.feice.mochi.theme.MochiTheme
@@ -95,10 +108,9 @@ internal fun MochiHdrSettingsPage(prefs: MochiUiPrefs) {
     val headroom = "×${(MochiHdr.headroom * 10f).roundToInt() / 10f}"
 
     Box(Modifier.fillMaxSize()) {
-        MochiLazyCompactTitleScaffold(
+        MochiSettingsScaffold(
             title = "HDR 高光",
             subtitle = "实验性 · 按压高光与边缘流光",
-            navigationIcon = { MochiBackButton() },
         ) {
             item {
                 MochiListSection(
@@ -268,10 +280,9 @@ internal fun MochiPressGlowSettingsPage(prefs: MochiUiPrefs) {
     val shape = RoundedCornerShape(16.dp)
     val glow = rememberMochiGlowState(mochiGlowSpecFor(prefs))
 
-    MochiLazyCompactTitleScaffold(
+    MochiSettingsScaffold(
         title = "按压高光",
         subtitle = "按哪亮哪",
-        navigationIcon = { MochiBackButton() },
     ) {
         item {
             MochiListSection(
@@ -341,10 +352,9 @@ internal fun MochiTransitionSettingsPage(prefs: MochiUiPrefs) {
         else -> "克制"
     }
 
-    MochiLazyCompactTitleScaffold(
+    MochiSettingsScaffold(
         title = "应用转场与侧推",
         subtitle = "页面切换与返回手势",
-        navigationIcon = { MochiBackButton() },
     ) {
         item {
             MochiListSection(
@@ -382,6 +392,16 @@ internal fun MochiTransitionSettingsPage(prefs: MochiUiPrefs) {
                     value = scaleLabel,
                     chevron = true,
                     onClick = { showScalePicker = true },
+                )
+                MochiListRow(
+                    title = "返回卡片主题色高亮",
+                    subtitle = "关闭：回到原点击卡片时用卡片真实底色，不出现主题色闪光",
+                    trailing = {
+                        MochiSwitch(
+                            checked = prefs.sourceHighlight,
+                            onCheckedChange = { scope.launch { SettingsRepository.setMochiSourceHighlight(it) } },
+                        )
+                    },
                 )
             }
         }
@@ -464,69 +484,143 @@ internal fun mochiTabBehaviorFor(prefs: MochiUiPrefs): MochiTabBarBehavior {
 @Composable
 internal fun MochiThemeSettingsPage(prefs: MochiUiPrefs) {
     val scope = rememberCoroutineScope()
+    val toast = LocalMochiToast.current
     var showModePicker by remember { mutableStateOf(false) }
     var showPalettePicker by remember { mutableStateOf(false) }
     val style = prefs.paletteStyle
     val modeLabel = MochiColorModes.firstOrNull { it.second == prefs.colorMode }?.first ?: "跟随应用"
     val paletteLabel = MochiPaletteStyles.firstOrNull { it.second == prefs.palette }?.first ?: "Tonal"
 
-    MochiLazyCompactTitleScaffold(
-        title = "主题配色",
-        subtitle = "主题色 · 取色算法 · 对比度",
-        navigationIcon = { MochiBackButton() },
-    ) {
-        item {
-            MochiListSection(
-                header = "配色",
-                footer = "配色由组件库按 MD3 规则从种子色生成，立即作用于所有 mochi 页面。系统取色需要 Android 12 以上。",
-            ) {
-                MochiListRow(title = "配色模式", value = modeLabel, chevron = true, onClick = { showModePicker = true })
-                MochiListRow(title = "取色算法", value = paletteLabel, chevron = true, onClick = { showPalettePicker = true })
-                MochiListSliderRow(
-                    value = prefs.contrast,
-                    onValueChange = { scope.launch { SettingsRepository.setMochiContrast(it) } },
-                    valueRange = -1f..1f,
-                    title = "对比度",
-                    valueText = "%+.2f".format(prefs.contrast),
-                )
+    // 参考 demo「底部面板」：两档 detent + 打开即 Large（全屏），后面的页面按 iOS 卡片堆叠缩小退后。
+    val sheet = rememberMochiSheetState(
+        detents = listOf(MochiSheetDetent.Medium, MochiSheetDetent.Large),
+        initial = MochiSheetDetent.Large,
+    )
+    // 草稿色只在这里变，只有右上对勾才写 SettingsRepository。
+    var draft by remember { mutableStateOf(Color(prefs.seed)) }
+
+    Box(Modifier.fillMaxSize().mochiSheetBackdrop(sheet)) {
+        MochiSettingsScaffold(
+            title = "主题配色",
+            subtitle = "主题色 · 取色算法 · 对比度",
+        ) {
+            item {
+                MochiListSection(
+                    header = "配色",
+                    footer = "配色由组件库按 MD3 规则从种子色生成，立即作用于所有 mochi 页面。系统取色需要 Android 12 以上。",
+                ) {
+                    MochiListRow(title = "配色模式", value = modeLabel, chevron = true, onClick = { showModePicker = true })
+                    MochiListRow(title = "取色算法", value = paletteLabel, chevron = true, onClick = { showPalettePicker = true })
+                    MochiListSliderRow(
+                        value = prefs.contrast,
+                        onValueChange = { scope.launch { SettingsRepository.setMochiContrast(it) } },
+                        valueRange = -1f..1f,
+                        title = "对比度",
+                        valueText = "%+.2f".format(prefs.contrast),
+                    )
+                }
             }
-        }
-        item {
-            MochiListSection(
-                header = "主题色",
-                footer = "色块上是按当前取色算法生成的主色、辅助色与第三色；最后一块彩虹圆可打开库取色面板。",
-            ) {
-                MochiSeedPalette(
-                    selected = Color(prefs.seed),
-                    onSelect = { scope.launch { SettingsRepository.setMochiSeed(it.toArgb()) } },
-                    style = style,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                )
-                MochiListRow(
-                    title = "自定义主题色",
-                    trailing = {
-                        MochiColorWell(
-                            color = Color(prefs.seed),
-                            onColorChange = { scope.launch { SettingsRepository.setMochiSeed(it.toArgb()) } },
-                            supportsAlpha = false,
-                        )
-                    },
-                )
-                MochiListRow(
-                    title = "恢复默认配色",
-                    destructive = true,
-                    onClick = {
-                        scope.launch {
-                            SettingsRepository.setMochiColorMode("app")
-                            SettingsRepository.setMochiSeed(0xFF2B6A5Au.toInt())
-                            SettingsRepository.setMochiPalette("TonalSpot")
-                            SettingsRepository.setMochiContrast(0f)
-                        }
-                    },
-                )
+            item {
+                MochiListSection(
+                    header = "主题色",
+                    footer = "色块上是按当前取色算法生成的主色、辅助色与第三色；自定义取色打开全屏底部面板。",
+                ) {
+                    MochiSeedPalette(
+                        selected = Color(prefs.seed),
+                        onSelect = { scope.launch { SettingsRepository.setMochiSeed(it.toArgb()) } },
+                        style = style,
+                        custom = false,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                    MochiListRow(
+                        title = "自定义主题色",
+                        subtitle = "全屏底部面板，左上关闭、右上对勾保存",
+                        chevron = true,
+                        onClick = {
+                            draft = Color(prefs.seed)
+                            sheet.show()
+                        },
+                    )
+                    MochiListRow(
+                        title = "恢复默认配色",
+                        destructive = true,
+                        onClick = {
+                            scope.launch {
+                                SettingsRepository.setMochiColorMode("app")
+                                SettingsRepository.setMochiSeed(0xFF2B6A5Au.toInt())
+                                SettingsRepository.setMochiPalette("TonalSpot")
+                                SettingsRepository.setMochiContrast(0f)
+                            }
+                        },
+                    )
+                }
             }
         }
     }
+
+    MochiSheet(
+        state = sheet,
+        onDismiss = { /* 草稿不落地：下次打开会用已保存的 seed 重新初始化 */ },
+    ) {
+        MochiSheetHeader(
+            title = "自定义主题色",
+            navigationIcon = {
+                MochiBarIconButton(onClick = { sheet.hide() }) {
+                    PhosphorIcon(R.drawable.ph_x, "关闭", Modifier.size(16.dp), MochiTheme.colorScheme.onSurface)
+                }
+            },
+            actions = {
+                MochiBarIconButton(
+                    onClick = {
+                        scope.launch { SettingsRepository.setMochiSeed(draft.toArgb()) }
+                        toast?.show("主题色已保存", icon = { tint -> MochiToastCheckIcon(tint) })
+                        sheet.hide()
+                    },
+                    colors = MochiButtonDefaults.colors(MochiButtonStyle.Filled),
+                ) {
+                    PhosphorIcon(
+                        R.drawable.ph_check,
+                        "保存",
+                        Modifier.size(18.dp),
+                        MochiTheme.colorScheme.onPrimary,
+                    )
+                }
+            },
+        )
+        MochiSheetContent {
+            MochiSeedPalette(
+                selected = draft,
+                onSelect = { draft = it },
+                style = style,
+                custom = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Box(
+                Modifier
+                    .size(56.dp)
+                    .background(draft, CircleShape),
+            )
+            MochiSlider(
+                value = draft.red,
+                onValueChange = { draft = draft.copy(red = it) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = MochiSliderDefaults.colors(activeTrack = Color(0xFFFF3B30)),
+            )
+            MochiSlider(
+                value = draft.green,
+                onValueChange = { draft = draft.copy(green = it) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = MochiSliderDefaults.colors(activeTrack = Color(0xFF34C759)),
+            )
+            MochiSlider(
+                value = draft.blue,
+                onValueChange = { draft = draft.copy(blue = it) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = MochiSliderDefaults.colors(activeTrack = Color(0xFF0A84FF)),
+            )
+        }
+    }
+
     MochiChoiceDialog(
         visible = showModePicker,
         title = "配色模式",
@@ -567,10 +661,9 @@ internal fun MochiTabBarSettingsPage(prefs: MochiUiPrefs) {
     val behavior = mochiTabBehaviorFor(prefs)
     val layoutIndex = MochiTabLayouts.indexOfFirst { it.second == prefs.tabLayout }.coerceAtLeast(0)
 
-    MochiLazyCompactTitleScaffold(
+    MochiSettingsScaffold(
         title = "底部标签栏",
         subtitle = "排布 · 文字模糊 · 融球 · 果冻感",
-        navigationIcon = { MochiBackButton() },
     ) {
         item {
             MochiListSection(
@@ -635,6 +728,99 @@ internal fun MochiTabBarSettingsPage(prefs: MochiUiPrefs) {
                     title = "果冻感",
                     valueText = "%.2f".format(prefs.gel),
                 )
+            }
+        }
+    }
+}
+
+private val MochiGraphicsLevels = listOf("中" to "mid", "高" to "high", "极致" to "extra")
+
+/**
+ * 画面效果独立页：参考 demo 引导页的动效设置，三档切换 + 可持续播放的动效预览。
+ * 档位写入 MochiGraphics.level，预览用库自己的模糊文字 / 转动指示器 / 果冻按压。
+ */
+@Composable
+internal fun MochiGraphicsSettingsPage(prefs: MochiUiPrefs) {
+    val scope = rememberCoroutineScope()
+    var animate by rememberSaveable { mutableStateOf(true) }
+    var frame by rememberSaveable { mutableIntStateOf(0) }
+    val levelIndex = MochiGraphicsLevels.indexOfFirst { it.second == prefs.graphicsLevel }.coerceAtLeast(0)
+    val captions = persistentListOf("液态玻璃", "模糊淡入", "弹性按压")
+
+    LaunchedEffect(animate) {
+        if (!animate) return@LaunchedEffect
+        while (true) {
+            delay(1100)
+            frame = (frame + 1) % captions.size
+        }
+    }
+
+    MochiSettingsScaffold(
+        title = "画面效果",
+        subtitle = "档位与实时动效预览",
+    ) {
+        item {
+            MochiListSection(
+                header = "档位",
+                footer = "中：关闭 AGSL 着色器；高（默认）：全部开启；极致：模糊半径 ×1.5 并选择最高刷新率。极致不打开 HDR。",
+            ) {
+                MochiListRow(
+                    title = "当前档位",
+                    value = MochiGraphicsLevels[levelIndex].first,
+                )
+                MochiSegmentedControl(
+                    selectedIndex = levelIndex,
+                    onSelect = { i ->
+                        scope.launch { SettingsRepository.setMochiGraphicsLevel(MochiGraphicsLevels[i].second) }
+                    },
+                    items = MochiGraphicsLevels.map { it.first }.toImmutableList(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+                MochiListRow(
+                    title = "预览动效",
+                    subtitle = "打开后下方预览持续播放文字与图标动效",
+                    trailing = {
+                        MochiSwitch(checked = animate, onCheckedChange = { animate = it })
+                    },
+                )
+            }
+        }
+        item {
+            MochiListSection(
+                header = "预览",
+                footer = "参考 demo 引导页：模糊文字替换 + 转动指示器 + 可按压的果冻按钮。切换档位后模糊半径与着色器立即变化。",
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(168.dp)
+                        .padding(16.dp)
+                        .background(MochiTheme.colorScheme.primaryContainer, RoundedCornerShape(18.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        MochiBlurText(
+                            captions[frame],
+                            color = MochiTheme.colorScheme.onPrimaryContainer,
+                        )
+                        MochiActivityIndicator(
+                            size = 26.dp,
+                            color = MochiTheme.colorScheme.onPrimaryContainer,
+                        )
+                        MochiButton({}, Modifier.mochiPressDeform()) {
+                            Text("按住看果冻感", color = MochiTheme.colorScheme.onPrimary)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            MochiListSection(header = "说明") {
+                MochiListRow(title = "档位写入 MochiGraphics.level，作用于全部库组件的模糊、着色器与刷新率。")
+                MochiListRow(title = "预览动效只在当前页播放，不影响实际页面性能。")
             }
         }
     }

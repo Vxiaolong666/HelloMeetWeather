@@ -56,6 +56,7 @@ import com.zhisheng.weather.data.UpdateNotices
 import com.zhisheng.weather.ui.AppUpdateDialog
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import ui.feice.mochi.basic.rememberMochiToastState
 import com.zhisheng.weather.data.AccentTone
 import com.zhisheng.weather.data.AppLanguage
 import com.zhisheng.weather.data.AppIconManager
@@ -87,6 +88,9 @@ import com.zhisheng.weather.ui.MochiSearchScreen
 import com.zhisheng.weather.ui.AtmosphereLabScreen
 import com.zhisheng.weather.ui.overlayEnter
 import com.zhisheng.weather.ui.overlayExit
+import com.zhisheng.weather.ui.appSwipeBack
+import com.zhisheng.weather.ui.LocalMochiToast
+import com.zhisheng.weather.ui.MochiAppToastHost
 import com.zhisheng.weather.ui.PageTransitionStyle
 import com.zhisheng.weather.ui.rememberMochiUiPrefs
 import com.zhisheng.weather.ui.ApplyMochiUiPrefs
@@ -421,8 +425,8 @@ class MainActivity : ComponentActivity() {
                     onDispose { view.keepScreenOn = false }
                 }
 
-                // 系统返回键与左上角返回按钮保持一致：设置子页先回设置主页，其余二级页回主屏。
-                BackHandler(enabled = screen != AppScreen.HOME) {
+                // 系统返回键、侧推手势、左上角返回按钮三处共用同一套返回语义。
+                fun navigateBack() {
                     if (screen == AppScreen.SEARCH) choosingInitialCity = false
                     screen = when (screen) {
                         AppScreen.ATMOSPHERE_LAB,
@@ -431,6 +435,7 @@ class MainActivity : ComponentActivity() {
                         else -> AppScreen.HOME
                     }
                 }
+                BackHandler(enabled = screen != AppScreen.HOME) { navigateBack() }
 
                 val automation by com.zhisheng.weather.data.AutomationSettingsRepository.settings.collectAsState()
                 LaunchedEffect(automation.remindersEnabled, automation.morningMinute, automation.eveningMinute) {
@@ -463,7 +468,9 @@ class MainActivity : ComponentActivity() {
                 val motionEnabled = systemAnimationsEnabled()
                 // UI 个性化偏好：同步到库全局效果状态，并驱动全站页面转场。
                 val uiPrefs = rememberMochiUiPrefs()
-                ApplyMochiUiPrefs(uiPrefs)
+                ApplyMochiUiPrefs(uiPrefs, motionEnabled)
+                // 全 app 共用一个 Toast：切换应用图标、二级页保存等提示在页面返回后仍能播完。
+                val toastState = rememberMochiToastState()
                 val transitionStyle = PageTransitionStyle.from(uiPrefs.pageTransition)
                 // 转场偏好在设置页里随时会变：让 transitionSpec 读 State 而非捕获旧值，
                 // 否则 AnimatedContent / AnimatedVisibility 复用旧的动画规格，看起来像「设置没生效」。
@@ -474,7 +481,7 @@ class MainActivity : ComponentActivity() {
                     AnimatedContent(
                         targetState = standbyVisible,
                         transitionSpec = {
-                            if (currentMotionEnabled && screen == AppScreen.HOME) {
+                            if (currentMotionEnabled) {
                                 screenTransition(currentMotionEnabled, currentStyle, currentSwipeBack)
                             } else {
                                 androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
@@ -522,7 +529,9 @@ class MainActivity : ComponentActivity() {
                                 settingsReturnTo = AppScreen.MOCHI_SETTINGS
                                 screen = AppScreen.MOCHI_SETTINGS
                             },
+                            LocalMochiToast provides toastState,
                         ) {
+                        MochiAppToastHost(toastState)
                         HomeScreen(
                             viewModel = vm,
                             ambienceActive = screen == AppScreen.HOME,
@@ -572,16 +581,21 @@ class MainActivity : ComponentActivity() {
                         }
                         // 组合期回写需带相等性护栏：状态已一致就不再写，杜绝潜在的无限重组；
                         // 不能改成 LaunchedEffect——那会让转场首帧读到旧目标，转场方向错一帧
-                        if (overlayVisible && overlayScreen != screen) overlayScreen = screen
+                        // 二级页之间切换时也刷新触点，让景深 / 打开应用式从刚点下的那张卡片展开。
+                        if (overlayVisible && overlayScreen != screen) {
+                            overlayOrigin = navigationOrigin.value
+                            overlayScreen = screen
+                        }
                         AnimatedVisibility(
                             visible = overlayVisible,
                             enter = overlayEnter(currentMotionEnabled, overlayOrigin, currentStyle),
                             exit = overlayExit(currentMotionEnabled, overlayOrigin, currentStyle, currentSwipeBack),
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize()
+                                .appSwipeBack(currentSwipeBack && currentMotionEnabled) { navigateBack() },
                             label = "overlay",
                         ) {
                             AnimatedContent(
-                                targetState = if (overlayScreen == AppScreen.ATMOSPHERE_LAB) settingsReturnTo else overlayScreen,
+                                targetState = overlayScreen,
                                 transitionSpec = { screenTransition(currentMotionEnabled, currentStyle, currentSwipeBack) },
                                 label = "overlay-stack",
                             ) { dest ->
@@ -610,16 +624,6 @@ class MainActivity : ComponentActivity() {
                                         onManageProviders = { screen = AppScreen.PROVIDER_ACCESS },
                                         onOpenWeatherSource = { screen = AppScreen.WEATHER_SOURCE },
                                     )
-                                    AnimatedVisibility(
-                                        visible = overlayScreen == AppScreen.ATMOSPHERE_LAB,
-                                        enter = overlayEnter(currentMotionEnabled, overlayOrigin, currentStyle),
-                                        exit = overlayExit(currentMotionEnabled, overlayOrigin, currentStyle, currentSwipeBack),
-                                    ) {
-                                        if (ReleaseFeatures.weatherAtmosphere) MochiAtmosphereLabScreen(
-                                            initialLevel = uiState.prefs.ambience,
-                                            onBack = { screen = settingsReturnTo },
-                                        )
-                                    }
                                     }
                                     AppScreen.MOCHI_SETTINGS -> Box(Modifier.fillMaxSize()) {
                                     MochiSettingsScreen(
@@ -643,18 +647,11 @@ class MainActivity : ComponentActivity() {
                                         onManageProviders = { screen = AppScreen.PROVIDER_ACCESS },
                                         onOpenWeatherSource = { screen = AppScreen.WEATHER_SOURCE },
                                     )
-                                    AnimatedVisibility(
-                                        visible = overlayScreen == AppScreen.ATMOSPHERE_LAB,
-                                        enter = overlayEnter(currentMotionEnabled, overlayOrigin, currentStyle),
-                                        exit = overlayExit(currentMotionEnabled, overlayOrigin, currentStyle, currentSwipeBack),
-                                    ) {
-                                        if (ReleaseFeatures.weatherAtmosphere) MochiAtmosphereLabScreen(
-                                            initialLevel = uiState.prefs.ambience,
-                                            onBack = { screen = settingsReturnTo },
-                                        )
                                     }
-                                    }
-                                    AppScreen.ATMOSPHERE_LAB -> Unit
+                                    AppScreen.ATMOSPHERE_LAB -> if (ReleaseFeatures.weatherAtmosphere) MochiAtmosphereLabScreen(
+                                        initialLevel = uiState.prefs.ambience,
+                                        onBack = { screen = settingsReturnTo },
+                                    )
                                     AppScreen.PROVIDER_ACCESS -> MochiProviderAccessScreen(
                                         onBack = { screen = settingsReturnTo },
                                     )

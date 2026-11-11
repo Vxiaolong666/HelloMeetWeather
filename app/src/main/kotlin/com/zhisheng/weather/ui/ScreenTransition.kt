@@ -4,6 +4,7 @@ import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,7 +13,21 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 
 internal enum class AppScreen {
     HOME, SEARCH, DAILY_FORECAST, DAILY_DAY_DETAIL, HISTORY, RADAR, TYPHOON, SETTINGS, ATMOSPHERE_LAB, PRECIPITATION,
@@ -136,4 +151,59 @@ internal fun screenTransition(
                 (scaleOut(tween(STACK_EXIT_MS, easing = FastOutSlowInEasing), targetScale = APP_SCALE) + exitFade)
         else -> enterFade togetherWith exitFade
     }
+}
+
+/**
+ * 主站 overlay 的右滑返回手势。只在左边缘起手、且判定为横向拖动后才消费事件，
+ * 因此不会抢走二级页内部的横向列表/图表滚动；手势生效时整页跟随手指右移。
+ */
+internal fun Modifier.appSwipeBack(enabled: Boolean, onBack: () -> Unit): Modifier = composed {
+    var raw by remember { mutableFloatStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    // AwaitPointerEventScope 是受限协程作用域，里面不能调用 Animatable.snapTo 这类挂起函数，
+    // 因此位移用状态驱动，松手后由 animateFloatAsState 平滑归位。
+    val shown by animateFloatAsState(
+        targetValue = if (dragging) raw else 0f,
+        animationSpec = tween(if (dragging) 0 else 180),
+        label = "app-swipe-back",
+    )
+    val density = LocalDensity.current
+    val edge = with(density) { 40.dp.toPx() }
+    val threshold = with(density) { 110.dp.toPx() }
+    val slop = LocalViewConfiguration.current.touchSlop
+    pointerInput(enabled) {
+        if (!enabled) return@pointerInput
+        awaitPointerEventScope {
+            while (true) {
+                val down = awaitPointerEvent(PointerEventPass.Initial)
+                    .changes.firstOrNull { it.pressed && !it.previousPressed } ?: continue
+                if (down.position.x > edge) continue
+                val startX = down.position.x
+                val startY = down.position.y
+                val pointerId = down.id
+                var tracking = false
+                var total = 0f
+                while (true) {
+                    val change = awaitPointerEvent(PointerEventPass.Initial)
+                        .changes.firstOrNull { it.id == pointerId } ?: break
+                    if (!change.pressed) break
+                    val dx = change.position.x - change.previousPosition.x
+                    val movedX = change.position.x - startX
+                    val movedY = change.position.y - startY
+                    if (!tracking && abs(movedX) > slop && abs(movedX) > abs(movedY)) {
+                        tracking = true
+                        dragging = true
+                    }
+                    if (tracking) {
+                        total = (total + dx).coerceAtLeast(0f)
+                        raw = total
+                        change.consume()
+                    }
+                }
+                if (tracking && total > threshold) onBack()
+                dragging = false
+                raw = 0f
+            }
+        }
+    }.graphicsLayer { translationX = shown }
 }

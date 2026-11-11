@@ -500,6 +500,8 @@ object SettingsRepository {
     private val KEY_MOCHI_TAB_LABEL_BLUR = booleanPreferencesKey("mochi_tab_label_blur")
     private val KEY_MOCHI_TAB_DROPLET = booleanPreferencesKey("mochi_tab_droplet")
     private val KEY_MOCHI_TAB_COLLAPSE = booleanPreferencesKey("mochi_tab_collapse")
+    // 打开应用式转场返回时，是否用主题色铺一下来源卡片。默认关闭（用卡片真实底色）。
+    private val KEY_MOCHI_SOURCE_HIGHLIGHT = booleanPreferencesKey("mochi_source_highlight")
 
     fun init(context: Context) {
         store = context.applicationContext.settingsStore
@@ -679,6 +681,9 @@ object SettingsRepository {
     val mochiTabCollapse: Flow<Boolean> by lazy {
         store.data.map { it[KEY_MOCHI_TAB_COLLAPSE] ?: false }.distinctUntilChanged()
     }
+    val mochiSourceHighlight: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_SOURCE_HIGHLIGHT] ?: false }.distinctUntilChanged()
+    }
 
     suspend fun setMochiColorMode(v: String) = store.edit { it[KEY_MOCHI_COLOR_MODE] = v }
     suspend fun setMochiSeed(v: Int) = store.edit { it[KEY_MOCHI_SEED] = v }
@@ -689,6 +694,7 @@ object SettingsRepository {
     suspend fun setMochiTabLabelBlur(v: Boolean) = store.edit { it[KEY_MOCHI_TAB_LABEL_BLUR] = v }
     suspend fun setMochiTabDroplet(v: Boolean) = store.edit { it[KEY_MOCHI_TAB_DROPLET] = v }
     suspend fun setMochiTabCollapse(v: Boolean) = store.edit { it[KEY_MOCHI_TAB_COLLAPSE] = v }
+    suspend fun setMochiSourceHighlight(v: Boolean) = store.edit { it[KEY_MOCHI_SOURCE_HIGHLIGHT] = v }
 
     suspend fun setTempUnit(unit: String) = store.edit { it[KEY_TEMP_UNIT] = unit }
     suspend fun setShowTyphoon(show: Boolean) = store.edit { it[KEY_SHOW_TYPHOON] = show }

@@ -8,7 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.zhisheng.weather.data.SettingsRepository
@@ -28,6 +30,21 @@ import ui.feice.mochi.theme.MochiTheme
 import ui.feice.mochi.theme.PaletteStyle
 import ui.feice.mochi.theme.darkColorScheme
 import ui.feice.mochi.theme.lightColorScheme
+
+/**
+ * 全站唯一的转场契约。所有页面级动画（MainActivity 的 overlay / 横竖屏 / 首次引导、
+ * 设置页的 MochiNavHost、以及子页内部切换）都读这里的可观察状态，避免偏好只被部分页面消费。
+ * 由 [ApplyMochiUiPrefs] 每次偏好变化时同步写入。
+ */
+internal object MochiTransitionConfig {
+    var style: PageTransitionStyle by mutableStateOf(PageTransitionStyle.FADE)
+    var swipeBack: Boolean by mutableStateOf(true)
+    var predictiveBack: Boolean by mutableStateOf(true)
+    var motionEnabled: Boolean by mutableStateOf(true)
+    var backScale: String by mutableStateOf("subtle")
+    /** 打开应用式转场返回时来源卡片是否用主题色高亮，默认关闭。 */
+    var sourceHighlight: Boolean by mutableStateOf(false)
+}
 
 /**
  * mochi UI 个性化偏好快照。库把 MochiGraphics.level / MochiHdr / MochiGlowDefaults /
@@ -53,6 +70,7 @@ internal data class MochiUiPrefs(
     val tabLabelBlur: Boolean = true,
     val tabDroplet: Boolean = true,
     val tabCollapse: Boolean = false,
+    val sourceHighlight: Boolean = false,
 )
 
 internal val MochiUiPrefs.paletteStyle: PaletteStyle
@@ -78,6 +96,7 @@ internal fun rememberMochiUiPrefs(): MochiUiPrefs {
     val tabLabelBlur by SettingsRepository.mochiTabLabelBlur.collectAsState(initial = true)
     val tabDroplet by SettingsRepository.mochiTabDroplet.collectAsState(initial = true)
     val tabCollapse by SettingsRepository.mochiTabCollapse.collectAsState(initial = false)
+    val sourceHighlight by SettingsRepository.mochiSourceHighlight.collectAsState(initial = false)
     return MochiUiPrefs(
         graphicsLevel = graphicsLevel,
         hdrEnabled = hdrEnabled,
@@ -97,6 +116,7 @@ internal fun rememberMochiUiPrefs(): MochiUiPrefs {
         tabLabelBlur = tabLabelBlur,
         tabDroplet = tabDroplet,
         tabCollapse = tabCollapse,
+        sourceHighlight = sourceHighlight,
     )
 }
 
@@ -127,7 +147,16 @@ internal fun rememberMochiColorScheme(): MochiColorScheme {
 
 /** 只在偏好变化时写库全局状态，避免覆盖 HDR 设置页里临时打开的 HDR 预览。 */
 @Composable
-internal fun ApplyMochiUiPrefs(prefs: MochiUiPrefs) {
+internal fun ApplyMochiUiPrefs(prefs: MochiUiPrefs, motionEnabled: Boolean = true) {
+    LaunchedEffect(prefs.pageTransition, prefs.swipeBack, prefs.predictiveBack, prefs.backScale,
+        prefs.sourceHighlight, motionEnabled) {
+        MochiTransitionConfig.style = PageTransitionStyle.from(prefs.pageTransition)
+        MochiTransitionConfig.swipeBack = prefs.swipeBack
+        MochiTransitionConfig.predictiveBack = prefs.predictiveBack
+        MochiTransitionConfig.motionEnabled = motionEnabled
+        MochiTransitionConfig.backScale = prefs.backScale
+        MochiTransitionConfig.sourceHighlight = prefs.sourceHighlight
+    }
     LaunchedEffect(prefs.graphicsLevel) {
         MochiGraphics.level = when (prefs.graphicsLevel) {
             "mid" -> MochiGraphicsLevel.Mid
@@ -154,11 +183,11 @@ internal fun ApplyMochiUiPrefs(prefs: MochiUiPrefs) {
 internal fun mochiNavSpecFor(prefs: MochiUiPrefs): MochiNavSpec {
     val style = PageTransitionStyle.from(prefs.pageTransition)
     val instant = tween<Float>(0)
-    val spring: AnimationSpec<Float> = when (style) {
-        PageTransitionStyle.NONE -> instant
-        PageTransitionStyle.SLIDE -> MochiSprings.crisp(320, visibilityThreshold = 0.0005f)
-        PageTransitionStyle.DEPTH -> MochiSprings.smooth(420, visibilityThreshold = 0.0005f)
-        PageTransitionStyle.APP -> MochiSprings.smooth(380, extraBounce = 0.08, visibilityThreshold = 0.0005f)
+    val spring: AnimationSpec<Float> = when {
+        !MochiTransitionConfig.motionEnabled || style == PageTransitionStyle.NONE -> instant
+        style == PageTransitionStyle.SLIDE -> MochiSprings.crisp(320, visibilityThreshold = 0.0005f)
+        style == PageTransitionStyle.DEPTH -> MochiSprings.smooth(420, visibilityThreshold = 0.0005f)
+        style == PageTransitionStyle.APP -> MochiSprings.smooth(380, extraBounce = 0.08, visibilityThreshold = 0.0005f)
         else -> MochiSprings.smooth(300, visibilityThreshold = 0.0005f)
     }
     return MochiNavDefaults.spec(

@@ -76,6 +76,7 @@ import ui.feice.mochi.navigation.MochiTabScaffold
 import ui.feice.mochi.navigation.mochiNavSource
 import ui.feice.mochi.navigation.rememberMochiNavigator
 import ui.feice.mochi.navigation.rememberMochiTabScaffoldState
+import ui.feice.mochi.theme.MochiDefaults
 import ui.feice.mochi.theme.MochiTheme
 
 /** 首页顶栏「新设置」入口的回调，避免改动 HomeScreen / CitySharedChromeHost 的整条参数链。null = 不展示入口。 */
@@ -155,6 +156,8 @@ fun MochiSettingsScreen(
 
     var permDenied by remember { mutableStateOf(false) }
     var showSkyPreview by rememberSaveable { mutableStateOf(false) }
+    var showIconDialog by rememberSaveable { mutableStateOf(false) }
+    val toast = LocalMochiToast.current
     // 三段设置页改用库的底部悬浮标签栏；状态自带跨重建保存。
     val tabState = rememberMochiTabScaffoldState(initialSection.coerceIn(0, 2))
     val tabs = remember {
@@ -203,6 +206,7 @@ fun MochiSettingsScreen(
                 nav,
                 spec = mochiNavSpecFor(uiPrefs),
                 predictiveBack = uiPrefs.predictiveBack && uiPrefs.swipeBack,
+                swipeBackEnabled = uiPrefs.swipeBack && MochiTransitionConfig.motionEnabled,
             ) { route ->
                 when (route) {
                     "settings.main" -> MochiTabScaffold(
@@ -327,6 +331,7 @@ fun MochiSettingsScreen(
                                 onGraphicsLevel = { scope.launch { SettingsRepository.setMochiGraphicsLevel(it) } },
                                 onGel = { scope.launch { SettingsRepository.setMochiGel(it) } },
                                 gel = uiPrefs.gel,
+                                onAppIcon = { showIconDialog = true },
                                 onPush = openSettingsPage,
                             )
                             }
@@ -337,6 +342,8 @@ fun MochiSettingsScreen(
                     "settings.transition" -> MochiTransitionSettingsPage(uiPrefs)
                     "settings.theme" -> MochiThemeSettingsPage(uiPrefs)
                     "settings.tabbar" -> MochiTabBarSettingsPage(uiPrefs)
+                    "settings.graphics" -> MochiGraphicsSettingsPage(uiPrefs)
+                    "settings.automation" -> MochiAutomationSettingsPage()
                     "settings.modules" -> MochiSecondaryPage("模块布局", "长按并拖动，调整首页模块顺序") {
                         item {
                             MochiListSection(
@@ -427,13 +434,6 @@ fun MochiSettingsScreen(
                             }
                         }
                     }
-                    "settings.automation" -> MochiSecondaryPage("刷新与天气提醒", "前台/后台刷新与早、晚、降水提醒") {
-                        item {
-                            MochiListSection(header = "自动化") {
-                                AutomationSettingsPanel(showHeader = false)
-                            }
-                        }
-                    }
                     "settings.widgets" -> MochiSecondaryPage("小组件与通知栏", "选择要预览和配置的样式") {
                         item {
                             MochiListSection(header = "样式", footer = "配置会写入桌面小组件。") {
@@ -452,22 +452,17 @@ fun MochiSettingsScreen(
                             }
                         }
                     }
+                    // 应用图标改为对话框选择：从主设置行直接弹库 MochiDialog，不再单独推一页。
                     "settings.icons" -> MochiSecondaryPage("应用图标", "切换后桌面图标可能需要重启启动器") {
                         item {
-                            val iconOptions = AppIconStyle.entries.map { it.cn to it.key }
-                            SettingsChoicePanel(
-                                label = "应用图标", options = iconOptions, selected = appIconStyle.key,
-                                hint = "深色与浅色随主题联动；天气娘和简约图标独立保持",
-                                onDismiss = { nav.pop() },
-                                onSelect = { value ->
-                                    val selected = AppIconStyle.from(value)
-                                    scope.launch {
-                                        if (AppIconManager.apply(context, selected)) SettingsRepository.setAppIconStyle(selected)
-                                    }
-                                    nav.pop()
-                                },
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            )
+                            MochiListSection {
+                                MochiListRow(
+                                    title = "选择应用图标",
+                                    value = appIconStyle.cn,
+                                    chevron = true,
+                                    onClick = { showIconDialog = true },
+                                )
+                            }
                         }
                     }
                     else -> MochiSecondaryPage("设置") {
@@ -476,6 +471,32 @@ fun MochiSettingsScreen(
                 }
             }
         }
+    }
+    MochiTheme(colors = mochiColors, systemBarAppearance = false) {
+        MochiChoiceDialog(
+            visible = showIconDialog,
+            title = "应用图标",
+            options = AppIconStyle.entries.map { it.cn to it.key },
+            selected = appIconStyle.key,
+            footer = "深色与浅色随主题联动；天气娘和简约图标独立保持",
+            onSelect = { value ->
+                val selected = AppIconStyle.from(value)
+                scope.launch {
+                    if (AppIconManager.apply(context, selected)) {
+                        SettingsRepository.setAppIconStyle(selected)
+                        toast?.show(
+                            "应用图标已切换",
+                            subtitle = "需要重启应用或启动器后生效",
+                            icon = { tint ->
+                                PhosphorIcon(R.drawable.ph_arrow_clockwise, null, Modifier.size(20.dp), tint)
+                            },
+                            durationMillis = 3500,
+                        )
+                    }
+                }
+            },
+            onDismiss = { showIconDialog = false },
+        )
     }
     if (showSkyPreview) LivingSkyPreviewDialog { showSkyPreview = false }
 }
@@ -499,6 +520,12 @@ private fun MochiSettingsNavRow(
     enabled: Boolean = true,
     chevron: Boolean = true,
 ) {
+    // 默认用卡片真实底色，返回落地时不会突然被主题色铺一下；开关打开后才用主题色高亮。
+    val sourceColor = if (MochiTransitionConfig.sourceHighlight) {
+        MochiTheme.colorScheme.primaryContainer
+    } else {
+        MochiDefaults.groupedContainer()
+    }
     MochiListRow(
         title = title,
         subtitle = subtitle,
@@ -508,7 +535,7 @@ private fun MochiSettingsNavRow(
         modifier = Modifier.mochiNavSource(
             mochiSettingsSourceKey(route),
             18.dp,
-            MochiTheme.colorScheme.surfaceContainerLow,
+            sourceColor,
         ),
         onClick = { onPush(route) },
     )
@@ -522,8 +549,7 @@ private fun MochiSecondaryPage(
     navigation: (@Composable () -> Unit) = { MochiBackButton() },
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
-    MochiLazyCompactTitleScaffold(title = title, subtitle = subtitle,
-        navigationIcon = { navigation() }, content = content)
+    MochiSettingsScaffold(title = title, subtitle = subtitle, content = content)
 }
 
 /** Mochi 分段选择行：标题 + 2~5 个短选项，写回旧页同一批 Repository 方法。 */
@@ -745,7 +771,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
     onScanlines: (Boolean) -> Unit, onLandscapeStandby: (Boolean) -> Unit, onBurnIn: (Boolean) -> Unit,
     onLandscapeStyle: (String) -> Unit, onKeepScreenOn: (Boolean) -> Unit,
     onSkyPreview: () -> Unit, onAtmosphereLab: () -> Unit, onGraphicsLevel: (String) -> Unit,
-    onGel: (Float) -> Unit, onPush: (String) -> Unit,
+    onGel: (Float) -> Unit, onAppIcon: () -> Unit, onPush: (String) -> Unit,
 ) {
     item {
         MochiListSection(header = "界面与语言") {
@@ -799,12 +825,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
             header = "UI 个性化",
             footer = "画面效果档位来自组件库的图形能力；HDR 高光需要 Android 14 以上和支持 HDR 的屏幕。",
         ) {
-            MochiChoiceRow(
-                "画面效果",
-                listOf("中" to "mid", "高" to "high", "极致" to "extra"),
-                graphicsLevel,
-                "中：关闭 AGSL 着色器；高（默认）：全部开启；极致：模糊半径 ×1.5 并选择最高刷新率。极致不打开 HDR。",
-                onGraphicsLevel,
+            MochiSettingsNavRow(
+                route = "settings.graphics",
+                title = "画面效果",
+                value = when (graphicsLevel) {
+                    "mid" -> "中"
+                    "extra" -> "极致"
+                    else -> "高"
+                },
+                subtitle = "独立页内切换档位并可实时预览动效",
+                onPush = onPush,
             )
             MochiListSliderRow(
                 value = gel,
@@ -865,12 +895,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
         MochiListSection(header = "刷新、小组件与图标") {
             MochiSettingsNavRow(route = "settings.automation", title = "刷新与天气提醒", onPush = onPush)
             MochiSettingsNavRow(route = "settings.widgets", title = "小组件与通知栏", onPush = onPush)
-            MochiSettingsNavRow(
-                route = "settings.icons",
+            MochiListRow(
                 title = "应用图标",
                 value = appIconStyle.cn,
                 subtitle = "深色与浅色随主题联动；天气娘和简约图标独立保持",
-                onPush = onPush,
+                chevron = true,
+                onClick = onAppIcon,
             )
             MochiListRow(title = "常亮屏幕", subtitle = "看天气时不自动息屏",
                 trailing = { MochiSettingSwitch(keepScreenOn, onKeepScreenOn) })
