@@ -57,7 +57,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.zhisheng.weather.R
 import com.zhisheng.weather.data.CityRepository
-import com.zhisheng.weather.i18n.uiText
 import com.zhisheng.weather.model.*
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.components.HomeBackdrop
@@ -75,6 +74,18 @@ import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.math.roundToInt
+import com.zhisheng.weather.ui.rememberMochiColorScheme
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
+import ui.feice.mochi.basic.MochiBarButton
+import ui.feice.mochi.basic.MochiSegmentedControl
+import ui.feice.mochi.basic.MochiSlider
+import ui.feice.mochi.basic.MochiSwitch
+import ui.feice.mochi.list.MochiListCard
+import ui.feice.mochi.list.MochiListDefaults
+import ui.feice.mochi.navigation.MochiBackButton
+import ui.feice.mochi.navigation.MochiTitleBar
+import ui.feice.mochi.theme.MochiTheme
 
 private data class StudioColors(val bg: Color, val panel: Color, val ink: Color, val muted: Color, val accent: Color, val edge: Color, val classic: Boolean) {
     val shape get() = RoundedCornerShape(if (classic) 14.dp else 24.dp)
@@ -99,6 +110,7 @@ internal fun WidgetStudio(style: WidgetStyle, editingId: Int?, initialKind: Widg
     val colors = if (classic) ClassicStudioColors else LightStudioColors
     ProvideWeatherPresentationClock {
     CompositionLocalProvider(LocalStudio provides colors) {
+        MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
         MaterialTheme(colorScheme = if (classic) darkColorScheme(primary = colors.accent, surface = colors.panel, background = colors.bg, onSurface = colors.ink, onPrimary = colors.bg)
             else lightColorScheme(primary = colors.accent, surface = colors.panel, background = colors.bg, onSurface = colors.ink, onPrimary = Color.White)) {
             var config by rememberSaveable(stateSaver = configSaver) { mutableStateOf(initialConfig) }
@@ -154,17 +166,13 @@ internal fun WidgetStudio(style: WidgetStyle, editingId: Int?, initialKind: Widg
                         1f to Color.Transparent), blendMode = BlendMode.DstIn)
                 }) {
                 Row(Modifier.fillMaxWidth().height(if (compact) 52.dp else 62.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onClose) { PhosphorIcon(R.drawable.ph_arrow_left, "返回", Modifier.size(22.dp), colors.ink) }
+                    MochiBackButton(onClick = onClose)
                     Text(if (compact) style.title else "${style.title}小组件", color = colors.ink, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                         modifier = Modifier.weight(1f))
-                    TextButton(onClick = {
+                    MochiBarButton("试壁纸", onClick = {
                         backdrop = (backdrop + 1) % 3
                         if (compact) largePreview = true
-                    }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        PhosphorIcon(R.drawable.ph_sun, null, Modifier.size(17.dp), colors.accent)
-                        Spacer(Modifier.width(4.dp))
-                        Text("试壁纸", color = colors.accent, fontSize = 12.sp)
-                    }
+                    })
                     Text(if (editingId == null) "${pager.currentPage + 1}/5" else "编辑", color = colors.muted, fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 4.dp, end = 10.dp))
                 }
@@ -182,7 +190,7 @@ internal fun WidgetStudio(style: WidgetStyle, editingId: Int?, initialKind: Widg
                             hostSize = desktopSize.takeIf { WidgetKind.entries[page] == initialKind },
                         )
                     }
-                    Text(uiText(if (desktopSize != null) "按桌面提供的尺寸缩放预览" else "参考预览，实际尺寸以桌面为准"),
+                    Text(if (desktopSize != null) "按桌面提供的尺寸缩放预览" else "参考预览，实际尺寸以桌面为准",
                         color = if (backdrop == 1 || classic) Color(0xFFF8FCFF) else Color(0xFF203A43), fontSize = 10.sp,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 5.dp))
                 }
@@ -227,18 +235,12 @@ internal fun WidgetStudio(style: WidgetStyle, editingId: Int?, initialKind: Widg
                         previewActions()
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp).clip(RoundedCornerShape(18.dp))
-                    .background(colors.edge.copy(alpha = if (classic) .35f else .55f)).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    listOf("外观", "地点", "内容", "点击").forEachIndexed { index, label ->
-                        Box(Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(14.dp))
-                            .background(if (tab == index) colors.panel else Color.Transparent)
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { tab = index },
-                            contentAlignment = Alignment.Center) {
-                            Text(label, color = if (tab == index) colors.accent else colors.muted, fontSize = 14.sp,
-                                fontWeight = if (tab == index) FontWeight.SemiBold else FontWeight.Medium)
-                        }
-                    }
-                }
+                MochiSegmentedControl(
+                    selectedIndex = tab,
+                    onSelect = { tab = it },
+                    items = persistentListOf("外观", "地点", "内容", "点击"),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                )
                 Column(Modifier.weight(1f).fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = footerClearance),
@@ -416,6 +418,7 @@ internal fun WidgetStudio(style: WidgetStyle, editingId: Int?, initialKind: Widg
             }
             }
         }
+        }
     }
     }
 }
@@ -509,12 +512,14 @@ internal fun NotificationStudio(value: NotificationSettings, cities: List<City>,
     }
     val sample = remember { widgetPreviewSample() }
     fun change(config: WidgetConfig) = onChange(value.copy(config = config))
+    MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
     MaterialTheme(colorScheme = lightColorScheme(primary = c.accent, surface = c.panel, onSurface = c.ink)) {
         Column(Modifier.fillMaxSize().background(c.bg).navigationBarsPadding()) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { PhosphorIcon(R.drawable.ph_arrow_left, "返回", Modifier.size(24.dp), c.ink) }
-                Text("通知栏天气", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = c.ink)
-            }
+            MochiTitleBar(
+                title = "通知栏天气",
+                navigationIcon = { MochiBackButton(onClick = onClose) },
+                background = c.bg,
+            )
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Panel {
                     Toggle("常驻天气速览", value.enabled) { onChange(value.copy(enabled = it)) }
@@ -546,12 +551,12 @@ internal fun NotificationStudio(value: NotificationSettings, cities: List<City>,
                     permissionState?.let {
                         Text(it, color = c.accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
-                    TextButton(onClick = {
+                    MochiBarButton("系统通知权限与渠道", onClick = {
                         val action = android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS
                         context.startActivity(android.content.Intent(action)
                             .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
                             .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, WidgetNotification.CHANNEL))
-                    }) { Text("系统通知权限与渠道") }
+                    })
                 }
                 Panel {
                     LabelValue("展开预览", if (snapshot?.weather?.current == null) "示例天气" else "")
@@ -591,6 +596,7 @@ internal fun NotificationStudio(value: NotificationSettings, cities: List<City>,
                 }
             }
         }
+    }
     }
 }
 
@@ -701,17 +707,20 @@ internal fun NativeWidgetPreview(style: WidgetStyle, kind: WidgetKind, config: W
 
 @Composable private fun Panel(content: @Composable ColumnScope.() -> Unit) {
     val c = LocalStudio.current
-    Column(Modifier.fillMaxWidth().clip(c.shape).background(c.panel)
-        .border(1.dp, c.edge.copy(alpha = if (c.classic) .65f else .75f), c.shape)
-        .padding(16.dp), content = content)
+    // 外层用组件库分组卡片，卡片内保留编辑器原有的自定义内容与配色。
+    MochiListCard(
+        colors = MochiListDefaults.colors(
+            container = c.panel, content = c.ink, secondary = c.muted,
+            divider = c.edge, highlight = c.accent.copy(alpha = .1f),
+            accent = c.accent, destructive = Color(0xFFB3261E),
+        ),
+        showDividers = false,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), content = content)
+    }
 }
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun StudioSlider(value: Float, change: (Float) -> Unit, range: ClosedFloatingPointRange<Float>) {
-    val c = LocalStudio.current
-    val colors = SliderDefaults.colors(thumbColor = c.accent, activeTrackColor = c.accent, inactiveTrackColor = c.edge)
-    Slider(value, change, valueRange = range, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), colors = colors,
-        thumb = { Box(Modifier.size(24.dp).background(c.panel, CircleShape).border(2.dp, c.accent, CircleShape).padding(7.dp).background(c.accent, CircleShape)) },
-        track = { state -> SliderDefaults.Track(sliderState = state, modifier = Modifier.height(4.dp), colors = colors, thumbTrackGapSize = 0.dp, drawStopIndicator = null) })
+    MochiSlider(value, change, valueRange = range, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
 }
 @Composable private fun LabelValue(label: String, value: String) {
     val c = LocalStudio.current
@@ -720,39 +729,18 @@ internal fun NativeWidgetPreview(style: WidgetStyle, kind: WidgetKind, config: W
         Text(value, fontSize = 12.sp, color = c.muted)
     }
 }
-@OptIn(ExperimentalLayoutApi::class)
 @Composable private fun Choice(options: List<Pair<String, String>>, selected: String, onChange: (String) -> Unit) {
-    val c = LocalStudio.current
-    val density = LocalDensity.current
-    val textMeasurer = rememberTextMeasurer()
-    val choiceStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.SansSerif, fontSize = 13.sp, lineHeight = 18.sp,
-        fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-    val measured = options.map { (label, _) -> textMeasurer.measure(AnnotatedString(label), choiceStyle).size }
-    val widestText = measured.maxOfOrNull { it.width } ?: 0
-    val tallestText = measured.maxOfOrNull { it.height } ?: 0
-    val minimumWidth = with(density) { widestText.toDp() } + 20.dp
-    val minimumHeight = maxOf(48.dp, with(density) { tallestText.toDp() } + 16.dp)
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-    val columns = ((maxWidth + 6.dp) / (minimumWidth + 6.dp)).toInt().coerceIn(1, options.size.coerceAtLeast(1))
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp), maxItemsInEachRow = columns) {
-        options.forEach { (label, value) ->
-            val active = selected == value
-            Box(Modifier.weight(1f).clip(RoundedCornerShape(if (c.classic) 7.dp else 13.dp)).background(if (active) c.accent.copy(alpha = .16f) else c.bg)
-                .border(1.dp, if (active) c.accent.copy(alpha = .4f) else Color.Transparent, RoundedCornerShape(if (c.classic) 7.dp else 13.dp))
-                .semantics { this.selected = active }
-                .clickable { onChange(value) }.heightIn(min = minimumHeight).padding(horizontal = 10.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-                Text(label, modifier = Modifier.fillMaxWidth(), color = if (active) c.accent else c.muted,
-                    style = choiceStyle.copy(fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium))
-            }
-        }
-    }
-    }
+    MochiSegmentedControl(
+        selectedIndex = options.indexOfFirst { it.second == selected }.coerceAtLeast(0),
+        onSelect = { index -> options.getOrNull(index)?.let { onChange(it.second) } },
+        items = options.map { it.first }.toImmutableList(),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 @Composable private fun Toggle(label: String, enabled: Boolean, change: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 47.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 14.sp, color = LocalStudio.current.ink, modifier = Modifier.weight(1f))
-        Switch(enabled, change, modifier = Modifier.graphicsLayer { scaleX = .82f; scaleY = .82f })
+        MochiSwitch(checked = enabled, onCheckedChange = change)
     }
 }
 @Composable private fun PlaceRow(title: String, description: String, selected: Boolean, action: () -> Unit) {

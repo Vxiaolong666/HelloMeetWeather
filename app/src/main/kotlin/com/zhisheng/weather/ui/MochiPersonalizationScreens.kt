@@ -42,18 +42,11 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ui.feice.mochi.basic.MochiActivityIndicator
-import ui.feice.mochi.basic.MochiBarIconButton
 import ui.feice.mochi.basic.MochiButton
-import ui.feice.mochi.basic.MochiButtonDefaults
 import ui.feice.mochi.basic.MochiButtonGroup
 import ui.feice.mochi.basic.MochiButtonStyle
 import ui.feice.mochi.basic.MochiSegmentedControl
-import ui.feice.mochi.basic.MochiSheet
-import ui.feice.mochi.basic.MochiSheetContent
 import ui.feice.mochi.basic.MochiSheetDetent
-import ui.feice.mochi.basic.MochiSheetHeader
-import ui.feice.mochi.basic.MochiSlider
-import ui.feice.mochi.basic.MochiSliderDefaults
 import ui.feice.mochi.basic.MochiSwitch
 import ui.feice.mochi.basic.MochiTabBar
 import ui.feice.mochi.basic.MochiTabBarBehavior
@@ -67,11 +60,13 @@ import ui.feice.mochi.effect.glow.mochiPressGlow
 import ui.feice.mochi.effect.glow.rememberMochiGlowState
 import ui.feice.mochi.effect.hdr.MochiEdgeGlow
 import ui.feice.mochi.effect.hdr.MochiHdrPalette
+import ui.feice.mochi.list.MochiListCard
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
 import ui.feice.mochi.list.MochiListSliderRow
 import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.navigation.MochiLazyCompactTitleScaffold
+import ui.feice.mochi.picker.MochiColorPickerSheet
 import ui.feice.mochi.picker.MochiSeedPalette
 import ui.feice.mochi.theme.MochiHdr
 import ui.feice.mochi.theme.MochiTheme
@@ -151,12 +146,18 @@ internal fun MochiHdrSettingsPage(prefs: MochiUiPrefs) {
                     header = "按压高光",
                     footer = "按住时手指附近按原色提亮到比白更亮，深色模式下一样亮；松手就消失。",
                 ) {
-                    MochiButtonGroup {
-                        listOf("粗体", "斜体", "下划线").forEach { label ->
-                            MochiButton({}, style = MochiButtonStyle.Tonal) { Text(label) }
+                    // 卡片里放的不是列表行时，自己补上内边距和块间距，不然会贴着卡片边挤成一团。
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        MochiButtonGroup {
+                            listOf("粗体", "斜体", "下划线").forEach { label ->
+                                MochiButton({}, style = MochiButtonStyle.Tonal) { Text(label) }
+                            }
                         }
+                        MochiButton({}, Modifier.fillMaxWidth()) { Text("按住拖动看光") }
                     }
-                    MochiButton({}, Modifier.fillMaxWidth()) { Text("按住拖动看光") }
                 }
             }
             item {
@@ -185,7 +186,10 @@ internal fun MochiHdrSettingsPage(prefs: MochiUiPrefs) {
                         chevron = true,
                         onClick = { edge = !edge },
                     )
-                    HdrPalettePicker(palette) { palette = it }
+                    // 流光类型是一排色块，不是列表行：补上左右内边距，避免贴住卡片边。
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        HdrPalettePicker(palette) { palette = it }
+                    }
                 }
             }
             item {
@@ -218,17 +222,6 @@ internal fun MochiHdrSettingsPage(prefs: MochiUiPrefs) {
                         title = "强度",
                         valueText = "${(intensity * 100).roundToInt()}%",
                     )
-                }
-            }
-            item {
-                MochiListSection(
-                    header = "用法",
-                    footer = "按压高光、融球、开关滑块不用改代码，打开 MochiHdr 后按住时就有 HDR 高光。",
-                ) {
-                    MochiListRow(title = "MochiHdr.enabled = true")
-                    MochiListRow(title = "MochiHdr.strength = 0.6f")
-                    MochiListRow(title = "MochiEdgeGlow(active, palette = MochiHdrPalette.Siri)")
-                    MochiListRow(title = "drawRect(mochiHdrBrush(Color.White))")
                 }
             }
         }
@@ -305,7 +298,10 @@ internal fun MochiPressGlowSettingsPage(prefs: MochiUiPrefs) {
             }
         }
         item {
-            MochiListSection(header = "预览", footer = "只想画、自己驱动状态时用 Modifier.mochiGlow。") {
+            MochiListSection(
+                header = "预览",
+                footer = "按住任意一块并拖动，光从手指处亮起、带阻尼地跟着走；设置会应用到全部 mochi 页面的库组件与预览块。",
+            ) {
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -318,12 +314,6 @@ internal fun MochiPressGlowSettingsPage(prefs: MochiUiPrefs) {
                 ) {
                     Text("按住拖动看光", color = MochiTheme.colorScheme.onPrimaryContainer)
                 }
-            }
-        }
-        item {
-            MochiListSection(header = "用法") {
-                MochiListRow(title = "Modifier.background(color, shape).mochiPressGlow(rememberMochiGlowState(), shape)")
-                MochiListRow(title = "设置会应用到全部 mochi 页面的库组件与预览块。")
             }
         }
     }
@@ -406,12 +396,22 @@ internal fun MochiTransitionSettingsPage(prefs: MochiUiPrefs) {
             }
         }
         item {
-            MochiListSection(
-                header = "说明",
-                footer = "预测性返回需要在系统设置里使用手势导航；从屏幕边缘往里滑可跟手缩小页面，松手返回，滑回去取消。",
-            ) {
-                MochiListRow(title = "设置会应用到首页与全部二级页的切换动画。")
-                MochiListRow(title = "设置页内部二级页的推入/返回同步使用当前配置。")
+            // 说明用普通文本展示，不拆成一行一行的列表项（列表行会截断长文案）。
+            MochiListCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(
+                        "说明",
+                        style = MochiTheme.textStyles.footnote,
+                        color = MochiTheme.colorScheme.secondary,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                    Text(
+                        "以上设置会应用到首页与全部二级页的切换动画；设置页内部二级页的推入/返回同步使用当前配置。" +
+                            "预测性返回需要在系统设置里使用手势导航：从屏幕边缘往里滑可跟手缩小页面，松手返回，滑回去取消。",
+                        style = MochiTheme.textStyles.footnote,
+                        color = MochiTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -484,19 +484,15 @@ internal fun mochiTabBehaviorFor(prefs: MochiUiPrefs): MochiTabBarBehavior {
 @Composable
 internal fun MochiThemeSettingsPage(prefs: MochiUiPrefs) {
     val scope = rememberCoroutineScope()
-    val toast = LocalMochiToast.current
     var showModePicker by remember { mutableStateOf(false) }
     var showPalettePicker by remember { mutableStateOf(false) }
     val style = prefs.paletteStyle
     val modeLabel = MochiColorModes.firstOrNull { it.second == prefs.colorMode }?.first ?: "跟随应用"
     val paletteLabel = MochiPaletteStyles.firstOrNull { it.second == prefs.palette }?.first ?: "Tonal"
 
-    // 参考 demo「底部面板」：两档 detent + 打开即 Large（全屏），后面的页面按 iOS 卡片堆叠缩小退后。
-    val sheet = rememberMochiSheetState(
-        detents = listOf(MochiSheetDetent.Medium, MochiSheetDetent.Large),
-        initial = MochiSheetDetent.Large,
-    )
-    // 草稿色只在这里变，只有右上对勾才写 SettingsRepository。
+    // 参考 demo「颜色选择」：库 MochiColorPickerSheet 自己管 Medium/Large 两档，
+    // 弹出时保持半屏，往上拉到全屏；mochiSheetBackdrop 让后面的页面按 iOS 卡片堆叠缩小退后。
+    val sheet = rememberMochiSheetState(listOf(MochiSheetDetent.Medium, MochiSheetDetent.Large))
     var draft by remember { mutableStateOf(Color(prefs.seed)) }
 
     Box(Modifier.fillMaxSize().mochiSheetBackdrop(sheet)) {
@@ -523,7 +519,7 @@ internal fun MochiThemeSettingsPage(prefs: MochiUiPrefs) {
             item {
                 MochiListSection(
                     header = "主题色",
-                    footer = "色块上是按当前取色算法生成的主色、辅助色与第三色；自定义取色打开全屏底部面板。",
+                    footer = "色块上是按当前取色算法生成的主色、辅助色与第三色；点自定义主题色弹出库选色面板，半屏起步、往上拉全屏。",
                 ) {
                     MochiSeedPalette(
                         selected = Color(prefs.seed),
@@ -534,8 +530,16 @@ internal fun MochiThemeSettingsPage(prefs: MochiUiPrefs) {
                     )
                     MochiListRow(
                         title = "自定义主题色",
-                        subtitle = "全屏底部面板，左上关闭、右上对勾保存",
-                        chevron = true,
+                        value = "#%06X".format(prefs.seed and 0xFFFFFF),
+                        trailing = {
+                            Box(
+                                Modifier
+                                    .size(24.dp)
+                                    .border(1.dp, MochiTheme.colorScheme.outlineVariant, CircleShape)
+                                    .clip(CircleShape)
+                                    .background(Color(prefs.seed)),
+                            )
+                        },
                         onClick = {
                             draft = Color(prefs.seed)
                             sheet.show()
@@ -558,68 +562,18 @@ internal fun MochiThemeSettingsPage(prefs: MochiUiPrefs) {
         }
     }
 
-    MochiSheet(
+    // 库的选色面板：网格 / 色谱 / 滑块三种方式 + 不透明度，内容和 demo 完全一致。
+    MochiColorPickerSheet(
         state = sheet,
-        onDismiss = { /* 草稿不落地：下次打开会用已保存的 seed 重新初始化 */ },
-    ) {
-        MochiSheetHeader(
-            title = "自定义主题色",
-            navigationIcon = {
-                MochiBarIconButton(onClick = { sheet.hide() }) {
-                    PhosphorIcon(R.drawable.ph_x, "关闭", Modifier.size(16.dp), MochiTheme.colorScheme.onSurface)
-                }
-            },
-            actions = {
-                MochiBarIconButton(
-                    onClick = {
-                        scope.launch { SettingsRepository.setMochiSeed(draft.toArgb()) }
-                        toast?.show("主题色已保存", icon = { tint -> MochiToastCheckIcon(tint) })
-                        sheet.hide()
-                    },
-                    colors = MochiButtonDefaults.colors(MochiButtonStyle.Filled),
-                ) {
-                    PhosphorIcon(
-                        R.drawable.ph_check,
-                        "保存",
-                        Modifier.size(18.dp),
-                        MochiTheme.colorScheme.onPrimary,
-                    )
-                }
-            },
-        )
-        MochiSheetContent {
-            MochiSeedPalette(
-                selected = draft,
-                onSelect = { draft = it },
-                style = style,
-                custom = false,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Box(
-                Modifier
-                    .size(56.dp)
-                    .background(draft, CircleShape),
-            )
-            MochiSlider(
-                value = draft.red,
-                onValueChange = { draft = draft.copy(red = it) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = MochiSliderDefaults.colors(activeTrack = Color(0xFFFF3B30)),
-            )
-            MochiSlider(
-                value = draft.green,
-                onValueChange = { draft = draft.copy(green = it) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = MochiSliderDefaults.colors(activeTrack = Color(0xFF34C759)),
-            )
-            MochiSlider(
-                value = draft.blue,
-                onValueChange = { draft = draft.copy(blue = it) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = MochiSliderDefaults.colors(activeTrack = Color(0xFF0A84FF)),
-            )
-        }
-    }
+        color = draft,
+        onColorChange = { picked ->
+            draft = picked
+            scope.launch { SettingsRepository.setMochiSeed(picked.toArgb()) }
+        },
+        title = "自定义主题色",
+        supportsAlpha = false,
+        onDismiss = { },
+    )
 
     MochiChoiceDialog(
         visible = showModePicker,
@@ -815,12 +769,6 @@ internal fun MochiGraphicsSettingsPage(prefs: MochiUiPrefs) {
                         }
                     }
                 }
-            }
-        }
-        item {
-            MochiListSection(header = "说明") {
-                MochiListRow(title = "档位写入 MochiGraphics.level，作用于全部库组件的模糊、着色器与刷新率。")
-                MochiListRow(title = "预览动效只在当前页播放，不影响实际页面性能。")
             }
         }
     }

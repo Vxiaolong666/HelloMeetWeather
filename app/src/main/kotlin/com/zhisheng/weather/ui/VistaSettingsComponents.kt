@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.sp
 import com.zhisheng.weather.R
 import com.zhisheng.weather.data.SourcePref
 import com.zhisheng.weather.data.HomeSurfaceStyle
-import com.zhisheng.weather.i18n.uiText
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import com.zhisheng.weather.ui.theme.LocalHomeSurfaceStyle
@@ -89,7 +88,7 @@ internal fun VistaSettingToggle(
             Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onInfo),
             contentAlignment = Alignment.Center,
         ) {
-            PhosphorIcon(R.drawable.ph_info, uiText("查看说明"), Modifier.size(19.dp), palette.textSecondary)
+            PhosphorIcon(R.drawable.ph_info, "查看说明", Modifier.size(19.dp), palette.textSecondary)
         }
         // The row owns the single switch action; this compact track is purely visual.
         val track by animateColorAsState(

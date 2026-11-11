@@ -51,7 +51,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhisheng.weather.BuildConfig
 import com.zhisheng.weather.data.LandscapeStandbyStyle
-import com.zhisheng.weather.i18n.uiText
 import com.zhisheng.weather.model.phaseAwareCondition
 import com.zhisheng.weather.ui.components.WeatherAmbience
 import com.zhisheng.weather.ui.components.WeatherIcon
@@ -252,7 +251,7 @@ private fun ClassicLandscapeStandbyScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Settings,
-                                    contentDescription = uiText("设置"),
+                                    contentDescription = "设置",
                                     tint = ZhishengOrange,
                                     modifier = Modifier.size(21.dp),
                                 )

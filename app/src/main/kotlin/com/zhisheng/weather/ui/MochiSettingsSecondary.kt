@@ -1,5 +1,15 @@
 package com.zhisheng.weather.ui
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.Color
+import com.zhisheng.weather.model.WeatherCondition
+import com.zhisheng.weather.ui.components.LocalSolarSkyPreview
+import com.zhisheng.weather.ui.components.SolarSkyState
+import ui.feice.mochi.basic.MochiSegmentedControl
+import ui.feice.mochi.basic.MochiSegmentedDefaults
+import ui.feice.mochi.navigation.MochiTitleBar
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -370,18 +380,49 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
     }
 }
 
+
+/** 「一天的天空」的六个时刻：合并进天气效果预览页，不再单独开一个弹窗。 */
+private data class SkyPreviewMoment(val label: String, val altitude: Float, val minutes: Int, val rising: Boolean = false)
+
+private val skyPreviewMoments = listOf(
+    SkyPreviewMoment("晨曦", -2f, 6 * 60 + 20, true), SkyPreviewMoment("日间", 35f, 14 * 60),
+    SkyPreviewMoment("暖金", 5f, 19 * 60 + 15), SkyPreviewMoment("霞光", -1.5f, 19 * 60 + 42),
+    SkyPreviewMoment("蓝调", -7f, 20 * 60 + 10), SkyPreviewMoment("夜色", -24f, 22 * 60),
+)
+
+private val skyPreviewConditions = listOf(
+    "晴" to WeatherCondition.CLEAR, "多云" to WeatherCondition.PARTLY_CLOUDY,
+    "下雨" to WeatherCondition.RAIN, "雾" to WeatherCondition.FOG,
+)
+
 @Composable
 fun MochiAtmosphereLabScreen(initialLevel: AmbienceLevel, onBack: () -> Unit) {
+    var mode by rememberSaveable { mutableIntStateOf(0) }
     var scenarioIndex by rememberSaveable { mutableIntStateOf(0) }
     var intensityIndex by rememberSaveable { mutableIntStateOf(1) }
     var levelKey by rememberSaveable { mutableStateOf(initialLevel.key) }
+    var momentIndex by rememberSaveable { mutableIntStateOf(3) }
+    var conditionIndex by rememberSaveable { mutableIntStateOf(1) }
     var showScenarioPicker by remember { mutableStateOf(false) }
-    val scenario = atmosphereScenarios[scenarioIndex]
+    val skyMode = mode == 1
+    val moment = skyPreviewMoments[momentIndex]
+    val condition = skyPreviewConditions[conditionIndex]
+    val scenario = if (skyMode) AtmosphereScenario(
+        "SKY_PREVIEW", condition.first, condition.second,
+        night = moment.altitude < -4f, minuteOfDay = moment.minutes,
+    ) else atmosphereScenarios[scenarioIndex]
     val intensity = WeatherIntensity.entries[intensityIndex]
     val level = AmbienceLevel.from(levelKey)
-    val data = remember(scenarioIndex, intensityIndex) { simulatedWeather(scenario, intensity) }
-    val prefs = remember(level, scenario.condition) {
-        DisplayPrefs(
+    val data = remember(scenarioIndex, intensityIndex, skyMode, momentIndex, conditionIndex) {
+        simulatedWeather(scenario, if (skyMode) WeatherIntensity.MODERATE else intensity)
+    }
+    val prefs = remember(level, scenario.condition, skyMode) {
+        if (skyMode) DisplayPrefs(
+            ambience = AmbienceLevel.VIVID, scanlines = false,
+            showIndices = false, showYesterday = false, showTelemetry = false,
+            showSpacetime = false, showSkyPhotography = false,
+            showCoastWeather = false, showPrecip = false, bootAnim = false,
+        ) else DisplayPrefs(
             showAqi = true,
             showIndices = false,
             showYesterday = false,
@@ -394,57 +435,101 @@ fun MochiAtmosphereLabScreen(initialLevel: AmbienceLevel, onBack: () -> Unit) {
         )
     }
     val simCity = remember {
-        City(
-            name = "模拟站",
-            affiliation = "ATMOSPHERE LAB",
-            latitude = 38.52,
-            longitude = 102.21,
-            locationKey = "simulation:atmosphere-lab",
-        )
+        City("模拟站", "ATMOSPHERE LAB", 38.52, 102.21, "simulation:atmosphere-lab")
     }
+    val solar = SolarSkyState(moment.altitude, if (moment.rising) 95f else 265f, moment.rising)
     val colors = rememberMochiColorScheme()
-    val toast = LocalMochiToast.current
 
-    CompositionLocalProvider(LocalWeatherContinuity provides null) {
+    CompositionLocalProvider(
+        LocalWeatherContinuity provides null,
+        LocalSolarSkyPreview provides if (skyMode) solar else null,
+    ) {
         MochiTheme(colors = colors, systemBarAppearance = false) {
+            val cs = MochiTheme.colorScheme
+            // 主题色模块：分段控件和顶栏底色都取自「主题配色」页生成的配色，改主题色立即生效。
+            val segmentedColors = MochiSegmentedDefaults.colors(
+                track = cs.surfaceContainerHigh,
+                thumb = cs.primary,
+                selectedContent = cs.onPrimary,
+                content = cs.onSurfaceVariant,
+                shadow = cs.shadow,
+            )
             SimulatedWeatherSurface(
                 data = data,
                 city = simCity,
                 prefs = prefs,
                 night = scenario.night,
                 referenceTimeMillis = data.updateTime,
+                livingSkyOverride = if (skyMode) true else null,
                 header = {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            MochiBackButton(onClick = onBack)
-                            Text("氛围实验室", Modifier.weight(1f))
-                            MochiBarButton("保存", onClick = {
-                                toast?.show("设置已保存", icon = { tint ->
-                                    PhosphorIcon(R.drawable.ph_check, null, Modifier.size(20.dp), tint)
-                                })
-                                onBack()
-                            })
-                        }
+                    // 库标题栏自带状态栏留白，顶栏不会贴到屏幕最上沿。
+                    MochiTitleBar(
+                        title = "天气效果预览",
+                        navigationIcon = { MochiBackButton(onClick = onBack) },
+                        actions = { MochiBarButton("完成", onClick = onBack) },
+                        background = cs.surface.copy(alpha = 0.82f),
+                    )
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         MochiSegmentedControl(
-                            selectedIndex = AmbienceLevel.entries.indexOf(level).coerceAtLeast(0),
-                            onSelect = { levelKey = AmbienceLevel.entries[it].key },
-                            items = AmbienceLevel.entries.map { it.cn }.toImmutableList(),
-                            modifier = Modifier.padding(vertical = 6.dp),
+                            selectedIndex = mode,
+                            onSelect = { mode = it },
+                            items = persistentListOf("天气场景", "一天的天空"),
+                            colors = segmentedColors,
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                        MochiSegmentedControl(
-                            selectedIndex = intensityIndex,
-                            onSelect = { intensityIndex = it },
-                            items = persistentListOf("轻", "中", "强", "极"),
-                            modifier = Modifier.padding(vertical = 6.dp),
-                        )
-                        MochiListSection(header = "天气场景") {
-                            MochiListRow(
-                                title = "当前场景",
-                                value = scenario.name,
-                                chevron = true,
-                                onClick = { showScenarioPicker = true },
+                        if (skyMode) {
+                            MochiListSection(
+                                header = "一天的天空",
+                                footer = "示例预览 · 仅展示效果，不会改变当前城市的天气。",
+                            ) {
+                                MochiListRow(title = "当前时刻", value = moment.label)
+                                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                    MochiSegmentedControl(
+                                        selectedIndex = momentIndex,
+                                        onSelect = { momentIndex = it },
+                                        items = skyPreviewMoments.map { it.label }.toImmutableList(),
+                                        colors = segmentedColors,
+                                        behavior = MochiSegmentedDefaults.behavior(segmentPadding = 6.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    MochiSegmentedControl(
+                                        selectedIndex = conditionIndex,
+                                        onSelect = { conditionIndex = it },
+                                        items = skyPreviewConditions.map { it.first }.toImmutableList(),
+                                        colors = segmentedColors,
+                                        behavior = MochiSegmentedDefaults.behavior(segmentPadding = 6.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                            }
+                        } else {
+                            MochiSegmentedControl(
+                                selectedIndex = AmbienceLevel.entries.indexOf(level).coerceAtLeast(0),
+                                onSelect = { levelKey = AmbienceLevel.entries[it].key },
+                                items = AmbienceLevel.entries.map { it.cn }.toImmutableList(),
+                                colors = segmentedColors,
+                                modifier = Modifier.fillMaxWidth(),
                             )
-                            MochiListRow(title = "预览效果不会改变当前城市的天气。")
+                            MochiSegmentedControl(
+                                selectedIndex = intensityIndex,
+                                onSelect = { intensityIndex = it },
+                                items = persistentListOf("轻", "中", "强", "极"),
+                                colors = segmentedColors,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            MochiListSection(header = "天气场景") {
+                                MochiListRow(
+                                    title = "当前场景",
+                                    value = scenario.name,
+                                    chevron = true,
+                                    onClick = { showScenarioPicker = true },
+                                )
+                                MochiListRow(title = "预览效果不会改变当前城市的天气。")
+                            }
                         }
                     }
                 },

@@ -58,7 +58,6 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ui.feice.mochi.basic.rememberMochiToastState
 import com.zhisheng.weather.data.AccentTone
-import com.zhisheng.weather.data.AppLanguage
 import com.zhisheng.weather.data.AppIconManager
 import com.zhisheng.weather.data.AppIconStyle
 import com.zhisheng.weather.data.AppUpdate
@@ -117,7 +116,6 @@ import com.zhisheng.weather.ui.WhatsNewVersion
 import com.zhisheng.weather.ui.InitialLocationSetupHost
 import com.zhisheng.weather.ui.theme.ZhishengWeatherTheme
 import com.zhisheng.weather.data.InterfaceStyle
-import com.zhisheng.weather.i18n.ProvideAppLanguage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.catch
@@ -176,7 +174,6 @@ class MainActivity : ComponentActivity() {
             val homeSurfaceStyle by SettingsRepository.homeSurfaceStyle.collectAsState(
                 initial = com.zhisheng.weather.data.HomeSurfaceStyle.FRAGRANCE_GLASS,
             )
-            val appLanguage by SettingsRepository.appLanguage.collectAsState(initial = AppLanguage.CHINESE)
             val appConfiguration = LocalConfiguration.current
             val systemDark = isSystemInDarkTheme()
             val isLight = when (themeMode) {
@@ -193,9 +190,13 @@ class MainActivity : ComponentActivity() {
                 softGlow = softGlow,
                 softGlowLevel = softGlowLevel,
             ) {
-                ProvideAppLanguage(appLanguage) {
                 val vm: WeatherViewModel = viewModel()
                 val scope = rememberCoroutineScope()
+                // 全 app 共用一个 Toast：挂在主题根部而不是某个页面分支里，横竖屏切换、页面返回都不影响它存活。
+                val toastState = rememberMochiToastState()
+                CompositionLocalProvider(LocalMochiToast provides toastState) {
+                    MochiAppToastHost(toastState)
+                }
                 // 方向变化已由 configChanges 原地处理，不需要跨进程保存临时页面。
                 // 三星 / realme 会比小米更积极恢复任务状态；若保存 SEARCH，横向冷启动会误回城市选择页。
                 // 冷启动统一回主页（横放时由 standbyActive 展示气象时钟）；快捷方式仍由 command 明确跳转。
@@ -469,8 +470,6 @@ class MainActivity : ComponentActivity() {
                 // UI 个性化偏好：同步到库全局效果状态，并驱动全站页面转场。
                 val uiPrefs = rememberMochiUiPrefs()
                 ApplyMochiUiPrefs(uiPrefs, motionEnabled)
-                // 全 app 共用一个 Toast：切换应用图标、二级页保存等提示在页面返回后仍能播完。
-                val toastState = rememberMochiToastState()
                 val transitionStyle = PageTransitionStyle.from(uiPrefs.pageTransition)
                 // 转场偏好在设置页里随时会变：让 transitionSpec 读 State 而非捕获旧值，
                 // 否则 AnimatedContent / AnimatedVisibility 复用旧的动画规格，看起来像「设置没生效」。
@@ -529,9 +528,7 @@ class MainActivity : ComponentActivity() {
                                 settingsReturnTo = AppScreen.MOCHI_SETTINGS
                                 screen = AppScreen.MOCHI_SETTINGS
                             },
-                            LocalMochiToast provides toastState,
                         ) {
-                        MochiAppToastHost(toastState)
                         HomeScreen(
                             viewModel = vm,
                             ambienceActive = screen == AppScreen.HOME,
@@ -856,7 +853,6 @@ class MainActivity : ComponentActivity() {
                         !startupPromptsSuppressed && openingSpec == null && !autoOpeningPending &&
                         !showWhatsNew && !locationSetupHoldsStartup && automaticUpdate == null,
                 )
-                }
             }
         }
         }

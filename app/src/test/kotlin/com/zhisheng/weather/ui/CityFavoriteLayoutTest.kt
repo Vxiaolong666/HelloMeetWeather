@@ -15,6 +15,6 @@ class CityFavoriteLayoutTest {
         assertTrue(home.contains("R.drawable.ph_star"))
         assertTrue(home.contains("CityRepository.MAX_FAVORITES"))
         assertTrue(viewModel.contains("最多收藏 6 个城市"))
-        assertTrue(home.contains("uiText(\"取消收藏\")"))
+        assertTrue(home.contains("\"取消收藏\""))
     }
 }

@@ -100,7 +100,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.zhisheng.weather.R
 import com.zhisheng.weather.data.AccentTone
-import com.zhisheng.weather.data.AppLanguage
 import com.zhisheng.weather.data.AppIconManager
 import com.zhisheng.weather.data.AppIconStyle
 import com.zhisheng.weather.data.AmbienceLevel
@@ -121,8 +120,6 @@ import com.zhisheng.weather.data.ReleaseFeatures
 import com.zhisheng.weather.data.SourcePref
 import com.zhisheng.weather.data.TelemetryMetric
 import com.zhisheng.weather.data.ThemeMode
-import com.zhisheng.weather.i18n.AppLanguageState
-import com.zhisheng.weather.i18n.uiText
 import com.zhisheng.weather.ui.theme.ZhishengBg
 import com.zhisheng.weather.ui.theme.ZhishengCard
 import com.zhisheng.weather.ui.theme.ZhishengCardBorder
@@ -173,7 +170,6 @@ fun SettingsScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var showLivingSkyPreview by rememberSaveable { mutableStateOf(false) }
 
     val tempUnit by SettingsRepository.tempUnit.collectAsState(initial = "c")
     val windUnit by SettingsRepository.windUnit.collectAsState(initial = "kmh")
@@ -215,7 +211,6 @@ fun SettingsScreen(
         initial = HomeBriefingStyle.TIPS,
     )
     val homeSurfaceStyle by SettingsRepository.homeSurfaceStyle.collectAsState(initial = HomeSurfaceStyle.FRAGRANCE_GLASS)
-    val appLanguage by SettingsRepository.appLanguage.collectAsState(initial = AppLanguage.CHINESE)
     val moduleOrder by SettingsRepository.moduleOrder.collectAsState(initial = HomeModule.defaultOrder)
     var permDenied by remember { mutableStateOf(false) }
     var showModuleOrderDialog by rememberSaveable { mutableStateOf(false) }
@@ -319,7 +314,7 @@ fun SettingsScreen(
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = uiText("返回"),
+                                contentDescription = "返回",
                                 tint = ZhishengText,
                             )
                         }
@@ -620,7 +615,7 @@ fun SettingsScreen(
                 ) { value -> scope.launch { SettingsRepository.setHomeSurfaceStyle(HomeSurfaceStyle.from(value)) } }
                 }
             }
-            InlineGroupLabel("界面与语言")
+            InlineGroupLabel("界面")
             CardBox {
                 if (ReleaseFeatures.classicTheme) {
                     SegmentRow(
@@ -635,19 +630,6 @@ fun SettingsScreen(
                 ) { value -> scope.launch { SettingsRepository.setInterfaceStyle(InterfaceStyle.from(value)) } }
                 SettingsDivider()
                 }
-                SegmentRow(
-                    "显示语言",
-                    listOf("简体中文" to "zh", "日本語" to "ja"),
-                    appLanguage.key,
-                    hint = "切换后立即生效；天气数值和数据来源不会改变",
-                ) { value ->
-                    scope.launch {
-                        val selected = AppLanguage.from(value)
-                        SettingsRepository.setAppLanguage(selected)
-                        AppLanguageState.current = selected
-                    }
-                }
-                SettingsDivider()
                 SegmentRow(
                     "主题模式",
                     listOf("深色" to "dark", "浅色" to "light", "跟随系统" to "system"),
@@ -691,12 +673,9 @@ fun SettingsScreen(
                         else "主页与澄空小组件跟随城市日照变化；关闭恢复原来的天空", livingSky) {
                         scope.launch { SettingsRepository.setLivingSky(!livingSky) }
                     }
-                    ActionRow(label = "预览一天的天空", enabled = true, color = ZhishengCyan) {
-                        showLivingSkyPreview = true
-                    }
                 }
                 SettingsDivider()
-                if (developerMode && ReleaseFeatures.weatherAtmosphere) {
+                if (ReleaseFeatures.weatherAtmosphere) {
                     ActionRow(label = "天气效果预览", enabled = true, color = ZhishengCyan) { onAtmosphereLab() }
                     SettingsDivider()
                 }
@@ -810,8 +789,6 @@ fun SettingsScreen(
     }
     }
 
-    if (showLivingSkyPreview) LivingSkyPreviewDialog { showLivingSkyPreview = false }
-
     if (showModuleOrderDialog) {
         ModuleOrderDialog(
             order = moduleOrder,
@@ -857,7 +834,7 @@ private fun SettingsTopBar(onBack: () -> Unit, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = uiText("返回"), tint = ZhishengText)
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = ZhishengText)
         }
         Column {
             Text("设置", style = MaterialTheme.typography.titleMedium,

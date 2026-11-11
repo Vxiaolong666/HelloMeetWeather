@@ -65,7 +65,6 @@ import com.zhisheng.weather.ui.theme.ZhishengSurface
 import com.zhisheng.weather.ui.theme.ZhishengText
 import com.zhisheng.weather.ui.theme.ZhishengTextSecondary
 import com.zhisheng.weather.ui.theme.ZhishengTextTertiary
-import com.zhisheng.weather.i18n.uiText
 
 internal data class AtmosphereScenario(
     val code: String,
@@ -191,7 +190,7 @@ private fun LabHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = uiText("返回设置"), tint = ZhishengText)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回设置", tint = ZhishengText)
             }
             Column(Modifier.weight(1f)) {
                 Text("氛围实验室", style = MaterialTheme.typography.titleMedium, color = ZhishengOrange, fontWeight = FontWeight.Bold)

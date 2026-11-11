@@ -32,7 +32,6 @@ import com.zhisheng.weather.data.AccentTone
 import com.zhisheng.weather.data.AppIconManager
 import com.zhisheng.weather.data.AppIconStyle
 import com.zhisheng.weather.data.AmbienceLevel
-import com.zhisheng.weather.data.AppLanguage
 import com.zhisheng.weather.data.HomeBriefingStyle
 import com.zhisheng.weather.data.HomeModule
 import com.zhisheng.weather.data.HomeSurfaceStyle
@@ -49,7 +48,6 @@ import com.zhisheng.weather.data.SoftGlowLevel
 import com.zhisheng.weather.data.SourcePref
 import com.zhisheng.weather.data.TelemetryMetric
 import com.zhisheng.weather.data.ThemeMode
-import com.zhisheng.weather.i18n.AppLanguageState
 import com.zhisheng.weather.model.WeatherData
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.theme.ZhishengCyan
@@ -61,6 +59,7 @@ import com.zhisheng.weather.widget.WidgetConfigActivity
 import com.zhisheng.weather.widget.WidgetStyle
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.basic.MochiSwitch
@@ -151,11 +150,9 @@ fun MochiSettingsScreen(
     val appIconStyle by SettingsRepository.appIconStyle.collectAsState(initial = AppIconStyle.CHARACTER)
     val homeBriefingStyle by SettingsRepository.homeBriefingStyle.collectAsState(initial = HomeBriefingStyle.TIPS)
     val homeSurfaceStyle by SettingsRepository.homeSurfaceStyle.collectAsState(initial = HomeSurfaceStyle.FRAGRANCE_GLASS)
-    val appLanguage by SettingsRepository.appLanguage.collectAsState(initial = AppLanguage.CHINESE)
     val moduleOrder by SettingsRepository.moduleOrder.collectAsState(initial = HomeModule.defaultOrder)
 
     var permDenied by remember { mutableStateOf(false) }
-    var showSkyPreview by rememberSaveable { mutableStateOf(false) }
     var showIconDialog by rememberSaveable { mutableStateOf(false) }
     val toast = LocalMochiToast.current
     // 三段设置页改用库的底部悬浮标签栏；状态自带跨重建保存。
@@ -296,7 +293,7 @@ fun MochiSettingsScreen(
                             )
                             else -> mochiAppearanceSection(
                                 homeSurfaceStyle = homeSurfaceStyle, interfaceStyle = interfaceStyle,
-                                appLanguage = appLanguage, themeMode = themeMode,
+                                themeMode = themeMode,
                                 accentTone = accentTone, softGlow = softGlow,
                                 softGlowLevel = softGlowLevel, ambience = ambience,
                                 livingSky = livingSky, scanlines = scanlines,
@@ -308,13 +305,6 @@ fun MochiSettingsScreen(
                                 graphicsLevel = uiPrefs.graphicsLevel,
                                 onSurfaceStyle = { scope.launch { SettingsRepository.setHomeSurfaceStyle(HomeSurfaceStyle.from(it)) } },
                                 onInterfaceStyle = { scope.launch { SettingsRepository.setInterfaceStyle(InterfaceStyle.from(it)) } },
-                                onLanguage = { value ->
-                                    scope.launch {
-                                        val selected = AppLanguage.from(value)
-                                        SettingsRepository.setAppLanguage(selected)
-                                        AppLanguageState.current = selected
-                                    }
-                                },
                                 onThemeMode = { scope.launch { SettingsRepository.setThemeMode(ThemeMode.from(it)) } },
                                 onAccentTone = { scope.launch { SettingsRepository.setAccentTone(AccentTone.from(it)) } },
                                 onSoftGlow = { scope.launch { SettingsRepository.setSoftGlow(it) } },
@@ -326,7 +316,6 @@ fun MochiSettingsScreen(
                                 onBurnIn = { scope.launch { SettingsRepository.setStandbyBurnInProtection(it) } },
                                 onLandscapeStyle = { scope.launch { SettingsRepository.setLandscapeStandbyStyle(LandscapeStandbyStyle.from(it)) } },
                                 onKeepScreenOn = { scope.launch { SettingsRepository.setKeepScreenOn(it) } },
-                                onSkyPreview = { showSkyPreview = true },
                                 onAtmosphereLab = onAtmosphereLab,
                                 onGraphicsLevel = { scope.launch { SettingsRepository.setMochiGraphicsLevel(it) } },
                                 onGel = { scope.launch { SettingsRepository.setMochiGel(it) } },
@@ -481,24 +470,26 @@ fun MochiSettingsScreen(
             footer = "深色与浅色随主题联动；天气娘和简约图标独立保持",
             onSelect = { value ->
                 val selected = AppIconStyle.from(value)
+                // 先弹提示再切别名：setComponentEnabledSetting 可能触发系统重建 Activity，
+                // 提示会被连带销毁；先给 1.5s 让「请重启生效」完整显示，再真正切换桌面图标。
+                toast?.show(
+                    "应用图标已切换",
+                    subtitle = "请重启生效",
+                    icon = { tint ->
+                        PhosphorIcon(R.drawable.ph_arrow_clockwise, null, Modifier.size(20.dp), tint)
+                    },
+                    durationMillis = 3500,
+                )
                 scope.launch {
+                    delay(1500)
                     if (AppIconManager.apply(context, selected)) {
                         SettingsRepository.setAppIconStyle(selected)
-                        toast?.show(
-                            "应用图标已切换",
-                            subtitle = "需要重启应用或启动器后生效",
-                            icon = { tint ->
-                                PhosphorIcon(R.drawable.ph_arrow_clockwise, null, Modifier.size(20.dp), tint)
-                            },
-                            durationMillis = 3500,
-                        )
                     }
                 }
             },
             onDismiss = { showIconDialog = false },
         )
     }
-    if (showSkyPreview) LivingSkyPreviewDialog { showSkyPreview = false }
 }
 
 /** 库的 onCheckedChange 是必需的第二个位置参数，trailing lambda 会误落到最后的 hapticProfile。 */
@@ -759,22 +750,22 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiHomeSection(
 /** 页 2：外观与体验。 */
 @Suppress("LongParameterList")
 private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSection(
-    homeSurfaceStyle: HomeSurfaceStyle, interfaceStyle: InterfaceStyle, appLanguage: AppLanguage,
+    homeSurfaceStyle: HomeSurfaceStyle, interfaceStyle: InterfaceStyle,
     themeMode: ThemeMode, accentTone: AccentTone, softGlow: Boolean, softGlowLevel: SoftGlowLevel,
     ambience: AmbienceLevel, livingSky: Boolean, scanlines: Boolean,
     landscapeStandby: Boolean, standbyBurnInProtection: Boolean,
     landscapeStandbyStyle: LandscapeStandbyStyle, appIconStyle: AppIconStyle, keepScreenOn: Boolean,
     developerMode: Boolean, graphicsLevel: String, gel: Float,
-    onSurfaceStyle: (String) -> Unit, onInterfaceStyle: (String) -> Unit, onLanguage: (String) -> Unit,
+    onSurfaceStyle: (String) -> Unit, onInterfaceStyle: (String) -> Unit,
     onThemeMode: (String) -> Unit, onAccentTone: (String) -> Unit, onSoftGlow: (Boolean) -> Unit,
     onSoftGlowLevel: (String) -> Unit, onAmbience: (String) -> Unit, onLivingSky: (Boolean) -> Unit,
     onScanlines: (Boolean) -> Unit, onLandscapeStandby: (Boolean) -> Unit, onBurnIn: (Boolean) -> Unit,
     onLandscapeStyle: (String) -> Unit, onKeepScreenOn: (Boolean) -> Unit,
-    onSkyPreview: () -> Unit, onAtmosphereLab: () -> Unit, onGraphicsLevel: (String) -> Unit,
+    onAtmosphereLab: () -> Unit, onGraphicsLevel: (String) -> Unit,
     onGel: (Float) -> Unit, onAppIcon: () -> Unit, onPush: (String) -> Unit,
 ) {
     item {
-        MochiListSection(header = "界面与语言") {
+        MochiListSection(header = "界面") {
             if (isPhosphorVista) MochiChoiceRow("模块外观", HomeSurfaceStyle.entries.map { it.cn to it.key },
                 homeSurfaceStyle.key, "切换首页与设置页的玻璃质感；天气文字和图标保持清晰", onSurfaceStyle)
             if (ReleaseFeatures.classicTheme) MochiChoiceRow("界面主题",
@@ -782,8 +773,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
                 interfaceStyle.key,
                 if (interfaceStyle == InterfaceStyle.PHOSPHOR_VISTA) "无框天气概览，逐时、五日与多日预报依次展开"
                 else "经典终端美术风格，与澄空共用天气逻辑和模块排序", onInterfaceStyle)
-            MochiChoiceRow("显示语言", listOf("简体中文" to "zh", "日本語" to "ja"), appLanguage.key,
-                "切换后立即生效；天气数值和数据来源不会改变", onLanguage)
             MochiChoiceRow("主题模式", listOf("深色" to "dark", "浅色" to "light", "跟随系统" to "system"),
                 themeMode.key, "浅色清透，深色柔和，也可跟随系统", onThemeMode)
             MochiChoiceRow("强调色亮度", listOf("标准" to "standard", "柔和" to "soft"),
@@ -811,10 +800,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
                         subtitle = if (ambience == AmbienceLevel.OFF) "打开自然天光后生效；关闭此开关恢复原来的天空"
                         else "主页与澄空小组件跟随城市日照变化；关闭恢复原来的天空",
                         trailing = { MochiSettingSwitch(livingSky, onLivingSky) })
-                    MochiListRow(title = "预览一天的天空", chevron = true, onClick = onSkyPreview)
                 }
-                if (developerMode)
-                    MochiListRow(title = "天气效果预览", chevron = true, onClick = onAtmosphereLab)
+                MochiListRow(title = "天气效果预览", subtitle = "天气场景与一天的天空",
+                    chevron = true, onClick = onAtmosphereLab)
                 if (!isPhosphorVista) MochiListRow(title = "CRT 扫描线", subtitle = "整屏细横纹，终端质感",
                     trailing = { MochiSettingSwitch(scanlines, onScanlines) })
             }

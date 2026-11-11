@@ -15,12 +15,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
-import com.zhisheng.weather.i18n.LocalAppLanguage
-import com.zhisheng.weather.i18n.uiText
-import com.zhisheng.weather.data.AppLanguage
 import com.zhisheng.weather.ui.theme.isPhosphorVista
 
-/** Single rendering gate for every visible Compose string, including live provider text. */
+/** 所有可见文案的统一渲染入口：两套主题各自把术语改写成人话，再交给 Material3 绘制。 */
 @Composable
 fun Text(
     text: String,
@@ -41,20 +38,14 @@ fun Text(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
     style: TextStyle = LocalTextStyle.current,
 ) {
-    val language = LocalAppLanguage.current
     val vista = isPhosphorVista
-    val localized = remember(text, language, vista) {
+    val label = remember(text, vista) {
         // 两主题共用同一份术语人话化词典；经典侧只替换词条，
-        // 保留 "> " 提示符与 "[ ]" 选中括号等终端装饰。日文翻译路径不变。
-        val label = when {
-            language != AppLanguage.CHINESE -> text
-            vista -> vistaLabel(text)
-            else -> classicLabel(text)
-        }
-        uiText(label, language)
+        // 保留 "> " 提示符与 "[ ]" 选中括号等终端装饰。
+        if (vista) vistaLabel(text) else classicLabel(text)
     }
     MaterialText(
-        text = localized,
+        text = label,
         modifier = modifier,
         color = color,
         fontSize = fontSize,

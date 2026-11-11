@@ -88,7 +88,7 @@ internal fun MochiSettingsScaffold(
                 MochiBarButton(
                     "保存",
                     onClick = {
-                        toast?.show("设置已保存", icon = { tint ->
+                        toast?.show("保存成功", icon = { tint ->
                             PhosphorIcon(R.drawable.ph_check, null, Modifier.size(20.dp), tint)
                         })
                         if (onBack != null) onBack() else navigator?.pop()

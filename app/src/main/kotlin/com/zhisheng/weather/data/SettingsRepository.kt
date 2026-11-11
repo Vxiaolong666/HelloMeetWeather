@@ -326,15 +326,6 @@ enum class LandscapeStandbyStyle(val key: String, val cn: String) {
     }
 }
 
-enum class AppLanguage(val key: String, val cn: String) {
-    CHINESE("zh", "简体中文"),
-    JAPANESE("ja", "日本語");
-
-    companion object {
-        fun from(value: String?): AppLanguage = entries.firstOrNull { it.key == value } ?: CHINESE
-    }
-}
-
 enum class HomeModule(val key: String, val cn: String, val en: String) {
     HOURLY("hourly", "逐时预报", "HOURLY"),
     PRECIP("precip", "短时降水", "NOWCAST"),
@@ -471,7 +462,6 @@ object SettingsRepository {
     private val KEY_APP_ICON = stringPreferencesKey("app_icon")
     private val KEY_HOME_BRIEFING_STYLE = stringPreferencesKey("home_briefing_style")
     private val KEY_HOME_SURFACE_STYLE = stringPreferencesKey("home_surface_style")
-    private val KEY_APP_LANGUAGE = stringPreferencesKey("app_language")
     private val KEY_LAST_AUTO_LOCATE = longPreferencesKey("last_auto_locate_at")
     private val KEY_MODULE_ORDER = stringPreferencesKey("home_module_order")
     private val KEY_RADAR_SOURCE = stringPreferencesKey("radar_source")
@@ -592,9 +582,6 @@ object SettingsRepository {
     }
     val homeSurfaceStyle: Flow<HomeSurfaceStyle> by lazy {
         store.data.map { HomeSurfaceStyle.from(it[KEY_HOME_SURFACE_STYLE]) }.distinctUntilChanged()
-    }
-    val appLanguage: Flow<AppLanguage> by lazy {
-        store.data.map { AppLanguage.from(it[KEY_APP_LANGUAGE]) }.distinctUntilChanged()
     }
     // 1B：自动定位闸门持久化——上次自动定位时间落盘，进程重启不归零
     val lastAutoLocateAt: Flow<Long> by lazy {
@@ -772,9 +759,6 @@ object SettingsRepository {
     }
     suspend fun setHomeSurfaceStyle(style: HomeSurfaceStyle) = store.edit {
         it[KEY_HOME_SURFACE_STYLE] = style.key
-    }
-    suspend fun setAppLanguage(language: AppLanguage) = store.edit {
-        it[KEY_APP_LANGUAGE] = language.key
     }
     suspend fun setModuleOrder(order: List<HomeModule>) = store.edit {
         it[KEY_MODULE_ORDER] = HomeModule.ORDER_MARKER + HomeModule.orderFrom(

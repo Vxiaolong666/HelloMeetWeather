@@ -54,7 +54,6 @@ import com.zhisheng.weather.data.SecretStore
 import com.zhisheng.weather.data.SettingsRepository
 import com.zhisheng.weather.data.mergePlaceSearchResults
 import com.zhisheng.weather.model.CoordinateKind
-import com.zhisheng.weather.i18n.uiText
 import com.zhisheng.weather.model.City
 import com.zhisheng.weather.model.PlaceRegion
 import com.zhisheng.weather.model.filterPlaceRegion

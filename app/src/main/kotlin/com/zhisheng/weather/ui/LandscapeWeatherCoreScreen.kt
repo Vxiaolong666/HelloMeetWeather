@@ -55,7 +55,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhisheng.weather.BuildConfig
-import com.zhisheng.weather.i18n.uiText
 import com.zhisheng.weather.model.DailyWeather
 import com.zhisheng.weather.model.HourlyWeather
 import com.zhisheng.weather.model.phaseAwareCondition
@@ -326,8 +325,8 @@ private fun WeatherCoreTopRail(
                 onClick = onSettings,
                 modifier = Modifier.size(if (isPhosphorVista) 48.dp else 38.dp).zhishengCompactPanel(),
             ) {
-                if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, uiText("设置"), Modifier.size(20.dp), ZhishengTextSecondary)
-                else Icon(Icons.Default.Settings, contentDescription = uiText("设置"), tint = ZhishengOrange, modifier = Modifier.size(19.dp))
+                if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, "设置", Modifier.size(20.dp), ZhishengTextSecondary)
+                else Icon(Icons.Default.Settings, contentDescription = "设置", tint = ZhishengOrange, modifier = Modifier.size(19.dp))
             }
         }
     }

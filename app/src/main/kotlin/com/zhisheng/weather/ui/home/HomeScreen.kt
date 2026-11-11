@@ -15,7 +15,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.lifecycle.repeatOnLifecycle
-import com.zhisheng.weather.i18n.uiText
 
 import android.content.Intent
 import android.net.Uri
@@ -101,15 +100,13 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.DrawerValue
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.produceState
 import com.zhisheng.weather.data.CachedWeather
 import com.zhisheng.weather.model.City
@@ -127,6 +124,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.zhisheng.weather.ui.rememberMochiColorScheme
+import ui.feice.mochi.navigation.MochiSidebarHeader
+import ui.feice.mochi.navigation.MochiSidebarHeaderButton
+import ui.feice.mochi.navigation.MochiSidebarItem
+import ui.feice.mochi.navigation.MochiSidebarLayout
+import ui.feice.mochi.navigation.MochiSidebarSectionHeader
+import ui.feice.mochi.navigation.rememberMochiSidebarState
+import ui.feice.mochi.theme.MochiTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -314,12 +319,9 @@ fun HomeScreen(
     dismissCitiesRequest: Int = 0,
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    // A transient city drawer must not be restored by the portrait SaveableStateProvider.
-    // Reset on the configuration frame, before the outgoing orientation can flash an open drawer.
-    val drawerOrientation = androidx.compose.ui.platform.LocalConfiguration.current.orientation
-    val drawerState = remember(drawerOrientation) { androidx.compose.material3.DrawerState(DrawerValue.Closed) }
+    val sidebar = rememberMochiSidebarState()
     LaunchedEffect(dismissCitiesRequest) {
-        if (dismissCitiesRequest > 0) drawerState.snapTo(DrawerValue.Closed)
+        if (dismissCitiesRequest > 0) sidebar.close()
     }
     val scope = rememberCoroutineScope()
     val chrome = LocalZhishengChrome.current
@@ -347,7 +349,7 @@ fun HomeScreen(
         cityDeckVisible = false
         cityDeckPinned = false
         cityDeckExpansion = 0f
-        if (drawerState.isOpen) drawerState.snapTo(DrawerValue.Closed)
+        if (sidebar.isOpen) sidebar.close()
     }
 
     BackHandler(enabled = cityDeckVisible) {
@@ -405,17 +407,18 @@ fun HomeScreen(
         if (from != null && to != null) SkyPagingTransition(from, to) else null
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = false,
-        drawerContent = {
+    MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
+    MochiSidebarLayout(
+        state = sidebar,
+        swipeToOpen = false,
+        sidebar = {
             CityDrawer(
                 uiState = uiState,
-                active = drawerState.isOpen || drawerState.targetValue == DrawerValue.Open,
-                onBack = { scope.launch { drawerState.close() } },
+                active = sidebar.isOpen,
+                onDismiss = { sidebar.close() },
                 onSelect = { key ->
                     viewModel.selectCity(key)
-                    scope.launch { drawerState.close() }
+                    sidebar.close()
                 },
                 onToggleFavorite = viewModel::toggleCityFavorite,
                 onRemove = viewModel::removeCity,
@@ -428,15 +431,12 @@ fun HomeScreen(
             )
         },
     ) {
-        BackHandler(enabled = ambienceActive && drawerState.isOpen) {
-            scope.launch { drawerState.close() }
-        }
         // 氛围层视差：列表滚动越深，天空/云层越往上退（按城市列表取最大滚动深度）
         val ambienceParallax = remember { mutableFloatStateOf(0f) }
         NaturalWeatherSurface(atmosphereWeather, uiState.prefs.ambience, night,
             modifier = Modifier.fillMaxSize().graphicsLayer {
-                alpha = if (drawerState.isOpen && drawerState.targetValue == DrawerValue.Open) 0f else 1f
-            }, active = ambienceActive && !drawerState.isOpen && drawerState.targetValue != DrawerValue.Open,
+                alpha = if (sidebar.isOpen) 0f else 1f
+            }, active = ambienceActive && !sidebar.isOpen,
             parallax = { ambienceParallax.floatValue }, city = atmosphereCity,
             pagingTransition = skyTransition,
             pagingFraction = { cityPager?.let { p ->
@@ -445,20 +445,20 @@ fun HomeScreen(
             Box(Modifier.fillMaxSize()) {
                 if (uiState.cities.isEmpty()) {
                     Column(Modifier.fillMaxSize()) {
-                        TopBar("枳生天气", uiState.loading, { scope.launch { drawerState.open() } },
+                        TopBar("枳生天气", uiState.loading, { sidebar.open() },
                             viewModel::refreshFromUser, onSettingsClick)
                         if (uiState.citiesLoaded) EmptyState(onSearchClick, onLocationSetupClick) else BootState()
                     }
                 } else CompositionLocalProvider(LocalCitySharedChrome provides sharedChrome) { CityWeatherPager(
                     cities = uiState.cities,
                     selectedKey = uiState.selectedCity?.locationKey,
-                    enabled = ambienceActive && !cityDeckVisible && !drawerState.isOpen,
+                    enabled = ambienceActive && !cityDeckVisible && !sidebar.isOpen,
                     onSelect = viewModel::selectCity,
                     onPaging = { cityPaging = it },
                     onPagerReady = { cityPager = it },
                     overlay = { pager -> CitySharedChromeHost(sharedChrome, uiState.cities, pager, uiState,
-                        { scope.launch { drawerState.open() } }, viewModel::refreshFromUser, onSettingsClick,
-                        scrollEnabled = ambienceActive && !cityDeckVisible && !drawerState.isOpen) },
+                        { sidebar.open() }, viewModel::refreshFromUser, onSettingsClick,
+                        scrollEnabled = ambienceActive && !cityDeckVisible && !sidebar.isOpen) },
                     modifier = Modifier.fillMaxSize(),
                 ) { city, pager ->
                     // Changing configuration/coordinates destroys the preview before the next frame.
@@ -485,7 +485,7 @@ fun HomeScreen(
                             scrollToTopRequest = scrollToTopRequest,
                             onScrolling = { weatherContentScrolling = it },
                             onParallax = { ambienceParallax.floatValue = it },
-                            onMenu = { scope.launch { drawerState.open() } },
+                            onMenu = { sidebar.open() },
                             onRefresh = { if (selected && !pager.isScrollInProgress) viewModel.refreshFromUser() },
                             onSettings = onSettingsClick,
                             indicator = { CityPageIndicator(uiState.cities, city, pager) },
@@ -622,6 +622,7 @@ fun HomeScreen(
             )
             if (uiState.prefs.scanlines) Scanlines()
         }
+    }
     }
 }
 
@@ -1172,8 +1173,8 @@ internal fun TopBar(
             onClick = onMenu,
             modifier = Modifier.size(48.dp),
         ) {
-            if (isPhosphorVista) PhosphorIcon(R.drawable.ph_list, uiText("城市列表"), Modifier.size(22.dp), ZhishengTextSecondary)
-            else Icon(Icons.Filled.Menu, contentDescription = uiText("城市列表"), tint = ZhishengTextSecondary, modifier = Modifier.size(22.dp))
+            if (isPhosphorVista) PhosphorIcon(R.drawable.ph_list, "城市列表", Modifier.size(22.dp), ZhishengTextSecondary)
+            else Icon(Icons.Filled.Menu, contentDescription = "城市列表", tint = ZhishengTextSecondary, modifier = Modifier.size(22.dp))
         }
         Column(Modifier.weight(1f).clickable(onClick = onMenu).heightIn(min = 48.dp).padding(start = 4.dp)
             .then(if (isPhosphorVista) Modifier.padding(vertical = 8.dp) else Modifier)) {
@@ -1201,6 +1202,11 @@ internal fun TopBar(
                 letterSpacing = 1.5.sp,
             )
             indicator()
+        }
+        // 首页右侧的城市切换入口：点开 demo 风格侧边栏，城市列表由侧边栏承载。
+        IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
+            if (isPhosphorVista) PhosphorIcon(R.drawable.ph_buildings, "城市切换", Modifier.size(20.dp), ZhishengTextSecondary)
+            else Icon(Icons.Filled.Place, contentDescription = "城市切换", tint = ZhishengOrange, modifier = Modifier.size(20.dp))
         }
         // 刷新中持续旋转：原来是静态 360f，视觉上等于没转（v0.0.2）
         val angle = if (loading && LocalCityPageMotionRunning.current) {
@@ -1234,8 +1240,8 @@ internal fun TopBar(
             onClick = onSettings,
             modifier = Modifier.size(48.dp),
         ) {
-            if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, uiText("设置"), Modifier.size(20.dp), ZhishengTextSecondary)
-            else Icon(Icons.Filled.Settings, contentDescription = uiText("设置"), tint = ZhishengTextSecondary, modifier = Modifier.size(20.dp))
+            if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, "设置", Modifier.size(20.dp), ZhishengTextSecondary)
+            else Icon(Icons.Filled.Settings, contentDescription = "设置", tint = ZhishengTextSecondary, modifier = Modifier.size(20.dp))
         }
         // 独立的第二套设置页入口：紧跟在原设置按钮右侧，原入口行为不变。
         LocalMochiSettingsEntry.current?.let { onMochiSettings ->
@@ -1243,8 +1249,8 @@ internal fun TopBar(
                 onClick = onMochiSettings,
                 modifier = Modifier.size(48.dp),
             ) {
-                if (isPhosphorVista) PhosphorIcon(R.drawable.ph_sparkle, uiText("新设置"), Modifier.size(20.dp), ZhishengMint)
-                else Icon(Icons.Filled.Settings, contentDescription = uiText("新设置"), tint = ZhishengMint, modifier = Modifier.size(20.dp))
+                if (isPhosphorVista) PhosphorIcon(R.drawable.ph_sparkle, "新设置", Modifier.size(20.dp), ZhishengMint)
+                else Icon(Icons.Filled.Settings, contentDescription = "新设置", tint = ZhishengMint, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -1558,13 +1564,12 @@ private fun StatusLine(city: com.zhisheng.weather.model.City?, data: WeatherData
     val labelStyle = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp)
     val updateColor = if (staleAgeMillis != null && staleAgeMillis >= 10 * 60_000L) ZhishengOrange else ZhishengTextTertiary
     val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
-    val language = com.zhisheng.weather.i18n.LocalAppLanguage.current
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 2.dp)) {
         // Compare the actual localized strings at their real font scale and letter spacing.
         // A long coordinate must not squeeze the complete update date into a tiny Row weight.
-        val coordinateWidth = textMeasurer.measure(uiText(coord, language), labelStyle, softWrap = false, maxLines = 1).size.width
-        val updateWidth = textMeasurer.measure(uiText(updText, language), labelStyle, softWrap = false, maxLines = 1).size.width
+        val coordinateWidth = textMeasurer.measure(coord, labelStyle, softWrap = false, maxLines = 1).size.width
+        val updateWidth = textMeasurer.measure(updText, labelStyle, softWrap = false, maxLines = 1).size.width
         val fitsOneLine = coordinateWidth + with(density) { 8.dp.roundToPx() } + updateWidth <= constraints.maxWidth
         Column(Modifier.fillMaxWidth()) {
             if (fitsOneLine) Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1697,16 +1702,14 @@ internal fun HeroSection(
             }
         }
         Nowcast.briefing(data, unit, nowMillis)?.let { briefing ->
-            val briefingText = com.zhisheng.weather.i18n.weatherBriefingText(
-                briefing.text, com.zhisheng.weather.i18n.LocalAppLanguage.current,
-            )
+            val briefingText = briefing.text
             val copy = briefingCopy(briefingText)
             val copyColor = briefingColor(briefing)
             if (isPhosphorVista) {
                 if (prefs.homeBriefingStyle != HomeBriefingStyle.OFF) {
                     Row(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = if (showVistaAlerts) 8.dp else 0.dp)
                         .padding(top = 3.dp, bottom = 3.dp)
-                        .semantics(mergeDescendants = true) { contentDescription = "${uiText("天气播报")}：$briefingText" },
+                        .semantics(mergeDescendants = true) { contentDescription = "天气播报：$briefingText" },
                         verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (prefs.homeBriefingStyle == HomeBriefingStyle.WEATHER_GIRL) {
                             Image(painterResource(briefingEmoteRes(briefing.emote)), contentDescription = null, modifier = Modifier.size(40.dp))
@@ -1735,7 +1738,7 @@ internal fun HeroSection(
                                 )
                             }
                             .semantics(mergeDescendants = true) {
-                                contentDescription = "${uiText("天气娘提示")}：$briefingText"
+                                contentDescription = "天气娘提示：$briefingText"
                             },
                     ) {
                         Image(
@@ -1795,7 +1798,7 @@ internal fun HeroSection(
                                 )
                             }
                             .semantics(mergeDescendants = true) {
-                                contentDescription = "${uiText("天气提示")}：$briefingText"
+                                contentDescription = "天气提示：$briefingText"
                             }
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -2281,7 +2284,7 @@ private fun VistaModuleIcon(
     modifier: Modifier = Modifier,
     tint: Color = ZhishengMint,
 ) {
-    PhosphorIcon(resourceId, uiText(description), modifier.size(18.dp), tint)
+    PhosphorIcon(resourceId, description, modifier.size(18.dp), tint)
 }
 
 // Vista uses one shared chart; classic retains its original compact hourly columns.
@@ -3779,7 +3782,7 @@ private fun WindCompass(degrees: Double, latitude: Double?, longitude: Double?) 
         Modifier
             // 与 titleMedium 行高对齐，湿度/风向这一行才不会比气压紫外线更高。
             .size(22.dp)
-            .semantics { contentDescription = uiText("风向 ${degrees.roundToInt()} 度") },
+            .semantics { contentDescription = "风向 ${degrees.roundToInt()} 度" },
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.fillMaxSize()) {
@@ -4940,7 +4943,7 @@ private fun ErrorState(message: String, onSearchClick: () -> Unit) {
 private fun CityDrawer(
     uiState: HomeUiState,
     active: Boolean,
-    onBack: () -> Unit,
+    onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
     onToggleFavorite: (String) -> Unit,
     onRemove: (String) -> Unit,
@@ -4984,52 +4987,33 @@ private fun CityDrawer(
             }
         }
     }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .zhishengScreen()
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp),
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                if (isPhosphorVista) {
-                    PhosphorIcon(R.drawable.ph_arrow_left, uiText("返回"), Modifier.size(22.dp), ZhishengText)
-                } else {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = uiText("返回"), tint = ZhishengText)
-                }
-            }
-            if (!isPhosphorVista) Text("00//", style = MaterialTheme.typography.titleSmall, color = ZhishengOrange, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(6.dp))
-            Text(if (isPhosphorVista) "城市管理" else "城市", style = MaterialTheme.typography.titleMedium, color = ZhishengText, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(8.dp))
-            if (!isPhosphorVista) Text("CITY LIST", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary, letterSpacing = 1.5.sp)
-            val favoriteCount = uiState.cities.count { it.isFavorite }
-            if (favoriteCount > 0) {
-                Spacer(Modifier.weight(1f))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isPhosphorVista) PhosphorIcon(R.drawable.ph_star, null, Modifier.size(15.dp), ZhishengOrange)
-                    Text(
-                        " $favoriteCount/${com.zhisheng.weather.data.CityRepository.MAX_FAVORITES}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ZhishengOrange,
-                        letterSpacing = 0.4.sp,
-                    )
-                }
+    var query by rememberSaveable { mutableStateOf("") }
+    val filtered = remember(uiState, query) {
+        val keyword = query.trim()
+        if (keyword.isEmpty()) uiState
+        else uiState.copy(cities = uiState.cities.filter { it.displayName.contains(keyword, ignoreCase = true) })
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+        // demo 的侧边栏：搜索框 + 分组标题 + 底部条目；城市天气预览卡沿用原来的自绘样式。
+        MochiSidebarHeader(query, { query = it }, placeholder = "搜索城市") {
+            MochiSidebarHeaderButton(onClick = { onDismiss(); onAddCity() }) {
+                Icon(Icons.Filled.Add, contentDescription = "添加城市", tint = MochiTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp))
             }
         }
+        val favoriteCount = uiState.cities.count { it.isFavorite }
+        MochiSidebarSectionHeader(
+            "城市" + if (favoriteCount > 0) " · 已收藏 $favoriteCount/${com.zhisheng.weather.data.CityRepository.MAX_FAVORITES}" else "",
+        )
         if (isPhosphorVista) {
-            CityWeatherList(uiState, Modifier.weight(1f).fillMaxWidth(),
+            CityWeatherList(filtered, Modifier.weight(1f).fillMaxWidth(),
                 onAddCity, onSelect, onToggleFavorite, onRemove, active)
         } else {
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(vertical = 4.dp),
         ) {
-            if (uiState.cities.isEmpty()) {
+            if (filtered.cities.isEmpty()) {
                 item {
                     Text(
                         "还没有保存的城市",
@@ -5040,10 +5024,10 @@ private fun CityDrawer(
                 }
             }
             itemsIndexed(
-                items = uiState.cities,
+                items = filtered.cities,
                 key = { _, city -> city.locationKey },
             ) { i, city ->
-                val selected = city.locationKey == uiState.selectedCity?.locationKey
+                val selected = city.locationKey == filtered.selectedCity?.locationKey
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -5086,22 +5070,22 @@ private fun CityDrawer(
                     ) {
                         PhosphorIcon(
                             R.drawable.ph_star,
-                            contentDescription = if (city.isFavorite) "${uiText("取消收藏")} ${city.displayName}" else "${uiText("收藏")} ${city.displayName}",
+                            contentDescription = if (city.isFavorite) "取消收藏 ${city.displayName}" else "收藏 ${city.displayName}",
                             tint = if (city.isFavorite) ZhishengOrange else ZhishengTextTertiary,
                             modifier = Modifier.size(21.dp).semantics {
                                 contentDescription = if (city.isFavorite) {
-                                    "${uiText("取消收藏")} ${city.displayName}"
+                                    "取消收藏 ${city.displayName}"
                                 } else {
-                                    "${uiText("收藏")} ${city.displayName}"
+                                    "收藏 ${city.displayName}"
                                 }
                             },
                         )
                     }
                     IconButton(onClick = { onRemove(city.locationKey) }, modifier = Modifier.size(48.dp)) {
                         if (isPhosphorVista) {
-                            PhosphorIcon(R.drawable.ph_trash, uiText("删除${city.displayName}"), Modifier.size(18.dp), ZhishengTextTertiary)
+                            PhosphorIcon(R.drawable.ph_trash, "删除${city.displayName}", Modifier.size(18.dp), ZhishengTextTertiary)
                         } else {
-                            Icon(Icons.Filled.Close, contentDescription = uiText("删除${city.displayName}"), tint = ZhishengTextTertiary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.Close, contentDescription = "删除${city.displayName}", tint = ZhishengTextTertiary, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -5203,6 +5187,7 @@ private fun CityDrawer(
             }
             }
         }
+        MochiSidebarItem("收起侧边栏", onClick = onDismiss)
     }
 }
 
