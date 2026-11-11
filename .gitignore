@@ -9,7 +9,8 @@ captures/
 local.properties
 *.log
 AndroidLiquidGlass-kmp/
-mochi-compose-main/
+# mochi-compose-main 源码模块已入库（CI 构建依赖），仅忽略其构建产物
+mochi-compose-main/**/build/
 # ===== IDE =====
 .idea/
 .claude/
