@@ -127,7 +127,6 @@ import androidx.compose.runtime.snapshotFlow
 import com.zhisheng.weather.ui.rememberMochiColorScheme
 import ui.feice.mochi.navigation.MochiSidebarHeader
 import ui.feice.mochi.navigation.MochiSidebarHeaderButton
-import ui.feice.mochi.navigation.MochiSidebarItem
 import ui.feice.mochi.navigation.MochiSidebarLayout
 import ui.feice.mochi.navigation.MochiSidebarSectionHeader
 import ui.feice.mochi.navigation.MochiSidebarStyle
@@ -5189,7 +5188,6 @@ private fun CityDrawer(
             }
             }
         }
-        MochiSidebarItem("收起侧边栏", onClick = onDismiss)
     }
 }
 
