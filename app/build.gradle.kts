@@ -22,7 +22,7 @@ val communityQqGroup1 = "1106284779"
 
 android {
     namespace = "com.zhisheng.weather"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.zhisheng.weather"
@@ -104,9 +104,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -121,6 +118,12 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
@@ -128,8 +131,12 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.tooling.preview)
     implementation(libs.core.ktx)
-    // Liquid Glass (Backdrop) — vendored local module for the settings bottom bar.
-    implementation(project(":backdrop"))
+    // Mochi Compose：设置页重做所用的组件库（本地源码模块）
+    implementation(project(":mochi-compose"))
+    implementation(project(":mochi-icons"))
+    // Liquid Glass (Backdrop)：与 mochi-compose 共用同一份官方构件，
+    // 不再打包本地 vendored 的 :backdrop（同名类会让 R8 报重复定义）。
+    implementation("io.github.kyant0:backdrop:1.0.6")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)

@@ -13,10 +13,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -40,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -79,9 +77,19 @@ import com.zhisheng.weather.ui.ProvideWeatherPresentationClock
 import com.zhisheng.weather.ui.weatherPresentationTime
 import com.zhisheng.weather.ui.home.HomeScreen
 import com.zhisheng.weather.ui.SettingsScreen
+import com.zhisheng.weather.ui.MochiSettingsScreen
+import com.zhisheng.weather.ui.LocalMochiSettingsEntry
+import com.zhisheng.weather.ui.MochiAtmosphereLabScreen
+import com.zhisheng.weather.ui.MochiProviderAccessScreen
+import com.zhisheng.weather.ui.MochiWeatherSourceScreen
+import com.zhisheng.weather.ui.MochiPrecipitationDetailScreen
+import com.zhisheng.weather.ui.MochiSearchScreen
 import com.zhisheng.weather.ui.AtmosphereLabScreen
 import com.zhisheng.weather.ui.overlayEnter
 import com.zhisheng.weather.ui.overlayExit
+import com.zhisheng.weather.ui.PageTransitionStyle
+import com.zhisheng.weather.ui.rememberMochiUiPrefs
+import com.zhisheng.weather.ui.ApplyMochiUiPrefs
 import com.zhisheng.weather.ui.screenTransition
 import com.zhisheng.weather.ui.LandscapeStandbyScreen
 import com.zhisheng.weather.ui.HistoryScreen
@@ -188,6 +196,8 @@ class MainActivity : ComponentActivity() {
                 // 三星 / realme 会比小米更积极恢复任务状态；若保存 SEARCH，横向冷启动会误回城市选择页。
                 // 冷启动统一回主页（横放时由 standbyActive 展示气象时钟）；快捷方式仍由 command 明确跳转。
                 var screen by rememberSaveable { mutableStateOf(AppScreen.HOME) }
+                // 大气实验室 / 自有服务 / 天气来源是两套设置共用的跨页二级页，返回时需回到打开它的那套设置。
+                var settingsReturnTo by rememberSaveable { mutableStateOf(AppScreen.SETTINGS) }
                 // 从首页五日卡片进入时携带的日期；null 表示按默认（今天）选中。
                 var forecastDate by rememberSaveable { mutableStateOf<Long?>(null) }
                 var cityPickedRequest by rememberSaveable { mutableIntStateOf(0) }
@@ -371,7 +381,10 @@ class MainActivity : ComponentActivity() {
                             vm.preserveWidgetCityOnEntry()
                         }
                         ACTION_SEARCH -> screen = AppScreen.SEARCH
-                        ACTION_SETTINGS -> screen = AppScreen.SETTINGS
+                        ACTION_SETTINGS -> {
+                            settingsReturnTo = AppScreen.SETTINGS
+                            screen = AppScreen.SETTINGS
+                        }
                         ACTION_TYPHOON -> screen = if (ReleaseFeatures.typhoon) AppScreen.TYPHOON else AppScreen.HOME
                         ACTION_REFRESH -> {
                             screen = AppScreen.HOME
@@ -414,7 +427,7 @@ class MainActivity : ComponentActivity() {
                     screen = when (screen) {
                         AppScreen.ATMOSPHERE_LAB,
                         AppScreen.PROVIDER_ACCESS,
-                        AppScreen.WEATHER_SOURCE -> AppScreen.SETTINGS
+                        AppScreen.WEATHER_SOURCE -> settingsReturnTo
                         else -> AppScreen.HOME
                     }
                 }
@@ -448,12 +461,24 @@ class MainActivity : ComponentActivity() {
 
                 val orientationState = rememberSaveableStateHolder()
                 val motionEnabled = systemAnimationsEnabled()
+                // UI 个性化偏好：同步到库全局效果状态，并驱动全站页面转场。
+                val uiPrefs = rememberMochiUiPrefs()
+                ApplyMochiUiPrefs(uiPrefs)
+                val transitionStyle = PageTransitionStyle.from(uiPrefs.pageTransition)
+                // 转场偏好在设置页里随时会变：让 transitionSpec 读 State 而非捕获旧值，
+                // 否则 AnimatedContent / AnimatedVisibility 复用旧的动画规格，看起来像「设置没生效」。
+                val currentStyle by rememberUpdatedState(transitionStyle)
+                val currentSwipeBack by rememberUpdatedState(uiPrefs.swipeBack)
+                val currentMotionEnabled by rememberUpdatedState(motionEnabled)
                 SharedTransitionLayout(Modifier.fillMaxSize()) {
                     AnimatedContent(
                         targetState = standbyVisible,
                         transitionSpec = {
-                            if (screen == AppScreen.HOME && motionEnabled) fadeIn(tween(220)) togetherWith fadeOut(tween(160))
-                            else androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+                            if (currentMotionEnabled && screen == AppScreen.HOME) {
+                                screenTransition(currentMotionEnabled, currentStyle, currentSwipeBack)
+                            } else {
+                                androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+                            }
                         },
                         label = "weather-orientation",
                     ) { landscape ->
@@ -465,7 +490,10 @@ class MainActivity : ComponentActivity() {
                         uiState = uiState,
                         style = landscapeStandbyStyle,
                         onRefresh = { vm.refreshFromUser() },
-                        onSettings = { screen = AppScreen.SETTINGS },
+                        onSettings = {
+                            settingsReturnTo = AppScreen.SETTINGS
+                            screen = AppScreen.SETTINGS
+                        },
                     )
                 } else {
                     // 主屏始终留在下层。进出设置/搜索只盖一层，避免拆掉 WeatherContent
@@ -487,8 +515,14 @@ class MainActivity : ComponentActivity() {
                     }) {
                         val liveGlow = com.zhisheng.weather.ui.theme.LocalVistaGlowPhase.current
                         val frozenGlow = remember { mutableStateOf(0.0) }
-                        CompositionLocalProvider(com.zhisheng.weather.ui.theme.LocalVistaGlowPhase provides
-                            if (screen == AppScreen.HOME) liveGlow else frozenGlow) {
+                        CompositionLocalProvider(
+                            com.zhisheng.weather.ui.theme.LocalVistaGlowPhase provides
+                                if (screen == AppScreen.HOME) liveGlow else frozenGlow,
+                            LocalMochiSettingsEntry provides {
+                                settingsReturnTo = AppScreen.MOCHI_SETTINGS
+                                screen = AppScreen.MOCHI_SETTINGS
+                            },
+                        ) {
                         HomeScreen(
                             viewModel = vm,
                             ambienceActive = screen == AppScreen.HOME,
@@ -506,7 +540,10 @@ class MainActivity : ComponentActivity() {
                                 showLocationSetupAgain = true
                                 startupPromptsSuppressed = false
                             },
-                            onSettingsClick = { screen = AppScreen.SETTINGS },
+                            onSettingsClick = {
+                                settingsReturnTo = AppScreen.SETTINGS
+                                screen = AppScreen.SETTINGS
+                            },
                             onHistoryClick = { screen = AppScreen.HISTORY },
                             onRadarClick = { if (ReleaseFeatures.radar) screen = AppScreen.RADAR },
                             onDailyForecastClick = {
@@ -538,14 +575,14 @@ class MainActivity : ComponentActivity() {
                         if (overlayVisible && overlayScreen != screen) overlayScreen = screen
                         AnimatedVisibility(
                             visible = overlayVisible,
-                            enter = if (standbyActive) androidx.compose.animation.EnterTransition.None else overlayEnter(motionEnabled, overlayOrigin),
-                            exit = if (standbyActive) androidx.compose.animation.ExitTransition.None else overlayExit(motionEnabled, overlayOrigin),
+                            enter = overlayEnter(currentMotionEnabled, overlayOrigin, currentStyle),
+                            exit = overlayExit(currentMotionEnabled, overlayOrigin, currentStyle, currentSwipeBack),
                             modifier = Modifier.fillMaxSize(),
                             label = "overlay",
                         ) {
                             AnimatedContent(
-                                targetState = if (overlayScreen == AppScreen.ATMOSPHERE_LAB) AppScreen.SETTINGS else overlayScreen,
-                                transitionSpec = { screenTransition(motionEnabled) },
+                                targetState = if (overlayScreen == AppScreen.ATMOSPHERE_LAB) settingsReturnTo else overlayScreen,
+                                transitionSpec = { screenTransition(currentMotionEnabled, currentStyle, currentSwipeBack) },
                                 label = "overlay-stack",
                             ) { dest ->
                                 overlayState.SaveableStateProvider(dest.name) {
@@ -575,23 +612,56 @@ class MainActivity : ComponentActivity() {
                                     )
                                     AnimatedVisibility(
                                         visible = overlayScreen == AppScreen.ATMOSPHERE_LAB,
-                                        enter = overlayEnter(motionEnabled),
-                                        exit = overlayExit(motionEnabled),
+                                        enter = overlayEnter(currentMotionEnabled, overlayOrigin, currentStyle),
+                                        exit = overlayExit(currentMotionEnabled, overlayOrigin, currentStyle, currentSwipeBack),
                                     ) {
-                                        if (ReleaseFeatures.weatherAtmosphere) AtmosphereLabScreen(
+                                        if (ReleaseFeatures.weatherAtmosphere) MochiAtmosphereLabScreen(
                                             initialLevel = uiState.prefs.ambience,
-                                            onBack = { screen = AppScreen.SETTINGS },
+                                            onBack = { screen = settingsReturnTo },
+                                        )
+                                    }
+                                    }
+                                    AppScreen.MOCHI_SETTINGS -> Box(Modifier.fillMaxSize()) {
+                                    MochiSettingsScreen(
+                                        onBack = { screen = AppScreen.HOME },
+                                        onLocate = { vm.locateCurrentCity() },
+                                        locating = uiState.locating,
+                                        locateMessage = uiState.locateMessage,
+                                        onClearLocateMessage = { vm.clearLocateMessage() },
+                                        activeSource = uiState.weather?.dataSource,
+                                        activeWeather = uiState.weather,
+                                        activeSupplementSources = uiState.weather?.let { weather ->
+                                            weather.blockSources.values
+                                                .filter { it.isNotBlank() && it != weather.dataSource }
+                                                .distinct()
+                                        }.orEmpty(),
+                                        activeCityName = uiState.selectedCity?.name,
+                                        activeCityLatitude = uiState.selectedCity?.latitude,
+                                        activeCityLongitude = uiState.selectedCity?.longitude,
+                                        sourceLoading = uiState.loading,
+                                        onAtmosphereLab = { if (ReleaseFeatures.weatherAtmosphere) screen = AppScreen.ATMOSPHERE_LAB },
+                                        onManageProviders = { screen = AppScreen.PROVIDER_ACCESS },
+                                        onOpenWeatherSource = { screen = AppScreen.WEATHER_SOURCE },
+                                    )
+                                    AnimatedVisibility(
+                                        visible = overlayScreen == AppScreen.ATMOSPHERE_LAB,
+                                        enter = overlayEnter(currentMotionEnabled, overlayOrigin, currentStyle),
+                                        exit = overlayExit(currentMotionEnabled, overlayOrigin, currentStyle, currentSwipeBack),
+                                    ) {
+                                        if (ReleaseFeatures.weatherAtmosphere) MochiAtmosphereLabScreen(
+                                            initialLevel = uiState.prefs.ambience,
+                                            onBack = { screen = settingsReturnTo },
                                         )
                                     }
                                     }
                                     AppScreen.ATMOSPHERE_LAB -> Unit
-                                    AppScreen.PROVIDER_ACCESS -> com.zhisheng.weather.ui.ProviderAccessScreen(
-                                        onBack = { screen = AppScreen.SETTINGS },
+                                    AppScreen.PROVIDER_ACCESS -> MochiProviderAccessScreen(
+                                        onBack = { screen = settingsReturnTo },
                                     )
-                                    AppScreen.WEATHER_SOURCE -> com.zhisheng.weather.ui.WeatherSourceScreen(
+                                    AppScreen.WEATHER_SOURCE -> MochiWeatherSourceScreen(
                                         weather = uiState.weather,
                                         onManageProviders = { screen = AppScreen.PROVIDER_ACCESS },
-                                        onBack = { screen = AppScreen.SETTINGS },
+                                        onBack = { screen = settingsReturnTo },
                                     )
                                     AppScreen.DAILY_FORECAST -> DailyForecastScreen(
                                         city = uiState.selectedCity,
@@ -617,7 +687,7 @@ class MainActivity : ComponentActivity() {
                                         hourly = uiState.weather?.hourly.orEmpty(),
                                         onBack = { screen = AppScreen.HOME },
                                     )
-                                    AppScreen.PRECIPITATION -> com.zhisheng.weather.ui.PrecipitationDetailScreen(
+                                    AppScreen.PRECIPITATION -> MochiPrecipitationDetailScreen(
                                         data = uiState.weather ?: com.zhisheng.weather.model.WeatherData(),
                                         cityName = uiState.selectedCity?.displayName,
                                         onBack = { screen = AppScreen.HOME },
@@ -676,7 +746,7 @@ class MainActivity : ComponentActivity() {
                                         utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
                                         onBack = { screen = AppScreen.HOME },
                                     )
-                                    AppScreen.SEARCH -> SearchScreen(
+                                    AppScreen.SEARCH -> MochiSearchScreen(
                                         onCityPicked = { city: City ->
                                             vm.addCityAndSelect(city)
                                             cityPickedRequest++

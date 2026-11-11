@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -478,6 +480,26 @@ object SettingsRepository {
     private val KEY_LANDSCAPE_STANDBY_STYLE = stringPreferencesKey("landscape_standby_style")
     private val KEY_TELEMETRY_METRICS = stringPreferencesKey("telemetry_metrics")
     private val KEY_LIFE_INDEX_METRICS = stringPreferencesKey("life_index_metrics")
+    // mochi UI 个性化：画面效果档位 / HDR / 按压高光 / 转场与侧推
+    private val KEY_MOCHI_GRAPHICS_LEVEL = stringPreferencesKey("mochi_graphics_level")
+    private val KEY_MOCHI_HDR_ENABLED = booleanPreferencesKey("mochi_hdr_enabled")
+    private val KEY_MOCHI_HDR_STRENGTH = floatPreferencesKey("mochi_hdr_strength")
+    private val KEY_MOCHI_PRESS_TINTED = booleanPreferencesKey("mochi_press_glow_tinted")
+    private val KEY_MOCHI_PRESS_STRENGTH = floatPreferencesKey("mochi_press_glow_strength")
+    private val KEY_MOCHI_PREDICTIVE_BACK = booleanPreferencesKey("mochi_predictive_back")
+    private val KEY_MOCHI_PAGE_TRANSITION = stringPreferencesKey("mochi_page_transition")
+    private val KEY_MOCHI_SWIPE_BACK = booleanPreferencesKey("mochi_swipe_back")
+    private val KEY_MOCHI_BACK_SCALE = stringPreferencesKey("mochi_back_scale")
+    // mochi UI 个性化（第二批）：主题配色 / 主题色 / 取色算法 / 果冻感 / 底部标签栏
+    private val KEY_MOCHI_COLOR_MODE = stringPreferencesKey("mochi_color_mode")
+    private val KEY_MOCHI_SEED = intPreferencesKey("mochi_seed")
+    private val KEY_MOCHI_PALETTE = stringPreferencesKey("mochi_palette")
+    private val KEY_MOCHI_CONTRAST = floatPreferencesKey("mochi_contrast")
+    private val KEY_MOCHI_GEL = floatPreferencesKey("mochi_gel")
+    private val KEY_MOCHI_TAB_LAYOUT = stringPreferencesKey("mochi_tab_layout")
+    private val KEY_MOCHI_TAB_LABEL_BLUR = booleanPreferencesKey("mochi_tab_label_blur")
+    private val KEY_MOCHI_TAB_DROPLET = booleanPreferencesKey("mochi_tab_droplet")
+    private val KEY_MOCHI_TAB_COLLAPSE = booleanPreferencesKey("mochi_tab_collapse")
 
     fun init(context: Context) {
         store = context.applicationContext.settingsStore
@@ -589,6 +611,84 @@ object SettingsRepository {
     }
 
     suspend fun setRadarSource(source: RadarSource) = store.edit { it[KEY_RADAR_SOURCE] = source.key }
+
+    // UI 个性化偏好：mid/high/extra 三档画面效果；HDR 强度与按压高光亮度都是 0..1。
+    val mochiGraphicsLevel: Flow<String> by lazy {
+        store.data.map { it[KEY_MOCHI_GRAPHICS_LEVEL] ?: "high" }.distinctUntilChanged()
+    }
+    val mochiHdrEnabled: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_HDR_ENABLED] ?: false }.distinctUntilChanged()
+    }
+    val mochiHdrStrength: Flow<Float> by lazy {
+        store.data.map { it[KEY_MOCHI_HDR_STRENGTH] ?: 0.6f }.distinctUntilChanged()
+    }
+    val mochiPressTinted: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_PRESS_TINTED] ?: false }.distinctUntilChanged()
+    }
+    val mochiPressStrength: Flow<Float> by lazy {
+        store.data.map { it[KEY_MOCHI_PRESS_STRENGTH] ?: 0.45f }.distinctUntilChanged()
+    }
+    val mochiPredictiveBack: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_PREDICTIVE_BACK] ?: true }.distinctUntilChanged()
+    }
+    val mochiPageTransition: Flow<String> by lazy {
+        store.data.map { it[KEY_MOCHI_PAGE_TRANSITION] ?: "fade" }.distinctUntilChanged()
+    }
+    val mochiSwipeBack: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_SWIPE_BACK] ?: true }.distinctUntilChanged()
+    }
+    val mochiBackScale: Flow<String> by lazy {
+        store.data.map { it[KEY_MOCHI_BACK_SCALE] ?: "subtle" }.distinctUntilChanged()
+    }
+
+    suspend fun setMochiGraphicsLevel(v: String) = store.edit { it[KEY_MOCHI_GRAPHICS_LEVEL] = v }
+    suspend fun setMochiHdrEnabled(v: Boolean) = store.edit { it[KEY_MOCHI_HDR_ENABLED] = v }
+    suspend fun setMochiHdrStrength(v: Float) = store.edit { it[KEY_MOCHI_HDR_STRENGTH] = v.coerceIn(0f, 1f) }
+    suspend fun setMochiPressTinted(v: Boolean) = store.edit { it[KEY_MOCHI_PRESS_TINTED] = v }
+    suspend fun setMochiPressStrength(v: Float) = store.edit { it[KEY_MOCHI_PRESS_STRENGTH] = v.coerceIn(0.05f, 0.8f) }
+    suspend fun setMochiPredictiveBack(v: Boolean) = store.edit { it[KEY_MOCHI_PREDICTIVE_BACK] = v }
+    suspend fun setMochiPageTransition(v: String) = store.edit { it[KEY_MOCHI_PAGE_TRANSITION] = v }
+    suspend fun setMochiSwipeBack(v: Boolean) = store.edit { it[KEY_MOCHI_SWIPE_BACK] = v }
+    suspend fun setMochiBackScale(v: String) = store.edit { it[KEY_MOCHI_BACK_SCALE] = v }
+
+    // 主题配色：app=跟随应用主题 / system=跟随系统 / light / dark / monet=系统取色
+    val mochiColorMode: Flow<String> by lazy {
+        store.data.map { it[KEY_MOCHI_COLOR_MODE] ?: "app" }.distinctUntilChanged()
+    }
+    val mochiSeed: Flow<Int> by lazy {
+        store.data.map { it[KEY_MOCHI_SEED] ?: 0xFF2B6A5Au.toInt() }.distinctUntilChanged()
+    }
+    val mochiPalette: Flow<String> by lazy {
+        store.data.map { it[KEY_MOCHI_PALETTE] ?: "TonalSpot" }.distinctUntilChanged()
+    }
+    val mochiContrast: Flow<Float> by lazy {
+        store.data.map { it[KEY_MOCHI_CONTRAST] ?: 0f }.distinctUntilChanged()
+    }
+    val mochiGel: Flow<Float> by lazy {
+        store.data.map { it[KEY_MOCHI_GEL] ?: 0.6f }.distinctUntilChanged()
+    }
+    val mochiTabLayout: Flow<String> by lazy {
+        store.data.map { it[KEY_MOCHI_TAB_LAYOUT] ?: "inline" }.distinctUntilChanged()
+    }
+    val mochiTabLabelBlur: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_TAB_LABEL_BLUR] ?: true }.distinctUntilChanged()
+    }
+    val mochiTabDroplet: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_TAB_DROPLET] ?: true }.distinctUntilChanged()
+    }
+    val mochiTabCollapse: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_TAB_COLLAPSE] ?: false }.distinctUntilChanged()
+    }
+
+    suspend fun setMochiColorMode(v: String) = store.edit { it[KEY_MOCHI_COLOR_MODE] = v }
+    suspend fun setMochiSeed(v: Int) = store.edit { it[KEY_MOCHI_SEED] = v }
+    suspend fun setMochiPalette(v: String) = store.edit { it[KEY_MOCHI_PALETTE] = v }
+    suspend fun setMochiContrast(v: Float) = store.edit { it[KEY_MOCHI_CONTRAST] = v.coerceIn(-1f, 1f) }
+    suspend fun setMochiGel(v: Float) = store.edit { it[KEY_MOCHI_GEL] = v.coerceIn(0f, 1f) }
+    suspend fun setMochiTabLayout(v: String) = store.edit { it[KEY_MOCHI_TAB_LAYOUT] = v }
+    suspend fun setMochiTabLabelBlur(v: Boolean) = store.edit { it[KEY_MOCHI_TAB_LABEL_BLUR] = v }
+    suspend fun setMochiTabDroplet(v: Boolean) = store.edit { it[KEY_MOCHI_TAB_DROPLET] = v }
+    suspend fun setMochiTabCollapse(v: Boolean) = store.edit { it[KEY_MOCHI_TAB_COLLAPSE] = v }
 
     suspend fun setTempUnit(unit: String) = store.edit { it[KEY_TEMP_UNIT] = unit }
     suspend fun setShowTyphoon(show: Boolean) = store.edit { it[KEY_SHOW_TYPHOON] = show }

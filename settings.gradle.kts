@@ -42,3 +42,8 @@ dependencyResolutionManagement {
 rootProject.name = "ZhishengWeather"
 include(":app")
 include(":backdrop")
+// Mochi Compose 组件库源码模块（只接入核心库与图标库，不引入 demo/外观模块）
+include(":mochi-compose")
+include(":mochi-icons")
+project(":mochi-compose").projectDir = file("mochi-compose-main/mochi-compose")
+project(":mochi-icons").projectDir = file("mochi-compose-main/mochi-icons")

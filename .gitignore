@@ -9,6 +9,7 @@ captures/
 local.properties
 *.log
 AndroidLiquidGlass-kmp/
+mochi-compose-main/
 # ===== IDE =====
 .idea/
 .claude/

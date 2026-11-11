@@ -3,6 +3,7 @@
 package com.zhisheng.weather.ui.home
 
 import com.zhisheng.weather.ui.Text
+import com.zhisheng.weather.ui.LocalMochiSettingsEntry
 import com.zhisheng.weather.ui.weatherPresentationTime
 import com.zhisheng.weather.ui.LocalWeatherPreviewTime
 import com.zhisheng.weather.ui.hasDrySkyWindow
@@ -1235,6 +1236,16 @@ internal fun TopBar(
         ) {
             if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, uiText("设置"), Modifier.size(20.dp), ZhishengTextSecondary)
             else Icon(Icons.Filled.Settings, contentDescription = uiText("设置"), tint = ZhishengTextSecondary, modifier = Modifier.size(20.dp))
+        }
+        // 独立的第二套设置页入口：紧跟在原设置按钮右侧，原入口行为不变。
+        LocalMochiSettingsEntry.current?.let { onMochiSettings ->
+            IconButton(
+                onClick = onMochiSettings,
+                modifier = Modifier.size(48.dp),
+            ) {
+                if (isPhosphorVista) PhosphorIcon(R.drawable.ph_sparkle, uiText("新设置"), Modifier.size(20.dp), ZhishengMint)
+                else Icon(Icons.Filled.Settings, contentDescription = uiText("新设置"), tint = ZhishengMint, modifier = Modifier.size(20.dp))
+            }
         }
     }
 }
