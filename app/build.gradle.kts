@@ -29,8 +29,8 @@ android {
         minSdk = 26
         targetSdk = 34
         // Beta 10 widget and update hotfix; keep the public package/signature.
-        versionCode = 20261172
-        versionName = "0.1-Beta1"
+        versionCode = 20261173
+        versionName = "0.1-Beta3"
         resValue("string", "shortcut_target_package", "com.zhisheng.weather")
 
         // 发行渠道面向实体手机；去掉仅供 Intel 模拟器使用的 x86/x86_64 MapLibre 库。
