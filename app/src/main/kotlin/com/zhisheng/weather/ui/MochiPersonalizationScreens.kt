@@ -694,12 +694,11 @@ internal fun MochiTransitionSettingsPage(prefs: MochiUiPrefs) {
     )
 }
 
+/** 黑暗模式：也是全站深浅的唯一来源，界面设置里不再重复提供主题模式。 */
 private val MochiColorModes = listOf(
-    "跟随应用" to "app",
-    "系统取色" to "monet",
-    "跟随系统" to "system",
     "浅色" to "light",
     "深色" to "dark",
+    "跟随系统" to "system",
 )
 
 private val MochiPaletteStyles = listOf(
@@ -737,14 +736,14 @@ internal fun mochiTabBehaviorFor(prefs: MochiUiPrefs): MochiTabBarBehavior {
     }
 }
 
-/** 主题配色：配色模式、主题色（含自定义取色）、取色算法与对比度。 */
+/** 主题配色：黑暗模式、主题色（含自定义取色）、取色算法与对比度。 */
 @Composable
 internal fun MochiThemeSettingsPage(prefs: MochiUiPrefs) {
     val scope = rememberCoroutineScope()
     var showModePicker by remember { mutableStateOf(false) }
     var showPalettePicker by remember { mutableStateOf(false) }
     val style = prefs.paletteStyle
-    val modeLabel = MochiColorModes.firstOrNull { it.second == prefs.colorMode }?.first ?: "跟随应用"
+    val modeLabel = MochiColorModes.firstOrNull { it.second == prefs.colorMode }?.first ?: "浅色"
     val paletteLabel = MochiPaletteStyles.firstOrNull { it.second == prefs.palette }?.first ?: "Tonal"
 
     // 参考 demo「颜色选择」：库 MochiColorPickerSheet 自己管 Medium/Large 两档，
@@ -755,14 +754,14 @@ internal fun MochiThemeSettingsPage(prefs: MochiUiPrefs) {
     Box(Modifier.fillMaxSize().mochiSheetBackdrop(sheet)) {
         MochiSettingsScaffold(
             title = "主题配色",
-            subtitle = "主题色 · 取色算法 · 对比度",
+            subtitle = "黑暗模式 · 主题色 · 取色算法 · 对比度",
         ) {
             item {
                 MochiListSection(
                     header = "配色",
-                    footer = "配色由组件库按 MD3 规则从种子色生成，立即作用于所有 mochi 页面。系统取色需要 Android 12 以上。",
+                    footer = "黑暗模式是全站深浅的唯一来源，切换后首页与所有设置页一起生效。配色由组件库按 MD3 规则从种子色生成。",
                 ) {
-                    MochiListRow(title = "配色模式", value = modeLabel, chevron = true, onClick = { showModePicker = true })
+                    MochiListRow(title = "黑暗模式", value = modeLabel, chevron = true, onClick = { showModePicker = true })
                     MochiListRow(title = "取色算法", value = paletteLabel, chevron = true, onClick = { showPalettePicker = true })
                     MochiListSliderRow(
                         value = prefs.contrast,
@@ -807,7 +806,7 @@ internal fun MochiThemeSettingsPage(prefs: MochiUiPrefs) {
                         destructive = true,
                         onClick = {
                             scope.launch {
-                                SettingsRepository.setMochiColorMode("app")
+                                SettingsRepository.setMochiColorMode("light")
                                 SettingsRepository.setMochiSeed(0xFF2B6A5Au.toInt())
                                 SettingsRepository.setMochiPalette("TonalSpot")
                                 SettingsRepository.setMochiContrast(0f)
@@ -834,7 +833,7 @@ internal fun MochiThemeSettingsPage(prefs: MochiUiPrefs) {
 
     MochiChoiceDialog(
         visible = showModePicker,
-        title = "配色模式",
+        title = "黑暗模式",
         options = MochiColorModes,
         selected = prefs.colorMode,
         onSelect = { scope.launch { SettingsRepository.setMochiColorMode(it) } },

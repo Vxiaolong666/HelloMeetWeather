@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity() {
                 initial = InterfaceStyle.PHOSPHOR_VISTA,
             )
             val homeSurfaceStyle by SettingsRepository.homeSurfaceStyle.collectAsState(
-                initial = com.zhisheng.weather.data.HomeSurfaceStyle.FRAGRANCE_GLASS,
+                initial = com.zhisheng.weather.data.HomeSurfaceStyle.CURRENT,
             )
             val appConfiguration = LocalConfiguration.current
             val systemDark = isSystemInDarkTheme()

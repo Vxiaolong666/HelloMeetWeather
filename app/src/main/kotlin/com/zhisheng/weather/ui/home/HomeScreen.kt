@@ -251,8 +251,11 @@ import kotlin.math.sin
 import androidx.compose.runtime.compositionLocalOf
 import ui.feice.mochi.basic.MochiSheetDetent
 import ui.feice.mochi.basic.MochiSheetState
+import ui.feice.mochi.basic.MochiSkeleton
 import ui.feice.mochi.basic.mochiSheetBackdrop
 import ui.feice.mochi.basic.rememberMochiSheetState
+import ui.feice.mochi.shape.MochiCapsule
+import ui.feice.mochi.shape.MochiRoundedRectangle
 
 /** 首页两个底部面板共用的状态：根节点据此按 iOS 卡片堆叠缩放退后。 */
 internal data class HomeSheetStates(val outfit: MochiSheetState, val advice: MochiSheetState)
@@ -730,9 +733,31 @@ internal fun HomeCityPage(
                 else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(
                     top = bodyInset + 48.dp, start = 28.dp, end = 28.dp, bottom = 48.dp)) {
                     item {
-                        Text("—°", style = MaterialTheme.typography.displayLarge, color = ZhishengText)
-                        Spacer(Modifier.height(12.dp))
-                        Text(if (selected) "正在获取天气" else "松手查看天气", color = ZhishengTextSecondary)
+                        // 加载中：照 demo 用库 MochiSkeleton 拼一组首页布局骨架；
+                        // 数据到达后整段被真实内容替换，未加载出数据时灰块淡出回落到占位文字。
+                        val skeletonLoading = selected && (uiState.loading || uiState.locating)
+                        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                            MochiSkeleton(skeletonLoading, shape = MochiRoundedRectangle(16.dp)) {
+                                Text("—°", style = MaterialTheme.typography.displayLarge, color = ZhishengText)
+                            }
+                            MochiSkeleton(skeletonLoading, shape = MochiCapsule) {
+                                Text(
+                                    if (selected) "正在获取天气" else "松手查看天气",
+                                    color = ZhishengTextSecondary,
+                                )
+                            }
+                            if (skeletonLoading) {
+                                MochiSkeleton(skeletonLoading, shape = MochiRoundedRectangle(22.dp)) {
+                                    Box(Modifier.fillMaxWidth().height(160.dp))
+                                }
+                                MochiSkeleton(skeletonLoading, shape = MochiRoundedRectangle(22.dp)) {
+                                    Box(Modifier.fillMaxWidth().height(120.dp))
+                                }
+                                MochiSkeleton(skeletonLoading, shape = MochiRoundedRectangle(22.dp)) {
+                                    Box(Modifier.fillMaxWidth().height(120.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }

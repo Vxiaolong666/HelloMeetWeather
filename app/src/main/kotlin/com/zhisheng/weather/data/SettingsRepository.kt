@@ -269,13 +269,13 @@ enum class InterfaceStyle(val key: String, val cn: String, val en: String) {
     }
 }
 
-/** 澄空首页模块的材质独立于界面主题；旧外观保留为可选项。 */
+/** 澄空首页模块的材质独立于界面主题；「模块外观」设置已移除，默认固定为无界香氛。 */
 enum class HomeSurfaceStyle(val key: String, val cn: String) {
     CURRENT("current", "无界香氛"),
     FRAGRANCE_GLASS("fragrance_glass", "流光玻璃");
 
     companion object {
-        fun from(value: String?): HomeSurfaceStyle = entries.firstOrNull { it.key == value } ?: FRAGRANCE_GLASS
+        fun from(value: String?): HomeSurfaceStyle = entries.firstOrNull { it.key == value } ?: CURRENT
     }
 }
 
@@ -579,9 +579,16 @@ object SettingsRepository {
     val lifeIndexMetrics: Flow<Set<LifeIndexMetric>> by lazy {
         store.data.map { LifeIndexMetric.selectionFrom(it[KEY_LIFE_INDEX_METRICS]) }.distinctUntilChanged()
     }
-    // 主题模式（v0.0.5）：默认深色
+    // 深浅主题的唯一来源是「主题配色」页的黑暗模式（mochi_color_mode）。
+    // 这里派生出 ThemeMode 给 ZhishengWeatherTheme、闪屏与桌面图标联动使用，避免两套主题打架。
     val themeMode: Flow<ThemeMode> by lazy {
-        store.data.map { ReleaseFeatures.themeMode(it[KEY_THEME_MODE], it[KEY_RELEASE_APPEARANCE] == true) }.distinctUntilChanged()
+        mochiColorMode.map { mode ->
+            when (mode) {
+                "dark" -> ThemeMode.DARK
+                "system" -> ThemeMode.SYSTEM
+                else -> ThemeMode.LIGHT
+            }
+        }.distinctUntilChanged()
     }
     val interfaceStyle: Flow<InterfaceStyle> by lazy {
         store.data.map {
@@ -598,8 +605,9 @@ object SettingsRepository {
     val homeBriefingStyle: Flow<HomeBriefingStyle> by lazy {
         store.data.map { if (it[KEY_RELEASE_BRIEFING] == true) HomeBriefingStyle.from(it[KEY_HOME_BRIEFING_STYLE]) else HomeBriefingStyle.TIPS }.distinctUntilChanged()
     }
+    // 「模块外观」设置已移除：全站固定使用「无界香氛」，忽略历史保存的流光玻璃值。
     val homeSurfaceStyle: Flow<HomeSurfaceStyle> by lazy {
-        store.data.map { HomeSurfaceStyle.from(it[KEY_HOME_SURFACE_STYLE]) }.distinctUntilChanged()
+        store.data.map { HomeSurfaceStyle.CURRENT }.distinctUntilChanged()
     }
     // 1B：自动定位闸门持久化——上次自动定位时间落盘，进程重启不归零
     val lastAutoLocateAt: Flow<Long> by lazy {
@@ -666,9 +674,19 @@ object SettingsRepository {
     suspend fun setMochiHdrBetaAck(v: Boolean) = store.edit { it[KEY_MOCHI_HDR_BETA_ACK] = v }
     suspend fun setMochiGlassBetaAck(v: Boolean) = store.edit { it[KEY_MOCHI_GLASS_BETA_ACK] = v }
 
-    // 主题配色：app=跟随应用主题 / system=跟随系统 / light / dark / monet=系统取色
+    // 黑暗模式：light / dark / system 三档，是全站深浅的唯一来源。
+    // 兼容旧数据：历史 app（跟随应用）/ monet（系统取色）或缺省时，回退到旧 theme_mode 的值。
     val mochiColorMode: Flow<String> by lazy {
-        store.data.map { it[KEY_MOCHI_COLOR_MODE] ?: "app" }.distinctUntilChanged()
+        store.data.map { prefs ->
+            when (val saved = prefs[KEY_MOCHI_COLOR_MODE]) {
+                "light", "dark", "system" -> saved
+                else -> when (prefs[KEY_THEME_MODE]) {
+                    "dark" -> "dark"
+                    "system" -> "system"
+                    else -> "light"
+                }
+            }
+        }.distinctUntilChanged()
     }
     val mochiSeed: Flow<Int> by lazy {
         store.data.map { it[KEY_MOCHI_SEED] ?: 0xFF2B6A5Au.toInt() }.distinctUntilChanged()
@@ -812,7 +830,11 @@ object SettingsRepository {
     suspend fun setLifeIndexMetrics(selection: Set<LifeIndexMetric>) = store.edit {
         it[KEY_LIFE_INDEX_METRICS] = LifeIndexMetric.selectionKey(selection)
     }
-    suspend fun setThemeMode(mode: ThemeMode) = store.edit { it[KEY_THEME_MODE] = mode.key; it[KEY_RELEASE_APPEARANCE] = true }
+    // 兼容旧调用点：深浅统一写回黑暗模式这一个键。
+    suspend fun setThemeMode(mode: ThemeMode) = store.edit {
+        it[KEY_MOCHI_COLOR_MODE] = mode.key
+        it[KEY_RELEASE_APPEARANCE] = true
+    }
     suspend fun setInterfaceStyle(style: InterfaceStyle) = store.edit {
         it[KEY_INTERFACE_STYLE] = style.key
         it[KEY_STYLE_RESTORED] = true

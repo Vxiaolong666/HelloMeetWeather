@@ -2,6 +2,7 @@ package com.zhisheng.weather.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,12 +35,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zhisheng.weather.R
+import com.zhisheng.weather.ui.components.PhosphorIcon
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -54,13 +59,17 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
+import kotlin.math.roundToInt
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import ui.feice.mochi.basic.MochiBarButton
 import ui.feice.mochi.basic.MochiDialog
 import ui.feice.mochi.basic.MochiDialogAction
 import ui.feice.mochi.basic.MochiDialogActionRole
+import ui.feice.mochi.basic.MochiSkeleton
 import ui.feice.mochi.list.MochiListSection
+import ui.feice.mochi.shape.MochiCapsule
+import ui.feice.mochi.shape.MochiRoundedRectangle
 import ui.feice.mochi.theme.MochiTheme
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
@@ -460,14 +469,33 @@ private object FeatureHubFetcher {
 
 // —— 展示 ——
 
+/** 加载态：照 demo 用库 [MochiSkeleton] 拼出页面布局骨架，分组标题 + 大卡片 + 三列数值格子。 */
 @Composable
 private fun LoadingBlock() {
     val cs = MochiTheme.colorScheme
-    Box(Modifier.fillMaxWidth().heightIn(min = 260.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = cs.primary)
-            Spacer(Modifier.height(12.dp))
-            Text("正在获取特色数据…", color = cs.onSurfaceVariant)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        MochiSkeleton(loading = true, shape = MochiCapsule) {
+            Text("正在获取特色数据", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
+        }
+        MochiSkeleton(loading = true, shape = MochiRoundedRectangle(18.dp)) {
+            Box(Modifier.fillMaxWidth().height(170.dp))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            repeat(3) {
+                MochiSkeleton(loading = true, modifier = Modifier.weight(1f), shape = MochiRoundedRectangle(10.dp)) {
+                    Box(Modifier.fillMaxWidth().height(62.dp))
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            repeat(3) {
+                MochiSkeleton(loading = true, modifier = Modifier.weight(1f), shape = MochiRoundedRectangle(10.dp)) {
+                    Box(Modifier.fillMaxWidth().height(62.dp))
+                }
+            }
+        }
+        MochiSkeleton(loading = true, shape = MochiRoundedRectangle(18.dp)) {
+            Box(Modifier.fillMaxWidth().height(120.dp))
         }
     }
 }
@@ -490,7 +518,7 @@ private fun ErrorBlock(message: String, onRetry: () -> Unit) {
 private fun LazyListScope.FeatureHubContent(state: FeatureHubState, onMetric: (FeatureMetric) -> Unit) {
     state.satellite?.let { sat ->
         item {
-            FeaturePanel("卫星辐射") {
+            FeaturePanel("卫星辐射", R.drawable.ph_broadcast) {
                 MetricGrid(sat.latest, hint = "点按指标查看含义", onMetric = onMetric)
                 if (sat.today.isNotEmpty()) {
                     Spacer(Modifier.height(16.dp))
@@ -503,7 +531,7 @@ private fun LazyListScope.FeatureHubContent(state: FeatureHubState, onMetric: (F
     }
     state.flood?.let { flood ->
         item {
-            FeaturePanel("洪水风险") {
+            FeaturePanel("洪水风险", R.drawable.ph_waves) {
                 FloodVisual(flood)
                 Spacer(Modifier.height(16.dp))
                 MetricGrid(flood.today, hint = "点按指标查看含义", onMetric = onMetric)
@@ -512,34 +540,72 @@ private fun LazyListScope.FeatureHubContent(state: FeatureHubState, onMetric: (F
     }
     state.climate?.let { cl ->
         item {
-            FeaturePanel("气候对比 · 常年同期") {
+            FeaturePanel("气候对比 · 常年同期", R.drawable.ph_calendar) {
                 ClimatePanel(cl, state.forecast?.highC, state.forecast?.lowC, onMetric = onMetric)
             }
         }
     }
     state.seasonal?.let { se ->
         item {
-            FeaturePanel("季节趋势 · 集合预报") { SeasonalPanel(se) }
+            FeaturePanel("季节趋势 · 集合预报", R.drawable.ph_wave_sine) { SeasonalPanel(se) }
         }
     }
     state.forecast?.let { fc ->
         item {
-            FeaturePanel("预报扩展字段") {
-                Text("逐时（当前小时）· 点按查看含义", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(10.dp))
-                MetricGrid(fc.hourly, onMetric = onMetric)
-                if (fc.daily.isNotEmpty()) {
-                    Spacer(Modifier.height(16.dp))
-                    Text("逐日（今日）", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(10.dp))
-                    MetricGrid(fc.daily, onMetric = onMetric)
+            FeaturePanel("预报扩展字段", R.drawable.ph_list) {
+                val hourlyByLabel = fc.hourly.associateBy { it.label }
+                val dailyByLabel = fc.daily.associateBy { it.label }
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PhosphorIcon(R.drawable.ph_clock, null, Modifier.size(14.dp), MochiTheme.colorScheme.primary)
+                        Spacer(Modifier.width(6.dp))
+                        Text("逐时（当前小时）· 点按查看含义", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
+                    }
+                    // 天然成组的字段合并为可视化：廓线画折线、同单位量级画条形，数值与含义点按保留
+                    listOf("80m风速", "120m风速", "180m风速").mapNotNull(hourlyByLabel::get)
+                        .takeIf { it.size >= 2 }?.let {
+                            MetricTrend("风廓线 · 距地 80–180 米", it, onMetric)
+                        }
+                    listOf("地温0cm", "地温6cm", "地温18cm", "地温54cm").mapNotNull(hourlyByLabel::get)
+                        .takeIf { it.size >= 2 }?.let {
+                            MetricTrend("土壤温度剖面 · 0–54 厘米", it, onMetric)
+                        }
+                    listOf("湿度0-1cm", "湿度1-3cm", "湿度3-9cm", "湿度9-27cm", "湿度27-81cm").mapNotNull(hourlyByLabel::get)
+                        .takeIf { it.size >= 2 }?.let {
+                            MetricTrend("土壤湿度剖面 · 0–81 厘米", it, onMetric)
+                        }
+                    listOf("短波辐射", "直接辐射", "散射辐射", "法向辐照").mapNotNull(hourlyByLabel::get)
+                        .takeIf { it.isNotEmpty() }?.let {
+                            MetricBars("辐射组成 · W/m²", it, onMetric)
+                        }
+                    listOf("降雨量", "阵雨量", "降雪量", "积雪深度").mapNotNull(hourlyByLabel::get)
+                        .takeIf { it.isNotEmpty() }?.let {
+                            MetricBars("降水拆分 · 毫米/厘米", it, onMetric)
+                        }
+                    MetricGrid(fc.hourly.filter { it.label !in HourlyVisualizedLabels }, onMetric = onMetric)
+                    if (fc.daily.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PhosphorIcon(R.drawable.ph_sun, null, Modifier.size(14.dp), MochiTheme.colorScheme.primary)
+                            Spacer(Modifier.width(6.dp))
+                            Text("逐日（今日）", style = MaterialTheme.typography.labelMedium, color = MochiTheme.colorScheme.onSurfaceVariant)
+                        }
+                        listOf("昼长", "日照时长").mapNotNull(dailyByLabel::get)
+                            .takeIf { it.isNotEmpty() }?.let {
+                                MetricBars("昼长与日照 · 小时", it, onMetric)
+                            }
+                        listOf("降雨合计", "阵雨合计", "降雪合计", "最大积雪").mapNotNull(dailyByLabel::get)
+                            .takeIf { it.isNotEmpty() }?.let {
+                                MetricBars("降水与积雪 · 毫米/厘米", it, onMetric)
+                            }
+                        MetricGrid(fc.daily.filter { it.label !in DailyVisualizedLabels }, onMetric = onMetric)
+                    }
                 }
             }
         }
     }
     state.elevation?.let { elev ->
         item {
-            FeaturePanel("海拔") {
+            FeaturePanel("海拔", R.drawable.ph_gauge) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("%.0f".format(elev), style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold, color = MochiTheme.colorScheme.primary)
@@ -788,10 +854,29 @@ private fun FloodVisual(flood: FloodSection) {
 
 private fun fmt1(v: Double): String = if (abs(v) >= 100) "%.0f".format(v) else "%.1f".format(v)
 
+/** 分组面板：卡片外标题统一带左侧图标，图标与文字共用同一缩进，卡片仍用库列表容器。 */
 @Composable
-private fun FeaturePanel(title: String, content: @Composable ColumnScope.() -> Unit) {
-    MochiListSection(header = title) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), content = content)
+private fun FeaturePanel(title: String, icon: Int, content: @Composable ColumnScope.() -> Unit) {
+    Column {
+        // 库的 MochiListSectionHeader 自带 16dp 横向内边距，图标放在 Row 前面会被甩到
+        // 缩进之外；这里按同一缩进自绘标题行，保证图标紧贴文字。
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PhosphorIcon(icon, null, Modifier.size(14.dp), MochiTheme.colorScheme.primary)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                title,
+                style = MochiTheme.textStyles.navTitle,
+                color = MochiTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        MochiListSection {
+            Column(Modifier.fillMaxWidth().padding(16.dp), content = content)
+        }
     }
 }
 
@@ -862,6 +947,152 @@ private fun MetricMeaningDialog(metric: FeatureMetric?, onDismiss: () -> Unit) {
             Text(it.value, Modifier.padding(horizontal = 16.dp),
                 style = MaterialTheme.typography.headlineMedium,
                 color = cs.primary, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** 已合并进折线 / 条形可视化的逐时字段，不再重复出现在数值格子里。 */
+private val HourlyVisualizedLabels = setOf(
+    "短波辐射", "直接辐射", "散射辐射", "法向辐照",
+    "80m风速", "120m风速", "180m风速",
+    "地温0cm", "地温6cm", "地温18cm", "地温54cm",
+    "湿度0-1cm", "湿度1-3cm", "湿度3-9cm", "湿度9-27cm", "湿度27-81cm",
+    "降雨量", "阵雨量", "降雪量", "积雪深度",
+)
+
+/** 已合并进条形可视化的逐日字段。 */
+private val DailyVisualizedLabels = setOf(
+    "昼长", "日照时长", "降雨合计", "阵雨合计", "降雪合计", "最大积雪",
+)
+
+/** 从指标展示串里解析数值前缀（"23.5 °C" → 23.5；"09:17" → null）。 */
+private fun FeatureMetric.numericValue(): Float? =
+    value.trim().split(' ', '\u00A0').firstOrNull()?.toFloatOrNull()
+
+/** 同一单位的指标画横向条形，量级对比一目了然；条行仍可点按查看含义。 */
+@Composable
+private fun MetricBars(
+    title: String,
+    items: List<FeatureMetric>,
+    onMetric: (FeatureMetric) -> Unit = {},
+) {
+    val cs = MochiTheme.colorScheme
+    val values = items.map { it.numericValue() ?: 0f }
+    val max = values.maxOrNull()?.takeIf { it > 0f } ?: 1f
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+        items.forEachIndexed { index, metric ->
+            val fraction = (values[index] / max).coerceIn(0.04f, 1f)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (metric.meaning != null) Modifier.clickable { onMetric(metric) } else Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    metric.label,
+                    Modifier.width(88.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = cs.onSurfaceVariant,
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(cs.outlineVariant.copy(alpha = .18f)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(fraction)
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(cs.primary),
+                    )
+                }
+                Text(
+                    metric.value,
+                    Modifier.width(72.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = cs.primary,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** 同一单位、按顺序排布的指标画折线（风廓线、土壤剖面）；横轴为给定字段顺序。 */
+@Composable
+private fun MetricTrend(
+    title: String,
+    points: List<FeatureMetric>,
+    onMetric: (FeatureMetric) -> Unit = {},
+) {
+    val cs = MochiTheme.colorScheme
+    val values = points.map { it.numericValue() }
+    if (values.count { it != null } < 2) return
+    val known = values.filterNotNull()
+    val min = known.minOrNull() ?: return
+    val max = known.maxOrNull() ?: return
+    val span = (max - min).takeIf { it > 0f } ?: 1f
+    val color = cs.primary
+    Column {
+        Text(title, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        // 折线区域也支持点按：按横轴最近的数据点弹出对应含义
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(96.dp)
+                .pointerInput(points) {
+                    detectTapGestures { tap ->
+                        val stepPx = size.width / ((points.size - 1).coerceAtLeast(1))
+                        val index = (tap.x / stepPx).roundToInt().coerceIn(0, points.lastIndex)
+                        if (points[index].meaning != null) onMetric(points[index])
+                    }
+                },
+        ) {
+            val padTop = 10.dp.toPx()
+            val padBottom = 10.dp.toPx()
+            val chartHeight = (size.height - padTop - padBottom).coerceAtLeast(1f)
+            val step = size.width / ((points.size - 1).coerceAtLeast(1))
+            // 缺失值按区间中值补位，保持折线连续
+            val coords = points.mapIndexed { index, _ ->
+                val value = values[index] ?: ((min + max) / 2f)
+                Offset(step * index, padTop + chartHeight * (1f - (value - min) / span))
+            }
+            val line = Path().apply {
+                moveTo(coords.first().x, coords.first().y)
+                coords.drop(1).forEach { lineTo(it.x, it.y) }
+            }
+            drawPath(line, color, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
+            coords.forEach { drawCircle(color, 4.dp.toPx(), it) }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth()) {
+            points.forEach { metric ->
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .then(if (metric.meaning != null) Modifier.clickable { onMetric(metric) } else Modifier),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        metric.value,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = cs.primary,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(metric.label, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+                }
+            }
         }
     }
 }

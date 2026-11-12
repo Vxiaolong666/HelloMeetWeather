@@ -132,6 +132,14 @@ internal fun vistaAstroProgressInWindow(now: Int, window: VistaAstroWindow): Flo
     return (elapsed.toFloat() / window.windowLength.toFloat()).coerceIn(0f, 1f)
 }
 
+/** 升起到落下之间的进度 0..1；不在窗口或数据无效返回 null。月升月落跨日也能算。 */
+internal fun vistaAstroUpProgress(now: Int, rise: Int, set: Int): Float? {
+    val up = vistaAstroUpDuration(rise, set) ?: return null
+    val elapsed = Math.floorMod(now - rise, VISTA_DAY_MINUTES)
+    if (elapsed >= up) return null
+    return elapsed.toFloat() / up.toFloat()
+}
+
 /** 当天 0 点到 24 点，横轴按钟点对齐。 */
 internal fun vistaAstroClockFraction(clockMinutes: Int): Float =
     Math.floorMod(clockMinutes, VISTA_DAY_MINUTES).toFloat() / VISTA_DAY_MINUTES.toFloat()
@@ -210,7 +218,7 @@ internal fun VistaLuminary(today: DailyWeather, utcOffsetSeconds: Int?) {
             label = "luminary-view",
         ) { arc ->
             if (arc) {
-                VistaLuminaryArc(today, illumination, rail, orange, cyan)
+                VistaLuminaryArc(today, nowMinutes, illumination, rail, orange, cyan)
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     VistaAstroWave(
@@ -309,6 +317,7 @@ private fun LuminaryModeIcon(arc: Boolean, tint: Color, modifier: Modifier = Mod
 @Composable
 private fun VistaLuminaryArc(
     today: DailyWeather,
+    nowMinutes: Int,
     illumination: Double,
     rail: Color,
     orange: Color,
@@ -327,6 +336,8 @@ private fun VistaLuminaryArc(
     // 必须包成单个根布局：外层 Crossfade/AnimatedContent 会把多个子节点叠放，
     // 否则弧线、四个时刻与照亮/白昼文字会互相压在同一行。
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // 空心位置点的底色用卡片背景色，Canvas 的 DrawScope 里不能读 Composable 状态，提前取好。
+        val surface = LocalZhishengPalette.current.surface
         Canvas(Modifier.fillMaxWidth().height(150.dp)) {
             val left = 6.dp.toPx()
             val right = size.width - 6.dp.toPx()
@@ -334,26 +345,79 @@ private fun VistaLuminaryArc(
             val base = size.height - 14.dp.toPx()
             val dash = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 6.dp.toPx()))
             val arcStroke = Stroke(1.5.dp.toPx(), pathEffect = dash)
-            fun drawArc(startFraction: Float, endFraction: Float, height: Float) {
+            fun buildArc(startFraction: Float, endFraction: Float, height: Float): Path {
                 val x1 = left + width * startFraction
                 val x2 = left + width * endFraction
                 val mid = (x1 + x2) / 2f
                 val half = (x2 - x1) / 2f
-                val path = Path().apply {
+                return Path().apply {
                     moveTo(x1, base)
                     cubicTo(x1 + half * 0.25f, base - height * 0.86f,
                         mid - half * 0.55f, base - height, mid, base - height)
                     cubicTo(mid + half * 0.55f, base - height,
                         x2 - half * 0.25f, base - height * 0.86f, x2, base)
                 }
-                drawPath(path, rail.copy(alpha = 0.9f), style = arcStroke)
+            }
+            // 参考图样式：完整轨迹是灰色虚线，天体在天上时把「升起点 → 当前位置」
+            // 描成实线，末端用背景色圆盘 + 彩色描边画空心圆点标记当前位置。
+            // 弧的贝塞尔控制点横向单调递增，进度段用矩形裁剪完整弧即可精确截出，
+            // 位置点坐标按贝塞尔参数二分求出，避免依赖平台 PathMeasure 的行为差异。
+            fun cubic(a: Float, b: Float, c: Float, d: Float, u: Float): Float {
+                val v = 1f - u
+                return v * v * v * a + 3 * v * v * u * b + 3 * v * u * u * c + u * u * u * d
+            }
+            fun arcPoint(progress: Float, x1: Float, x2: Float, height: Float): Offset {
+                val mid = (x1 + x2) / 2f
+                val half = (x2 - x1) / 2f
+                val targetX = x1 + (x2 - x1) * progress
+                val (xs, ys) = if (targetX <= mid) {
+                    listOf(x1, x1 + half * 0.25f, mid - half * 0.55f, mid) to
+                        listOf(base, base - height * 0.86f, base - height, base - height)
+                } else {
+                    listOf(mid, mid + half * 0.55f, x2 - half * 0.25f, x2) to
+                        listOf(base - height, base - height, base - height * 0.86f, base)
+                }
+                var lo = 0f
+                var hi = 1f
+                repeat(24) {
+                    val midU = (lo + hi) / 2f
+                    if (cubic(xs[0], xs[1], xs[2], xs[3], midU) < targetX) lo = midU else hi = midU
+                }
+                val u = (lo + hi) / 2f
+                return Offset(cubic(xs[0], xs[1], xs[2], xs[3], u), cubic(ys[0], ys[1], ys[2], ys[3], u))
+            }
+            fun drawProgress(path: Path, progress: Float, color: Color, x1: Float, x2: Float, height: Float) {
+                val clamped = progress.coerceIn(0.01f, 1f)
+                val pos = arcPoint(clamped, x1, x2, height)
+                clipRect(left = 0f, top = 0f, right = pos.x, bottom = size.height) {
+                    drawPath(path, color, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round))
+                }
+                drawCircle(surface, 5.dp.toPx(), pos)
+                drawCircle(color, 5.dp.toPx(), pos, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
             }
             drawLine(rail.copy(alpha = 0.55f), Offset(left, base), Offset(right, base), 1.dp.toPx())
             val outerHeight = (base - 12.dp.toPx()).coerceAtLeast(24f)
-            drawArc(0.06f, 0.94f, outerHeight)
-            if (hasMoon) drawArc(0.22f, 0.78f, outerHeight * 0.62f)
+            val sunPath = buildArc(0.06f, 0.94f, outerHeight)
+            drawPath(sunPath, rail.copy(alpha = 0.9f), style = arcStroke)
+            val moonPath = if (hasMoon) buildArc(0.22f, 0.78f, outerHeight * 0.62f) else null
+            moonPath?.let { drawPath(it, rail.copy(alpha = 0.9f), style = arcStroke) }
             listOf(0.06f, 0.22f, 0.78f, 0.94f).forEach { fraction ->
                 drawCircle(rail.copy(alpha = 0.95f), 3.dp.toPx(), Offset(left + width * fraction, base))
+            }
+            // 实线进度与当前位置：太阳沿外弧、月亮沿内弧，进度按升落窗口计算。
+            val sunRise = clockMinutes(today.sunrise)
+            val sunSet = clockMinutes(today.sunset)
+            if (sunRise != null && sunSet != null) {
+                vistaAstroUpProgress(nowMinutes, sunRise, sunSet)?.let {
+                    drawProgress(sunPath, it, orange, left + width * 0.06f, left + width * 0.94f, outerHeight)
+                }
+            }
+            val moonRise = clockMinutes(today.moonrise)
+            val moonSet = clockMinutes(today.moonset)
+            if (moonPath != null && moonRise != null && moonSet != null) {
+                vistaAstroUpProgress(nowMinutes, moonRise, moonSet)?.let {
+                    drawProgress(moonPath, it, cyan, left + width * 0.22f, left + width * 0.78f, outerHeight * 0.62f)
+                }
             }
         }
         Row(Modifier.fillMaxWidth()) {

@@ -363,7 +363,7 @@ internal fun WidgetStudio(style: WidgetStyle, editingId: Int?, initialKind: Widg
                         if (previewWall || largePreview) {
                             val allKinds = previewWall
                             val dismiss = { if (allKinds) previewWall = false else largePreview = false }
-                            ZhishengWeatherTheme(isLight = !classic, homeSurfaceStyle = HomeSurfaceStyle.FRAGRANCE_GLASS, softGlow = false) {
+                            ZhishengWeatherTheme(isLight = !classic, homeSurfaceStyle = HomeSurfaceStyle.CURRENT, softGlow = false) {
                                 CompositionLocalProvider(LocalHomeBackdrop provides HomeBackdrop(sourceLayer, sourceOrigin, ownerView)) {
                                     WeatherOverlayDialog(onDismiss = dismiss) { panelModifier ->
                                         WidgetPreviewDialogContent(style, kind, config, preview, backdrop, allKinds,

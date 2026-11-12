@@ -1,6 +1,5 @@
 package com.zhisheng.weather.ui
 
-import android.os.Build
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -12,9 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.colorResource
 import com.zhisheng.weather.data.SettingsRepository
-import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import ui.feice.mochi.anim.MochiSprings
 import ui.feice.mochi.effect.elastic.MochiGelDefaults
 import ui.feice.mochi.effect.glow.MochiGlowDefaults
@@ -65,7 +62,7 @@ internal data class MochiUiPrefs(
     val pageTransition: String = "fade",
     val swipeBack: Boolean = true,
     val backScale: String = "subtle",
-    val colorMode: String = "app",
+    val colorMode: String = "light",
     val seed: Int = 0xFF2B6A5Au.toInt(),
     val palette: String = "TonalSpot",
     val contrast: Float = 0f,
@@ -100,7 +97,7 @@ internal fun rememberMochiUiPrefs(): MochiUiPrefs {
     val pageTransition by SettingsRepository.mochiPageTransition.collectAsState(initial = "fade")
     val swipeBack by SettingsRepository.mochiSwipeBack.collectAsState(initial = true)
     val backScale by SettingsRepository.mochiBackScale.collectAsState(initial = "subtle")
-    val colorMode by SettingsRepository.mochiColorMode.collectAsState(initial = "app")
+    val colorMode by SettingsRepository.mochiColorMode.collectAsState(initial = "light")
     val seed by SettingsRepository.mochiSeed.collectAsState(initial = 0xFF2B6A5Au.toInt())
     val palette by SettingsRepository.mochiPalette.collectAsState(initial = "TonalSpot")
     val contrast by SettingsRepository.mochiContrast.collectAsState(initial = 0f)
@@ -221,28 +218,20 @@ private fun buildMochiMaterials(prefs: MochiUiPrefs, isDark: Boolean): MochiMate
     return MochiMaterialSet(page, tabBar)
 }
 
-/** 所有 mochi 页面共用的一套配色：由「主题配色」页的 4 项设置生成，改完立即生效。 */
+/** 所有 mochi 页面共用的一套配色：由「主题配色」页的黑暗模式与配色设置生成，改完立即生效。 */
 @Composable
 internal fun rememberMochiColorScheme(followSystem: Boolean = false): MochiColorScheme {
     val prefs = rememberMochiUiPrefs()
-    val appLight = LocalZhishengPalette.current.isLight
     val systemDark = isSystemInDarkTheme()
-    // 系统主色随配置变化，用 colorResource 交给 composition 感知配置刷新；
-    // remember 的 lambda 里读 LocalContext 会被 lint 判为持有旧配置。
-    val systemAccent = if (prefs.colorMode == "monet" && Build.VERSION.SDK_INT >= 31) {
-        colorResource(android.R.color.system_accent1_500)
-    } else null
-    return remember(prefs.colorMode, prefs.seed, prefs.palette, prefs.contrast, appLight, systemDark, followSystem, systemAccent) {
+    return remember(prefs.colorMode, prefs.seed, prefs.palette, prefs.contrast, systemDark, followSystem) {
         val dark = when {
-            // 独立 Activity 的小组件/通知栏设置页没有 ZhishengWeatherTheme，
-            // 默认分支会退化成 appLight 常量；这里强制只看系统深色开关。
+            // 独立 Activity 的小组件/通知栏设置页没有 ZhishengWeatherTheme，只看系统深色开关。
             followSystem -> systemDark
-            prefs.colorMode == "light" -> false
             prefs.colorMode == "dark" -> true
-            prefs.colorMode == "system" || prefs.colorMode == "monet" -> systemDark
-            else -> !appLight
+            prefs.colorMode == "system" -> systemDark
+            else -> false
         }
-        val seed = systemAccent ?: Color(prefs.seed)
+        val seed = Color(prefs.seed)
         val contrast = prefs.contrast.toDouble()
         if (dark) darkColorScheme(seed, prefs.paletteStyle, contrast)
         else lightColorScheme(seed, prefs.paletteStyle, contrast)

@@ -1,8 +1,5 @@
 package com.zhisheng.weather.ui
 
-import com.zhisheng.weather.R
-import com.zhisheng.weather.ui.components.VistaMapToolbar
-import com.zhisheng.weather.ui.components.VistaMapTool
 import com.zhisheng.weather.ui.components.SignalSlider
 import com.zhisheng.weather.ui.theme.isPhosphorVista
 import com.zhisheng.weather.ui.theme.zhishengCompactPanel
@@ -17,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,12 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -74,6 +67,9 @@ import com.zhisheng.weather.data.parseTyphoonTime
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import com.zhisheng.weather.ui.theme.ZhishengPalette
 import com.zhisheng.weather.ui.theme.zhishengScreen
+import ui.feice.mochi.basic.MochiBarButton
+import ui.feice.mochi.navigation.MochiBackButton
+import ui.feice.mochi.theme.MochiTheme
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -150,27 +146,30 @@ fun TyphoonScreen(onBack: () -> Unit) {
     }
 
     val loaded = detail?.value
-    if (loaded != null) {
-        TyphoonWorkbench(
-            detail = loaded,
-            load = requireNotNull(detail),
-            storms = catalog?.value.orEmpty(),
-            selectedId = selectedId,
-            catalogNotice = catalog?.error,
-            onSelectStorm = { selectedId = it },
-            onRefresh = { refreshToken++ },
-            onBack = onBack,
-        )
-    } else {
-        TyphoonLoadingPage(
-            catalog = catalog,
-            storms = catalog?.value.orEmpty(),
-            selectedId = selectedId,
-            onSelectStorm = { selectedId = it },
-            detailError = detail?.error,
-            onRetry = { refreshToken++ },
-            onBack = onBack,
-        )
+    // 顶部栏用的是组件库按钮，先给出与应用一致的深浅配色，胶囊底色和文字才会成对变化。
+    MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
+        if (loaded != null) {
+            TyphoonWorkbench(
+                detail = loaded,
+                load = requireNotNull(detail),
+                storms = catalog?.value.orEmpty(),
+                selectedId = selectedId,
+                catalogNotice = catalog?.error,
+                onSelectStorm = { selectedId = it },
+                onRefresh = { refreshToken++ },
+                onBack = onBack,
+            )
+        } else {
+            TyphoonLoadingPage(
+                catalog = catalog,
+                storms = catalog?.value.orEmpty(),
+                selectedId = selectedId,
+                onSelectStorm = { selectedId = it },
+                detailError = detail?.error,
+                onRetry = { refreshToken++ },
+                onBack = onBack,
+            )
+        }
     }
 }
 
@@ -185,19 +184,20 @@ private fun TyphoonLoadingPage(
     onBack: () -> Unit,
 ) {
     val palette = LocalZhishengPalette.current
-    Column(Modifier.fillMaxSize().zhishengScreen().statusBarsPadding().navigationBarsPadding()) {
-        if (isPhosphorVista) {
-            VistaMapToolbar("台风路径", "正在获取最新消息", onBack) {
-                VistaMapTool(R.drawable.ph_arrow_clockwise, "刷新", onRetry)
-            }
-        } else {
-            FeaturePageHeader(
-                title = "台风路径",
-                subtitle = "TYPHOON OBSERVATORY",
-                onBack = onBack,
-                trailing = { TyphoonIconAction(Icons.Filled.Refresh, "刷新台风资料", onRetry) },
-            )
-        }
+    Column(Modifier.fillMaxSize().zhishengScreen().navigationBarsPadding()) {
+        TyphoonTopBar(
+            title = "台风路径",
+            onBack = onBack,
+            status = {
+                Text(
+                    "正在获取最新消息",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.textSecondary,
+                    maxLines = 1,
+                )
+            },
+            actions = { MochiBarButton("刷新", onClick = onRetry) },
+        )
         if (storms.isNotEmpty()) StormStrip(storms, selectedId, onSelectStorm, palette)
         when {
             catalog == null -> FeatureBootLoader(
@@ -274,6 +274,41 @@ private fun TyphoonWorkbench(
     }
 }
 
+/**
+ * 台风页顶部栏（加载页与工作台共用）：返回按钮 + 标题 + 副行 + 右侧胶囊操作。
+ * 胶囊的底色与文字颜色由组件库按主题自动配对，深色底一定是浅色文字，所以不在这里手写背景和边框。
+ */
+@Composable
+private fun TyphoonTopBar(
+    title: String,
+    onBack: () -> Unit,
+    status: @Composable RowScope.() -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    val palette = LocalZhishengPalette.current
+    Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            MochiBackButton(onClick = onBack)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = palette.text,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, content = status)
+            }
+            actions()
+        }
+    }
+}
+
 @Composable
 private fun TyphoonTopChrome(
     detail: TyphoonDetail,
@@ -291,76 +326,33 @@ private fun TyphoonTopChrome(
     val latest = detail.observed.lastOrNull()
     val stale = parseTyphoonTime(latest?.time)?.let { System.currentTimeMillis() - it > TY_STALE_MILLIS } ?: true
     val warning = warningVisual(detail.storm.warningLevel, palette)
-    if (isPhosphorVista) {
-        Column(Modifier.fillMaxWidth().statusBarsPadding()) {
-            VistaMapToolbar(
-                "台风 · " + vistaStormLabel(detail.storm.id, (storms.firstOrNull { it.id == selectedId } ?: detail.storm).name),
-                vistaTyphoonStatus(
-                    warning?.label,
-                    stale,
-                    detail.storm.active,
-                    selectedId != null && selectedId != detail.storm.id,
-                ),
-                onBack,
-            ) {
-                VistaMapTool(R.drawable.ph_crosshair, "回到台风路径", onRecenter)
-                VistaMapTool(R.drawable.ph_arrow_clockwise, "刷新", onRefresh)
-                VistaMapTool(R.drawable.ph_info, "这些线是什么", onInfo)
-            }
-            StormStrip(storms, selectedId, onSelectStorm, palette)
-            (catalogNotice ?: load.error)?.let {
-                Text(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall, color = palette.orange)
-            }
-        }
-        return
-    }
-    Column(Modifier.fillMaxWidth().statusBarsPadding()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TyphoonIconAction(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
-            Spacer(Modifier.width(7.dp))
-            Column(
-                Modifier.weight(1f).height(48.dp)
-                    .background(palette.surface.copy(alpha = 0.96f))
-                    .border(1.dp, palette.cardBorder)
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-            ) {
+    Column(Modifier.fillMaxWidth()) {
+        TyphoonTopBar(
+            title = "台风 · ${(storms.firstOrNull { it.id == selectedId } ?: detail.storm).name}",
+            onBack = onBack,
+            status = {
+                WarningDot(warning, palette)
+                Spacer(Modifier.width(5.dp))
                 Text(
-                    "台风 · ${(storms.firstOrNull { it.id == selectedId } ?: detail.storm).name}",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = palette.text,
-                    fontWeight = FontWeight.Bold,
+                    when {
+                        selectedId != null && selectedId != detail.storm.id -> "正在切换台风"
+                        warning != null -> warning.label
+                        stale -> "资料较旧"
+                        detail.storm.active -> "实况追踪"
+                        else -> "历史路径"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = warning?.textColor ?: if (stale || load.fromCache) palette.orange else palette.textSecondary,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    WarningDot(warning, palette)
-                    Spacer(Modifier.width(5.dp))
-                    Text(
-                        when {
-                            selectedId != null && selectedId != detail.storm.id -> "正在切换台风"
-                            warning != null -> warning.label
-                            stale -> "资料较旧"
-                            detail.storm.active -> "实况追踪"
-                            else -> "历史路径"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = warning?.textColor ?: if (stale || load.fromCache) palette.orange else palette.textSecondary,
-                        maxLines = 1,
-                    )
-                    Text(" · ${formatTyphoonTime(latest?.time)}", style = MaterialTheme.typography.labelSmall, color = palette.textTertiary, maxLines = 1)
-                }
-            }
-            Spacer(Modifier.width(6.dp))
-            TyphoonTextAction("◎", "回到台风路径", onRecenter)
-            Spacer(Modifier.width(6.dp))
-            TyphoonIconAction(Icons.Filled.Refresh, "刷新台风资料", onRefresh)
-            Spacer(Modifier.width(6.dp))
-            TyphoonIconAction(Icons.Filled.Info, "台风资料说明", onInfo)
-        }
+                Text(" · ${formatTyphoonTime(latest?.time)}", style = MaterialTheme.typography.labelSmall, color = palette.textTertiary, maxLines = 1)
+            },
+            actions = {
+                MochiBarButton("定位", onClick = onRecenter)
+                MochiBarButton("刷新", onClick = onRefresh)
+                MochiBarButton("说明", onClick = onInfo)
+            },
+        )
         StormStrip(storms, selectedId, onSelectStorm, palette)
         val notice = catalogNotice ?: load.error
         if (notice != null) {
@@ -583,6 +575,9 @@ private fun TyphoonVectorMap(
     val selectState = rememberUpdatedState(onSelect)
 
     val mapView = remember {
+        // 和雷达 / 空气质量页一致：先加载原生地图引擎再创建 MapView。
+        // 漏了这一步时，冷启动后首次进入台风页会因引擎未初始化直接闪退。
+        org.maplibre.android.MapLibre.getInstance(context.applicationContext)
         MapView(context).apply {
             onCreate(null)
             getMapAsync { map ->
@@ -929,30 +924,6 @@ private fun TyphoonInfoDialog(detail: TyphoonDetail, onDismiss: () -> Unit) {
             Text("知道了", color = palette.mint, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onDismiss).padding(12.dp))
         },
     )
-}
-
-@Composable
-private fun TyphoonIconAction(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
-    val palette = LocalZhishengPalette.current
-    Box(
-        Modifier.size(44.dp).background(palette.surface.copy(alpha = 0.96f)).border(1.dp, palette.cardBorder)
-            .clickable(role = Role.Button, onClickLabel = description, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = description, tint = palette.text, modifier = Modifier.size(20.dp))
-    }
-}
-
-@Composable
-private fun TyphoonTextAction(label: String, description: String, onClick: () -> Unit) {
-    val palette = LocalZhishengPalette.current
-    Box(
-        Modifier.size(44.dp).background(palette.surface.copy(alpha = 0.96f)).border(1.dp, palette.cardBorder)
-            .clickable(role = Role.Button, onClickLabel = description, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, style = MaterialTheme.typography.titleLarge, color = palette.text)
-    }
 }
 
 @Composable

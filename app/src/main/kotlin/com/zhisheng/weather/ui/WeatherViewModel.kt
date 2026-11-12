@@ -57,7 +57,7 @@ data class DisplayPrefs(
     val ambience: AmbienceLevel = AmbienceLevel.OFF,
     val bootAnim: Boolean = true,
     val homeBriefingStyle: HomeBriefingStyle = HomeBriefingStyle.TIPS,
-    val homeSurfaceStyle: HomeSurfaceStyle = HomeSurfaceStyle.FRAGRANCE_GLASS,
+    val homeSurfaceStyle: HomeSurfaceStyle = HomeSurfaceStyle.CURRENT,
     val moduleOrder: List<HomeModule> = HomeModule.defaultOrder,
     val telemetryMetrics: Set<TelemetryMetric> = TelemetryMetric.defaultSelection,
     val lifeIndexMetrics: Set<LifeIndexMetric> = LifeIndexMetric.defaultSelection,

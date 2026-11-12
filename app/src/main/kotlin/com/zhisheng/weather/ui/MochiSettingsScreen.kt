@@ -37,7 +37,6 @@ import com.zhisheng.weather.data.AppIconStyle
 import com.zhisheng.weather.data.AmbienceLevel
 import com.zhisheng.weather.data.HomeBriefingStyle
 import com.zhisheng.weather.data.HomeModule
-import com.zhisheng.weather.data.HomeSurfaceStyle
 import com.zhisheng.weather.data.InterfaceStyle
 import com.zhisheng.weather.data.LandscapeStandbyStyle
 import com.zhisheng.weather.data.LifeIndexMetric
@@ -50,7 +49,6 @@ import com.zhisheng.weather.data.SettingsRepository
 import com.zhisheng.weather.data.SoftGlowLevel
 import com.zhisheng.weather.data.SourcePref
 import com.zhisheng.weather.data.TelemetryMetric
-import com.zhisheng.weather.data.ThemeMode
 import com.zhisheng.weather.model.WeatherData
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.theme.ZhishengCyan
@@ -149,12 +147,10 @@ fun MochiSettingsScreen(
     )
     val telemetryMetrics by SettingsRepository.telemetryMetrics.collectAsState(initial = TelemetryMetric.defaultSelection)
     val lifeIndexMetrics by SettingsRepository.lifeIndexMetrics.collectAsState(initial = LifeIndexMetric.defaultSelection)
-    val themeMode by SettingsRepository.themeMode.collectAsState(initial = ThemeMode.LIGHT)
     val interfaceStyle by SettingsRepository.interfaceStyle.collectAsState(initial = InterfaceStyle.PHOSPHOR_VISTA)
     val accentTone by SettingsRepository.accentTone.collectAsState(initial = AccentTone.STANDARD)
     val appIconStyle by SettingsRepository.appIconStyle.collectAsState(initial = AppIconStyle.CHARACTER)
     val homeBriefingStyle by SettingsRepository.homeBriefingStyle.collectAsState(initial = HomeBriefingStyle.TIPS)
-    val homeSurfaceStyle by SettingsRepository.homeSurfaceStyle.collectAsState(initial = HomeSurfaceStyle.FRAGRANCE_GLASS)
     val moduleOrder by SettingsRepository.moduleOrder.collectAsState(initial = HomeModule.defaultOrder)
 
     var permDenied by remember { mutableStateOf(false) }
@@ -310,8 +306,7 @@ fun MochiSettingsScreen(
                                 onPush = openSettingsPage,
                             )
                             else -> mochiAppearanceSection(
-                                homeSurfaceStyle = homeSurfaceStyle, interfaceStyle = interfaceStyle,
-                                themeMode = themeMode,
+                                interfaceStyle = interfaceStyle,
                                 accentTone = accentTone, softGlow = softGlow,
                                 softGlowLevel = softGlowLevel, ambience = ambience,
                                 livingSky = livingSky, scanlines = scanlines,
@@ -321,9 +316,7 @@ fun MochiSettingsScreen(
                                 appIconStyle = appIconStyle, keepScreenOn = keepScreenOn,
                                 developerMode = developerMode,
                                 graphicsLevel = uiPrefs.graphicsLevel,
-                                onSurfaceStyle = { scope.launch { SettingsRepository.setHomeSurfaceStyle(HomeSurfaceStyle.from(it)) } },
                                 onInterfaceStyle = { scope.launch { SettingsRepository.setInterfaceStyle(InterfaceStyle.from(it)) } },
-                                onThemeMode = { scope.launch { SettingsRepository.setThemeMode(ThemeMode.from(it)) } },
                                 onAccentTone = { scope.launch { SettingsRepository.setAccentTone(AccentTone.from(it)) } },
                                 onSoftGlow = { scope.launch { SettingsRepository.setSoftGlow(it) } },
                                 onSoftGlowLevel = { scope.launch { SettingsRepository.setSoftGlowLevel(SoftGlowLevel.from(it)) } },
@@ -798,14 +791,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiHomeSection(
 /** 页 2：外观与体验。 */
 @Suppress("LongParameterList")
 private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSection(
-    homeSurfaceStyle: HomeSurfaceStyle, interfaceStyle: InterfaceStyle,
-    themeMode: ThemeMode, accentTone: AccentTone, softGlow: Boolean, softGlowLevel: SoftGlowLevel,
+    interfaceStyle: InterfaceStyle,
+    accentTone: AccentTone, softGlow: Boolean, softGlowLevel: SoftGlowLevel,
     ambience: AmbienceLevel, livingSky: Boolean, scanlines: Boolean,
     landscapeStandby: Boolean, standbyBurnInProtection: Boolean,
     landscapeStandbyStyle: LandscapeStandbyStyle, appIconStyle: AppIconStyle, keepScreenOn: Boolean,
     developerMode: Boolean, graphicsLevel: String, gel: Float,
-    onSurfaceStyle: (String) -> Unit, onInterfaceStyle: (String) -> Unit,
-    onThemeMode: (String) -> Unit, onAccentTone: (String) -> Unit, onSoftGlow: (Boolean) -> Unit,
+    onInterfaceStyle: (String) -> Unit,
+    onAccentTone: (String) -> Unit, onSoftGlow: (Boolean) -> Unit,
     onSoftGlowLevel: (String) -> Unit, onAmbience: (String) -> Unit, onLivingSky: (Boolean) -> Unit,
     onScanlines: (Boolean) -> Unit, onLandscapeStandby: (Boolean) -> Unit, onBurnIn: (Boolean) -> Unit,
     onLandscapeStyle: (String) -> Unit, onKeepScreenOn: (Boolean) -> Unit,
@@ -815,15 +808,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
 ) {
     item {
         MochiListSection(header = "界面") {
-            if (isPhosphorVista) MochiChoiceRow("模块外观", HomeSurfaceStyle.entries.map { it.cn to it.key },
-                homeSurfaceStyle.key, "切换首页与设置页的玻璃质感；天气文字和图标保持清晰", onSurfaceStyle)
+            // 「模块外观」已移除：全站固定使用无界香氛；深浅主题统一到「主题配色」页的黑暗模式。
             if (ReleaseFeatures.classicTheme) MochiChoiceRow("界面主题",
                 listOf("澄空终端" to "phosphor_vista", "经典终端" to "classic_terminal"),
                 interfaceStyle.key,
                 if (interfaceStyle == InterfaceStyle.PHOSPHOR_VISTA) "无框天气概览，逐时、五日与多日预报依次展开"
                 else "经典终端美术风格，与澄空共用天气逻辑和模块排序", onInterfaceStyle)
-            MochiChoiceRow("主题模式", listOf("深色" to "dark", "浅色" to "light", "跟随系统" to "system"),
-                themeMode.key, "浅色清透，深色柔和，也可跟随系统", onThemeMode)
             MochiChoiceRow("强调色亮度", listOf("标准" to "standard", "柔和" to "soft"),
                 accentTone.key, "调整界面强调色的亮度", onAccentTone)
             MochiListRow(
@@ -892,7 +882,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
             MochiSettingsNavRow(
                 route = "settings.theme",
                 title = "主题配色",
-                subtitle = "配色模式、主题色、取色算法与对比度",
+                subtitle = "黑暗模式、主题色、取色算法与对比度",
                 onPush = onPush,
             )
             MochiSettingsNavRow(
