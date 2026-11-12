@@ -3,12 +3,15 @@ package com.zhisheng.weather.ui
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
@@ -19,40 +22,61 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import com.zhisheng.weather.R
 import com.zhisheng.weather.model.City
 import com.zhisheng.weather.model.WeatherData
 import com.zhisheng.weather.ui.theme.*
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.delay
+import ui.feice.mochi.basic.MochiSegmentedControl
 import java.util.Locale
 
 @Composable
 fun RadarScreen(city: City?, utcOffsetSeconds: Int?, onBack: () -> Unit, weather: WeatherData? = null) {
     // Domestic users can read the local forecast without accepting or loading an overseas map.
     var tab by rememberSaveable { mutableIntStateOf(1) }
-    Column(Modifier.fillMaxSize().zhishengScreen().statusBarsPadding().navigationBarsPadding()) {
-        WeatherFeatureNavigation("降水地图", city?.displayName, onBack, listOf("附近回波", "未来2小时"), tab) { tab = it }
-        Box(Modifier.weight(1f)) {
-            if (tab == 0) RadarMapScreen(city, utcOffsetSeconds, onBack)
-            else {
-                var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-                val lifecycle = LocalLifecycleOwner.current.lifecycle
-                LaunchedEffect(lifecycle) {
-                    lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                        while (true) { now = System.currentTimeMillis(); delay(30_000) }
-                    }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) { now = System.currentTimeMillis(); delay(30_000) }
+        }
+    }
+    // 与设置二级页同一个外壳：库标题脚手架 + 液态玻璃材质 + 越界手感。
+    MochiPageFrame(
+        title = "降水地图",
+        subtitle = city?.displayName?.takeIf { it.isNotBlank() },
+        onBack = onBack,
+    ) {
+        item {
+            MochiSegmentedControl(
+                selectedIndex = tab,
+                onSelect = { tab = it },
+                items = persistentListOf("附近回波", "未来2小时"),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
+        }
+        if (tab == 0) {
+            item {
+                // 地图是靠手势的原生子视图，单独占满一屏，不参与列表滚动。
+                Box(Modifier.fillParentMaxHeight(0.82f).fillMaxWidth()) {
+                    RadarMapScreen(city, utcOffsetSeconds, onBack)
                 }
-                RadarFutureContent(radarPointForecast(weather, now), now, utcOffsetSeconds)
             }
+        } else {
+            radarFutureItems(radarPointForecast(weather, now), now, utcOffsetSeconds)
         }
     }
 }
 
-@Composable
-internal fun RadarFutureContent(forecast: RadarPointForecast, now: Long, utcOffsetSeconds: Int?) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)) {
+/** 未来两小时的分组卡片，直接铺进库脚手架的懒加载列表。 */
+internal fun LazyListScope.radarFutureItems(
+    forecast: RadarPointForecast,
+    now: Long,
+    utcOffsetSeconds: Int?,
+) {
         item {
-            Column(Modifier.fillMaxWidth().zhishengPanel().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            MochiPageCard(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("这里接下来会下雨吗", Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleLarge, color = ZhishengText)
                 if (forecast.points.isEmpty()) {
                     Text(if (forecast.expired) "降水预报已过期" else "当前天气源没有分钟级降水预报",
@@ -80,7 +104,7 @@ internal fun RadarFutureContent(forecast: RadarPointForecast, now: Long, utcOffs
             }
         }
         item {
-            Column(Modifier.fillMaxWidth().zhishengPanel().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            MochiPageCard(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("看全国降水走向", Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, color = ZhishengText)
                 Text("中国天气网提供未来两小时降水外推图，在浏览器中查看。", Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
@@ -88,9 +112,13 @@ internal fun RadarFutureContent(forecast: RadarPointForecast, now: Long, utcOffs
             }
         }
         item {
-            WeatherSourceDisclosure("本地点预报与地图", "本页曲线使用当前地点已有的分钟降水数据，不额外请求个人天气服务。分钟预报是本地点的降水趋势；地图展示区域回波，只有来源真实提供的外推帧才会标为未来。精确定位不代表天气模型有街道级分辨率。")
+            // 数据说明段落原样放进带渐变遮罩的库卡片。
+            MochiFadeNote(
+                "本页曲线使用当前地点已有的分钟降水数据，不额外请求个人天气服务。分钟预报是本地点的降水趋势；地图展示区域回波，只有来源真实提供的外推帧才会标为未来。精确定位不代表天气模型有街道级分辨率。",
+                title = "本地点预报与地图",
+                iconRes = R.drawable.ph_info,
+            )
         }
-    }
 }
 
 @Composable

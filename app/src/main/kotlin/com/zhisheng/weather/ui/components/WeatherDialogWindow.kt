@@ -14,19 +14,25 @@ import com.zhisheng.weather.ui.theme.LocalHomeSurfaceStyle
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import com.zhisheng.weather.ui.theme.isPhosphorVista
 
-/** Full-page details own their bars; overlays draw their own scrim behind transparent bars. */
+/**
+ * Full-page details own their bars; overlays draw their own scrim behind transparent bars.
+ *
+ * @param background 页面自身的底色（例如 mochi 分组背景）。给了就用它刷窗口和状态栏，
+ *   免得系统栏颜色和页面顶部不是同一块；null 时沿用旧主题的 `palette.bg`。
+ */
 @Composable
-internal fun WeatherDialogWindow(overlay: Boolean = false) {
+internal fun WeatherDialogWindow(overlay: Boolean = false, background: Color? = null) {
     val view = LocalView.current
     val palette = LocalZhishengPalette.current
     val light = palette.isLight
-    val background = if (overlay) Color.Transparent.toArgb() else palette.bg.toArgb()
-    val navigationBackground = if (overlay) background else if (isPhosphorVista &&
+    val pageBackground = background ?: if (overlay) Color.Transparent else palette.bg
+    val backgroundArgb = pageBackground.toArgb()
+    val navigationBackground = if (overlay) backgroundArgb else if (isPhosphorVista &&
         LocalHomeSurfaceStyle.current == HomeSurfaceStyle.FRAGRANCE_GLASS
     ) {
         (if (light) Color(0xFFD3E6F1) else Color(0xFF0F1B29)).toArgb()
-    } else background
-    DisposableEffect(view, light, background, navigationBackground, overlay) {
+    } else backgroundArgb
+    DisposableEffect(view, light, backgroundArgb, navigationBackground, overlay) {
         val provider = generateSequence(view.parent) { it.parent }
             .filterIsInstance<DialogWindowProvider>().firstOrNull()
         val window = provider?.window
@@ -48,7 +54,7 @@ internal fun WeatherDialogWindow(overlay: Boolean = false) {
             window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
             window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             window.setBackgroundDrawable(ColorDrawable(navigationBackground))
-            window.statusBarColor = background
+            window.statusBarColor = backgroundArgb
             window.navigationBarColor = navigationBackground
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 if (overlay) window.isStatusBarContrastEnforced = false

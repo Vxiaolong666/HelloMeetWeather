@@ -33,10 +33,15 @@ import com.zhisheng.weather.model.*
 import com.zhisheng.weather.R
 import com.zhisheng.weather.ui.DisplayPrefs
 import com.zhisheng.weather.data.ReleaseFeatures
+import com.zhisheng.weather.ui.MochiPageFrame
 import com.zhisheng.weather.ui.Text
 import com.zhisheng.weather.ui.rememberRainviewerDisclosureAccepted
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.theme.*
+import ui.feice.mochi.navigation.MochiBackButton
+import ui.feice.mochi.navigation.MochiScrollEdgeDefaults
+import ui.feice.mochi.theme.MochiDefaults
+import ui.feice.mochi.theme.MochiTheme
 import java.util.Locale
 
 internal enum class AtlasPage(val title: String, val signal: String) {
@@ -286,22 +291,32 @@ internal fun atlasTemperature(value: Double?, unit: String) = atlasNumber(value?
 @Composable
 private fun AtlasDetailDialog(page: AtlasPage, scene: SceneWeatherData?, city: City?, unit: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        WeatherDialogWindow()
-        Column(Modifier.fillMaxSize().zhishengScreen().safeDrawingPadding()) {
-            AtlasPageHeader(page, onDismiss)
-            Column(Modifier.weight(1f).align(Alignment.CenterHorizontally).widthIn(max = 760.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // 与设置二级页完全同一个外壳：库标题脚手架 + 液态玻璃材质 + 越界手感。
+        // 系统栏底色取库的分组背景，和顶栏是同一块颜色；状态栏内边距由库顶栏自己处理，不能再加 safeDrawing。
+        MochiPageFrame(
+            title = page.title,
+            subtitle = page.signal,
+            onBack = onDismiss,
+            overlay = { WeatherDialogWindow(background = MochiDefaults.groupedBackground()) },
+        ) {
+            item {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     AtlasCaption(city?.displayName ?: "当前地点未选择")
                     if (city != null) AtlasCaption("经纬度 ${com.zhisheng.weather.ui.Fmt.coordinates(city.latitude, city.longitude, precise = city.isPreciseLocation)}")
                 }
-                when (page) {
-                    AtlasPage.GLOW -> AtlasGlowDetail(scene, city)
-                    AtlasPage.STARS -> AtlasStarsDetail(scene, city)
-                    AtlasPage.COAST -> AtlasCoastDetail(scene, unit)
-                    AtlasPage.DARK -> AtlasDarkDetail()
+            }
+            item {
+                Column(
+                    Modifier.fillMaxWidth().widthIn(max = 760.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    when (page) {
+                        AtlasPage.GLOW -> AtlasGlowDetail(scene, city)
+                        AtlasPage.STARS -> AtlasStarsDetail(scene, city)
+                        AtlasPage.COAST -> AtlasCoastDetail(scene, unit)
+                        AtlasPage.DARK -> AtlasDarkDetail()
+                    }
                 }
-                Spacer(Modifier.height(12.dp))
             }
         }
     }

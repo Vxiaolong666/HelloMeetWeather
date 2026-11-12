@@ -83,6 +83,9 @@ import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.home.HourlyDisplayItem
 import com.zhisheng.weather.ui.home.hourlyDisplayItems
 import com.zhisheng.weather.ui.theme.*
+import ui.feice.mochi.navigation.MochiBackButton
+import ui.feice.mochi.theme.MochiDefaults
+import ui.feice.mochi.theme.MochiTheme
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -128,7 +131,6 @@ fun HourlyDetailScreen(
     windUnit: String,
     onBack: () -> Unit,
 ) {
-    val chrome = LocalZhishengChrome.current
     val palette = rememberChartPalette()
     val nowMs = weatherPresentationTime()
     val allHours = hourlyDetailDisplayItems(data.current, data.hourly, nowMs, data.aqi?.value, data.aqi?.estimated == true)
@@ -145,24 +147,12 @@ fun HourlyDetailScreen(
             hourlyHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
     }
-    LazyColumn(
-        Modifier.fillMaxSize().zhishengScreen().statusBarsPadding().navigationBarsPadding(),
-        contentPadding = PaddingValues(horizontal = chrome.pagePadding, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    // 与设置二级页同一套外壳：库主题（含液态玻璃材质）+ 越界手感 + 库顶栏。
+    MochiPageFrame(
+        title = "逐时详情",
+        subtitle = cityName?.takeIf { it.isNotBlank() },
+        onBack = onBack,
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = ZhishengText)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("逐时详情", color = ZhishengText, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                    cityName?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, color = ZhishengTextSecondary, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
         if (days.size > 1) item {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -180,8 +170,8 @@ fun HourlyDetailScreen(
             }
         }
         if (display.size >= 2) item {
-            Text("左右拖动图表查看同一天的时刻；缺失数据保留空位",
-                color = ZhishengTextSecondary, style = MaterialTheme.typography.bodySmall)
+            // 操作说明放进带渐变遮罩的库卡片，段落原文不改。
+            MochiFadeNote("左右拖动图表查看同一天的时刻；缺失数据保留空位")
         }
         if (display.isEmpty()) {
             item {
@@ -330,9 +320,9 @@ private fun ChartCard(
     legend: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxWidth().zhishengPanel().padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+    MochiPageCard(
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,

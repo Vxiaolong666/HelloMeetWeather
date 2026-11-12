@@ -34,6 +34,8 @@ import com.zhisheng.weather.model.*
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.components.WeatherIcon
 import com.zhisheng.weather.ui.theme.*
+import kotlinx.collections.immutable.persistentListOf
+import ui.feice.mochi.basic.MochiSegmentedControl
 import java.util.Locale
 
 @Composable
@@ -55,28 +57,35 @@ internal fun VistaForecastScreen(
     val selectedHours = remember(hourly, selected?.dateMillis, utcOffsetSeconds) {
         selected?.let { forecastHoursForDate(hourly, it.dateMillis, utcOffsetSeconds) } ?: emptyList()
     }
-    Column(Modifier.fillMaxSize().zhishengScreen().statusBarsPadding().navigationBarsPadding()) {
-        FeaturePageHeader(if (days.isEmpty()) "多天天气" else "${days.size}日天气预报", "", onBack)
-        ForecastViewToggle(vertical) { vertical = it }
+    // 与设置二级页完全同一个外壳：库标题脚手架 + 液态玻璃材质 + 越界手感。
+    MochiPageFrame(
+        title = if (days.isEmpty()) "多天天气" else "${days.size}日天气预报",
+        subtitle = city?.displayName?.takeIf { it.isNotBlank() },
+        onBack = onBack,
+    ) {
+        item {
+            MochiSegmentedControl(
+                selectedIndex = if (vertical) 1 else 0,
+                onSelect = { vertical = it == 1 },
+                items = persistentListOf("横向", "纵向"),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
+        }
         if (!vertical) selected?.let { day ->
             val dayIndex = track.indexOfFirst { it.dateMillis == day.dateMillis }
             val prevDate = track.getOrNull(dayIndex - 1)?.dateMillis
             val nextDate = track.getOrNull(dayIndex + 1)?.dateMillis
-            ForecastDateHeader(
-                dateLabel = "${forecastTemporalLabel(day.dateMillis, utcOffsetSeconds)} · ${forecastDateLabel(day.dateMillis, utcOffsetSeconds)} · ${day.weatherText ?: day.condition?.label ?: "天气预报"}",
-                canPrev = prevDate != null,
-                canNext = nextDate != null,
-                onPrev = { prevDate?.let { selectedDate = it } },
-                onNext = { nextDate?.let { selectedDate = it } },
-                modifier = Modifier.padding(horizontal = chrome.pagePadding, vertical = 4.dp),
-            )
-        }
-        LazyColumn(Modifier.fillMaxWidth().weight(1f),
-            contentPadding = PaddingValues(horizontal = chrome.pagePadding, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(if (vertical) 12.dp else 24.dp)) {
             item {
-                city?.displayName?.let { Text(it, color = ZhishengTextSecondary, style = MaterialTheme.typography.bodyMedium) }
+                ForecastDateHeader(
+                    dateLabel = "${forecastTemporalLabel(day.dateMillis, utcOffsetSeconds)} · ${forecastDateLabel(day.dateMillis, utcOffsetSeconds)} · ${day.weatherText ?: day.condition?.label ?: "天气预报"}",
+                    canPrev = prevDate != null,
+                    canNext = nextDate != null,
+                    onPrev = { prevDate?.let { selectedDate = it } },
+                    onNext = { nextDate?.let { selectedDate = it } },
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
             }
+        }
             if (vertical) {
                 item {
                     ForecastVerticalList(
@@ -171,7 +180,6 @@ internal fun VistaForecastScreen(
                     }
                 }
             }
-        }
     }
 }
 

@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.DatePicker
@@ -98,6 +99,8 @@ import com.zhisheng.weather.ui.theme.zhishengScreen
 import com.zhisheng.weather.ui.theme.isPhosphorVista
 import com.zhisheng.weather.ui.theme.zhishengCompactPanel
 import com.zhisheng.weather.ui.theme.zhishengPanel
+import kotlinx.collections.immutable.persistentListOf
+import ui.feice.mochi.basic.MochiSegmentedControl
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.delay
@@ -184,6 +187,7 @@ fun HistoryScreen(
     }
     var recentState by remember(city?.locationKey, today, retry) { mutableStateOf<RecentWeekState>(RecentWeekState.Loading) }
 
+
     LaunchedEffect(city?.locationKey, selectedDate, years, retry, view) {
         if (view == HistoryView.RECENT_WEEK) return@LaunchedEffect
         if (city == null) {
@@ -227,53 +231,36 @@ fun HistoryScreen(
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().zhishengScreen()
-            .statusBarsPadding().navigationBarsPadding()
-            // 详情页叠在首页之上：吞掉空白区域的点击，避免穿透到下层首页瓦片
-            // （曾出现点手动查询区域误开「星空拍摄」）。子项点击仍优先处理。
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {},
-    ) {
-        if (isPhosphorVista) WeatherFeatureNavigation("天气回看", city?.displayName, onBack, historyTabs, view.ordinal) {
-            viewName = HistoryView.entries.getOrNull(it)?.name ?: HistoryView.RECENT_WEEK.name
-        }
-        else {
-            FeaturePageHeader("天气回看", "WEATHER MEMORY", onBack)
-            HistoryViewToggle(view) { viewName = it.name }
-        }
-        if (view == HistoryView.RECENT_WEEK) {
-            when (val current = recentState) {
-                RecentWeekState.Loading -> RecentWeekLoading()
-                is RecentWeekState.Error -> FeatureErrorState(
-                    title = current.message,
-                    action = "重新读取",
-                    hint = current.hint,
-                    onAction = { retry++ },
-                )
-                is RecentWeekState.Ready -> RecentWeekContent(
-                    city = city!!,
-                    week = current.week,
-                    tempUnit = tempUnit,
-                    windUnit = windUnit,
-                    endDate = today.minusDays(1),
-                )
+    // 磷光视图的这两页自带 LazyColumn，塞进库脚手架的列表项会变成嵌套滚动（直接崩），
+    // 所以这一支仍走原来的整页结构：旧顶栏 + 自带滚动的正文。
+    if (isPhosphorVista) {
+        val forecast = weather?.daily?.firstOrNull {
+            city != null && cityDate(it.dateMillis, weather.utcOffsetSeconds) == selectedDate
+        }?.takeIf { !selectedDate.isBefore(today) }
+        Column(Modifier.fillMaxSize().zhishengScreen().statusBarsPadding().navigationBarsPadding()) {
+            WeatherFeatureNavigation("天气回看", city?.displayName, onBack, historyTabs, view.ordinal) {
+                viewName = HistoryView.entries.getOrNull(it)?.name ?: HistoryView.RECENT_WEEK.name
             }
-        } else {
-            Column(Modifier.fillMaxSize()) {
-                if (view == HistoryView.MANUAL) {
-                    ManualDateQuery(
-                        initialDate = selectedDate,
-                        today = today,
-                        onQuery = {
-                            selectedEpochDay = it.toEpochDay()
-                            retry++
-                        },
+            if (view == HistoryView.RECENT_WEEK) {
+                when (val current = recentState) {
+                    RecentWeekState.Loading -> RecentWeekLoading()
+                    is RecentWeekState.Error -> FeatureErrorState(
+                        title = current.message,
+                        action = "重新读取",
+                        hint = current.hint,
+                        onAction = { retry++ },
                     )
+                    is RecentWeekState.Ready -> VistaRecentHistory(current.week, tempUnit, windUnit, today.minusDays(1))
                 }
-                Box(Modifier.fillMaxWidth().weight(1f)) {
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    if (view == HistoryView.MANUAL) {
+                        ManualDateQuery(
+                            initialDate = selectedDate,
+                            today = today,
+                            onQuery = { selectedEpochDay = it.toEpochDay(); retry++ },
+                        )
+                    }
                     when (val current = state) {
                         is HistoryScreenState.Loading -> HistoryLoading(current.completed, current.total)
                         is HistoryScreenState.Error -> FeatureErrorState(
@@ -282,21 +269,101 @@ fun HistoryScreen(
                             hint = current.hint,
                             onAction = { retry++ },
                         )
-                        is HistoryScreenState.Ready -> HistoryContent(
-                            city = city!!,
-                            weather = weather,
+                        is HistoryScreenState.Ready -> VistaSameDayHistory(
                             review = current.review,
+                            forecast = forecast,
                             tempUnit = tempUnit,
                             windUnit = windUnit,
                             years = years,
                             today = today,
-                            backgroundProgress = backgroundProgress,
-                            reloadFailure = reloadFailure,
+                            progress = backgroundProgress?.let { "正在读取 ${it.date} · ${it.completed}/${it.total}；下方仍为原日期记录" } ?: reloadFailure,
                             onDateChange = { selectedEpochDay = it.toEpochDay() },
                             onYearsChange = { years = it },
                         )
                     }
                 }
+            }
+        }
+        return
+    }
+
+    // 与设置二级页完全同一个外壳：库标题脚手架 + 液态玻璃材质 + 越界手感。
+    // 列表内容 lambda 不是 composable，主题开关先在这里读出来。
+    val vista = false
+    MochiPageFrame(
+        title = "天气回看",
+        subtitle = city?.displayName?.takeIf { it.isNotBlank() },
+        onBack = onBack,
+        // 详情页叠在首页之上：吞掉空白区域的点击，避免穿透到下层首页瓦片
+        // （曾出现点手动查询区域误开「星空拍摄」）。子项点击仍优先处理。
+        modifier = Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+        ) {},
+    ) {
+        item {
+            MochiSegmentedControl(
+                selectedIndex = view.ordinal,
+                onSelect = { viewName = HistoryView.entries[it].name },
+                items = persistentListOf(*historyTabs.toTypedArray()),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
+        }
+        if (view == HistoryView.RECENT_WEEK) {
+            when (val current = recentState) {
+                RecentWeekState.Loading -> item { RecentWeekLoading() }
+                is RecentWeekState.Error -> item {
+                    FeatureErrorState(
+                        title = current.message,
+                        action = "重新读取",
+                        hint = current.hint,
+                        onAction = { retry++ },
+                    )
+                }
+                is RecentWeekState.Ready -> recentWeekItems(
+                    city = city!!,
+                    week = current.week,
+                    tempUnit = tempUnit,
+                    windUnit = windUnit,
+                    vista = vista,
+                    endDate = today.minusDays(1),
+                )
+            }
+        } else {
+            if (view == HistoryView.MANUAL) item {
+                ManualDateQuery(
+                    initialDate = selectedDate,
+                    today = today,
+                    onQuery = {
+                        selectedEpochDay = it.toEpochDay()
+                        retry++
+                    },
+                )
+            }
+            when (val current = state) {
+                is HistoryScreenState.Loading -> item { HistoryLoading(current.completed, current.total) }
+                is HistoryScreenState.Error -> item {
+                    FeatureErrorState(
+                        title = current.message,
+                        action = "重新读取",
+                        hint = current.hint,
+                        onAction = { retry++ },
+                    )
+                }
+                is HistoryScreenState.Ready -> historyItems(
+                    city = city!!,
+                    weather = weather,
+                    review = current.review,
+                    tempUnit = tempUnit,
+                    windUnit = windUnit,
+                    years = years,
+                    today = today,
+                    vista = vista,
+                    backgroundProgress = backgroundProgress,
+                    reloadFailure = reloadFailure,
+                    onDateChange = { selectedEpochDay = it.toEpochDay() },
+                    onYearsChange = { years = it },
+                )
             }
         }
     }
@@ -362,8 +429,8 @@ private fun ManualDateQuery(
     }
 
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
-            .then(if (isPhosphorVista) Modifier.zhishengPanel() else Modifier.zhishengCompactPanel())
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+            .mochiCardSurface()
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -493,24 +560,23 @@ private fun HistoryLoading(completed: Int, total: Int) {
         Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium, color = ZhishengTextSecondary)
 }
 
-@Composable
-internal fun RecentWeekContent(
+/** 最近七天：分组卡片直接铺进库脚手架的懒加载列表。 */
+private fun LazyListScope.recentWeekItems(
     city: City,
     week: RecentWeatherWeek,
     tempUnit: String,
     windUnit: String,
+    vista: Boolean,
     endDate: LocalDate = week.endDate ?: LocalDate.now().minusDays(1),
 ) {
-    if (isPhosphorVista) { VistaRecentHistory(week, tempUnit, windUnit, endDate); return }
+    if (vista) {
+        item { VistaRecentHistory(week, tempUnit, windUnit, endDate) }
+        return
+    }
     val summary = week.summary
     val range = recentRangeDisplay(week)
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 36.dp),
-    ) {
         item {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
-                .then(if (isPhosphorVista) Modifier.zhishengPanel().padding(18.dp) else Modifier)) {
+            Column(Modifier.fillMaxWidth().mochiCardSurface().padding(18.dp)) {
                 Text(
                     range.dates,
                     style = MaterialTheme.typography.headlineSmall.copy(fontSize = 24.sp, lineHeight = 28.sp),
@@ -535,7 +601,7 @@ internal fun RecentWeekContent(
                 )
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    if (isPhosphorVista) "最近七个完整日期，不含今天。" else "只显示已经结束的日期；今天的数据尚未完整，不进入统计。",
+                    if (vista) "最近七个完整日期，不含今天。" else "只显示已经结束的日期；今天的数据尚未完整，不进入统计。",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
                     color = ZhishengTextTertiary,
                 )
@@ -547,11 +613,11 @@ internal fun RecentWeekContent(
                 }
             }
         }
-        item { FeatureSectionTitle(1, if (isPhosphorVista) "七日天气" else "七日观测带", "7-DAY WEATHER STRIP") }
+        item { FeatureSectionTitle(1, if (vista) "七日天气" else "七日观测带", "7-DAY WEATHER STRIP") }
         item {
             Text(
                 "横向滑动，每列是一天的天气、温度、降水和风速。",
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                modifier = Modifier.padding(vertical = 2.dp),
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
                 color = ZhishengTextTertiary,
             )
@@ -559,23 +625,19 @@ internal fun RecentWeekContent(
         item { RecentWeekWeatherStrip(week.days, tempUnit, windUnit) }
         item { FeatureSectionTitle(2, "数据说明", "SOURCE NOTE") }
         item {
-            TerminalPanel(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("Open-Meteo · 近期历史档案", style = MaterialTheme.typography.labelMedium, color = ZhishengCyan)
-                    Text(
-                        if (isPhosphorVista) "显示最近七个完整日期的天气，不含尚未结束的今天。数据由 Open-Meteo 提供，代表当地整体天气，可能与附近气象站的记录有差异。" else "过去7天来自 Forecast API 的近期归档，是滚动的七个完整自然日，不是固定的周一到周日。它适合回看天气变化，但仍是格点化数据，不等同于当地单个气象站原始观测。",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
-                        color = ZhishengTextSecondary,
-                    )
-                    Text(if (isPhosphorVista) "已获取的记录会保存在手机上" else "CACHE // 当天成功读取后保存在本机", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
-                }
-            }
+            // 数据说明是补充段落：用带渐变遮罩的库卡片承载，原文不改。
+            MochiFadeNote(
+                listOf(
+                    if (vista) "显示最近七个完整日期的天气，不含尚未结束的今天。数据由 Open-Meteo 提供，代表当地整体天气，可能与附近气象站的记录有差异。" else "过去7天来自 Forecast API 的近期归档，是滚动的七个完整自然日，不是固定的周一到周日。它适合回看天气变化，但仍是格点化数据，不等同于当地单个气象站原始观测。",
+                    if (vista) "已获取的记录会保存在手机上" else "CACHE // 当天成功读取后保存在本机",
+                ),
+                title = "Open-Meteo · 近期历史档案",
+            )
         }
-    }
 }
 
-@Composable
-private fun HistoryContent(
+/** 往年同日：分组卡片直接铺进库脚手架的懒加载列表。 */
+private fun LazyListScope.historyItems(
     city: City,
     weather: WeatherData?,
     review: HistoricalReview,
@@ -583,6 +645,7 @@ private fun HistoryContent(
     windUnit: String,
     years: Int,
     today: LocalDate,
+    vista: Boolean,
     backgroundProgress: HistoryLoadProgress?,
     reloadFailure: String?,
     onDateChange: (LocalDate) -> Unit,
@@ -592,15 +655,13 @@ private fun HistoryContent(
         cityDate(it.dateMillis, weather.utcOffsetSeconds) == review.referenceDate
     }?.takeIf { !review.referenceDate.isBefore(today) }
 
-    if (isPhosphorVista) {
-        VistaSameDayHistory(review, forecast, tempUnit, windUnit, years, today,
-            backgroundProgress?.let { "正在读取 ${it.date} · ${it.completed}/${it.total}；下方仍为原日期记录" } ?: reloadFailure, onDateChange, onYearsChange)
+    if (vista) {
+        item {
+            VistaSameDayHistory(review, forecast, tempUnit, windUnit, years, today,
+                backgroundProgress?.let { "正在读取 ${it.date} · ${it.completed}/${it.total}；下方仍为原日期记录" } ?: reloadFailure, onDateChange, onYearsChange)
+        }
         return
     }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 36.dp),
-    ) {
         item {
             HistoryHero(
                 city = city,
@@ -622,14 +683,14 @@ private fun HistoryContent(
         item {
             Text(
                 "左右滑动查看每一年；卡片只放这一年的关键记录。",
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                modifier = Modifier.padding(vertical = 2.dp),
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
                 color = ZhishengTextTertiary,
             )
         }
         item {
             LazyRow(
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 9.dp),
+                contentPadding = PaddingValues(top = 9.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(review.days, key = HistoricalDay::date) { day -> HistoricalYearCard(day, tempUnit, windUnit) }
@@ -639,7 +700,7 @@ private fun HistoryContent(
             item {
                 Text(
                     "${review.missingCount} 个年份没有可比较的温度，已自动略过；其余记录仍可正常阅读。",
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(vertical = 12.dp),
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
                     color = ZhishengOrange,
                 )
@@ -647,31 +708,16 @@ private fun HistoryContent(
         }
         item { FeatureSectionTitle(3, "数据说明", "SOURCE NOTE") }
         item {
-            TerminalPanel(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("Open-Meteo · 历史天气", style = MaterialTheme.typography.labelMedium, color = ZhishengCyan)
-                    Text(
-                        "往年数据来自历史再分析：观测与模型共同还原当地天气，不等同于单个气象站的原始记录。近5年或10年是逐年同日样本，不是30年气候平均。",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
-                        color = ZhishengTextSecondary,
-                    )
-                    Text(
-                        "“整体偏暖/偏凉”取高温差与低温差的平均：温差不到 ±1.5℃ 视为接近往年，超过 ±3.5℃ 判为明显偏暖或偏凉，介于两者之间为略偏暖或略偏凉。",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
-                        color = ZhishengTextSecondary,
-                    )
-                    if (forecast != null) {
-                        Text(
-                            "“今年预报”来自你当前选用的天气源，与往年再分析数据分开标记。",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
-                            color = ZhishengTextSecondary,
-                        )
-                    }
-                    Text(if (isPhosphorVista) "已获取的往年记录会保存在手机上" else "CACHE // 已成功的往年记录保存在本机", style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
-                }
-            }
+            MochiFadeNote(
+                buildList {
+                    add("往年数据来自历史再分析：观测与模型共同还原当地天气，不等同于单个气象站的原始记录。近5年或10年是逐年同日样本，不是30年气候平均。")
+                    add("“整体偏暖/偏凉”取高温差与低温差的平均：温差不到 ±1.5℃ 视为接近往年，超过 ±3.5℃ 判为明显偏暖或偏凉，介于两者之间为略偏暖或略偏凉。")
+                    if (forecast != null) add("“今年预报”来自你当前选用的天气源，与往年再分析数据分开标记。")
+                    add(if (vista) "已获取的往年记录会保存在手机上" else "CACHE // 已成功的往年记录保存在本机")
+                },
+                title = "Open-Meteo · 历史天气",
+            )
         }
-    }
 }
 
 @Composable

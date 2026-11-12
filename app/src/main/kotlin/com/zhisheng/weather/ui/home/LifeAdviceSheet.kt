@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zhisheng.weather.model.DailyWeather
@@ -85,9 +86,14 @@ internal fun LifeAdviceSheet(name: String, english: String, value: String, data:
                             val date = today.plusDays(offset.toLong())
                             val day = data.daily.firstOrNull { Instant.ofEpochMilli(it.dateMillis).atZone(zone).toLocalDate() == date }
                             val advice = forecastLifeAdvice(english, day)
+                            // 数据源没给这一天的依据（缺温度/紫外线/降水，或来源没有这项指数）→ 整行置灰
                             val unavailable = day == null || advice.startsWith("缺少") || advice.startsWith("数据源暂未")
-                            Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(vertical = 12.dp)
+                                    .alpha(if (unavailable) 0.42f else 1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
                                 Column(Modifier.width(88.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                     Text(when(offset) { 1 -> "明天"; 2 -> "后天"; else -> "${date.monthValue}月${date.dayOfMonth}日" },
                                         style = MaterialTheme.typography.titleSmall, color = cs.onSurface)

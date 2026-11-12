@@ -28,9 +28,14 @@ import com.zhisheng.weather.data.Astronomy
 import com.zhisheng.weather.data.SceneWeatherCalculator
 import com.zhisheng.weather.R
 import com.zhisheng.weather.model.*
+import com.zhisheng.weather.ui.MochiFadeNote
 import com.zhisheng.weather.ui.Text
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.theme.*
+import androidx.compose.ui.draw.clip
+import ui.feice.mochi.list.MochiListDefaults
+import ui.feice.mochi.shape.MochiRoundedRectangle
+import ui.feice.mochi.theme.MochiDefaults
 import kotlin.math.roundToInt
 
 @Composable
@@ -61,7 +66,7 @@ internal fun AtlasGlowDetail(scene: SceneWeatherData?, city: City?) {
     }
     AtlasReasons("为什么这样判断", glow.reasons)
     AtlasSource(sky.source, sky.updatedAtMillis, sky.zoneId)
-    AtlasCaption("太阳高度按经纬度计算，不是霞光概率。${glow.quality}；天气与现场遮挡仍会影响能否拍到。")
+    MochiFadeNote("太阳高度按经纬度计算，不是霞光概率。${glow.quality}；天气与现场遮挡仍会影响能否拍到。")
 }
 
 @Composable
@@ -91,7 +96,7 @@ internal fun AtlasStarsDetail(scene: SceneWeatherData?, city: City?) {
     }
     AtlasReasons("拍摄条件", stars.reasons)
     AtlasSource(sky.source, sky.updatedAtMillis, sky.zoneId)
-    AtlasCaption("这是本夜天气条件，不代表波特尔等级。月面图只表示照明比例，不表示现场朝向；未评估光污染与地形遮挡。")
+    MochiFadeNote("这是本夜天气条件，不代表波特尔等级。月面图只表示照明比例，不表示现场朝向；未评估光污染与地形遮挡。")
 }
 
 @Composable
@@ -315,9 +320,14 @@ internal fun AtlasCoastDetail(scene: SceneWeatherData?, unit: String) {
     }
 
     AtlasSource(coast.source, coast.updatedAtMillis, coast.zoneId)
-    AtlasCaption("模型时刻 ${sceneStamp(coast.sampleTimeMillis, coast.zoneId)}")
-    coast.gridDistanceKm.takeIf { it.isFinite() && it >= 0 }?.let { AtlasCaption("代表网格距地点约 ${atlasNumber(it, "km")}；小时采样拐点仅为近似。") }
-    AtlasCaption("非测站潮汐表，不能用于航海或判断下水安全；港湾、河口可能有明显偏差。", ZhishengOrange)
+    // 补充文字保持原文，逐条放进带渐变遮罩的库卡片。
+    val coastNotes = buildList {
+        add("模型时刻 ${sceneStamp(coast.sampleTimeMillis, coast.zoneId)}")
+        coast.gridDistanceKm.takeIf { it.isFinite() && it >= 0 }
+            ?.let { add("代表网格距地点约 ${atlasNumber(it, "km")}；小时采样拐点仅为近似。") }
+        add("非测站潮汐表，不能用于航海或判断下水安全；港湾、河口可能有明显偏差。")
+    }
+    MochiFadeNote(coastNotes, title = "数据与使用说明", iconRes = R.drawable.ph_waves)
 }
 
 @Composable
@@ -374,7 +384,7 @@ internal fun AtlasDarkDetail() {
     Text("暗空数据尚未接入", color = ZhishengText, style = MaterialTheme.typography.headlineSmall)
     AtlasUnavailableGraphic("当前地点的波特尔等级：暂无数据", 96.dp)
     AtlasReasons("与星空天气分开看", listOf("星空拍摄窗口看本夜云量、月光等天气条件。", "波特尔等级描述地点的夜空亮度，不能从今天的天气评分换算。"))
-    AtlasCaption("接入经过核对的光污染数据前，不显示推测等级或虚构暗空地图。")
+    MochiFadeNote("接入经过核对的光污染数据前，不显示推测等级或虚构暗空地图。")
 }
 
 @Composable
@@ -414,12 +424,10 @@ private fun AtlasMetricPair(left: String, leftValue: String, right: String, righ
 
 @Composable
 private fun AtlasReasons(title: String, reasons: List<String>) {
-    if (reasons.none { it.isNotBlank() }) return
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        HorizontalDivider(color = ZhishengCardBorder)
-        Text(title, color = ZhishengText, style = MaterialTheme.typography.titleMedium)
-        reasons.filter { it.isNotBlank() }.forEach { AtlasCaption(it) }
-    }
+    val lines = reasons.filter { it.isNotBlank() }
+    if (lines.isEmpty()) return
+    // 判断依据是说明段落：改用库卡片 + 渐变遮罩，段落原文不动。
+    MochiFadeNote(lines, title = title, iconRes = R.drawable.ph_info)
 }
 
 @Composable
@@ -427,8 +435,15 @@ private fun AtlasSource(source: String, time: Long, zone: String) {
     AtlasCaption((if (isPhosphorVista) "数据源 " else "") + "$source · 获取于 ${sceneStamp(time, zone)}")
 }
 
+/**
+ * 专题页卡片容器：直接用组件库分组卡片的底色与圆角（和 MochiListCard 同一套 token），
+ * 里面的图表与数值保持原样，只换承载的卡片。
+ */
 @Composable
-private fun Modifier.atlasDetailSurface(): Modifier = if (isPhosphorVista) zhishengPanel(containerColor = ZhishengCard) else background(ZhishengCard)
+private fun Modifier.atlasDetailSurface(): Modifier {
+    val shape = MochiRoundedRectangle(MochiListDefaults.SectionCorner)
+    return this.clip(shape).background(MochiDefaults.groupedContainer(), shape)
+}
 
 @Composable
 private fun AtlasScrubber(value: Float, max: Int, label: String, change: (Float) -> Unit) {

@@ -134,6 +134,18 @@ internal fun TerminalPanel(
     ) { content() }
 }
 
+/**
+ * 库卡片容器：底色与圆角跟 [ui.feice.mochi.list.MochiListCard] 一致，
+ * 给已经自己排好内边距的旧卡片用，里面的图表和数值一行都不用改。
+ */
+@Composable
+internal fun MochiCardPanel(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(modifier = modifier.mochiCardSurface()) { content() }
+}
+
 /** 辅助功能页的短促自检动画；真实加载结束就立即离场，不人为延长等待。 */
 @Composable
 internal fun FeatureBootLoader(

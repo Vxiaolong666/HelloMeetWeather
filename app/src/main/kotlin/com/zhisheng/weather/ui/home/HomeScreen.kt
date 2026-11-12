@@ -123,9 +123,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.zhisheng.weather.ui.mochiCardSurface
 import com.zhisheng.weather.ui.rememberMochiColorScheme
 import ui.feice.mochi.navigation.MochiSidebarHeader
 import ui.feice.mochi.navigation.MochiSidebarHeaderButton
+import kotlinx.collections.immutable.persistentListOf
+import ui.feice.mochi.basic.MochiDialog
+import ui.feice.mochi.basic.MochiDialogAction
+import ui.feice.mochi.basic.MochiDialogActionRole
 import ui.feice.mochi.navigation.MochiSidebarLayout
 import ui.feice.mochi.navigation.MochiSidebarSectionHeader
 import ui.feice.mochi.navigation.MochiSidebarStyle
@@ -257,8 +262,11 @@ import ui.feice.mochi.basic.rememberMochiSheetState
 import ui.feice.mochi.shape.MochiCapsule
 import ui.feice.mochi.shape.MochiRoundedRectangle
 
-/** 首页两个底部面板共用的状态：根节点据此按 iOS 卡片堆叠缩放退后。 */
-internal data class HomeSheetStates(val outfit: MochiSheetState, val advice: MochiSheetState)
+/** 首页底部面板共用的状态：根节点据此按 iOS 卡片堆叠缩放退后。 */
+internal data class HomeSheetStates(
+    val outfit: MochiSheetState,
+    val advice: MochiSheetState,
+)
 
 internal val LocalHomeSheetStates = compositionLocalOf<HomeSheetStates?> { null }
 
@@ -2257,44 +2265,34 @@ internal fun SectionTitle(index: Int, title: String, en: String, prominent: Bool
     }
 }
 
-// —— 角括号 HUD 卡片 ——
+// —— 首页卡片：统一用组件库分组卡片承载 ——
 @Composable
 private fun HudCard(
     modifier: Modifier = Modifier,
     edgeContent: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val palette = LocalZhishengPalette.current
-    val chrome = LocalZhishengChrome.current
+    // 卡片的底色、圆角、分组留白都交给库（和设置二级页的 MochiListSection 同一套 token），
+    // 页面里只保留内容自己的内边距。
     Box(
         modifier = modifier
-            .padding(horizontal = if (isPhosphorVista) chrome.pagePadding else 16.dp)
-            .then(if (isPhosphorVista) Modifier.zhishengPanel()
-                else Modifier.clip(chrome.panelShape).background(if (palette.isLight) ZhishengCard else ZhishengSurface).hudBorder())
-            .padding(horizontal = if (isPhosphorVista && edgeContent) 0.dp else if (isPhosphorVista) chrome.panelPadding else 14.dp,
-                vertical = if (isPhosphorVista) 16.dp else 12.dp),
+            .padding(horizontal = 16.dp)
+            .mochiCardSurface()
+            .padding(
+                horizontal = if (edgeContent) 0.dp else 14.dp,
+                vertical = 12.dp,
+            ),
     ) {
         content()
     }
 }
 
-@Composable
-private fun Modifier.hudBorder(): Modifier {
-    val chrome = LocalZhishengChrome.current
-    return this
-    .border(1.dp, ZhishengCardBorder, chrome.panelShape)
-    .padding(0.dp)
-    .then(
-        if (isPhosphorVista) Modifier else Modifier.drawCornerBrackets(ZhishengOrange)
-    )
-}
-
+/** 四角 L 形角标：首页仍用它的强调按钮保留原样。 */
 private fun Modifier.drawCornerBrackets(color: Color) = this.then(
     Modifier.drawWithContent {
         drawContent()
         val len = 7.dp.toPx()
         val w = 1.6.dp.toPx()
-        // 四角 L 形
         drawLine(color, Offset(0f, 0f), Offset(len, 0f), w)
         drawLine(color, Offset(0f, 0f), Offset(0f, len), w)
         drawLine(color, Offset(size.width, 0f), Offset(size.width - len, 0f), w)
@@ -3593,9 +3591,9 @@ internal fun TelemetryGrid(
         TelemetryMetric.WIND_GUST to Triple("阵风", "GUST", Fmt.wind(cur.windGust, prefs.windUnit)),
         // 当前雨强归位到"短时降水"卡（同源数据同卡收口），遥测网格保持 2 列收尾完整
     ).filter { (metric, _) -> metric in prefs.telemetryMetrics }
-        .mapNotNull { (_, item) ->
+        .mapNotNull { (metric, item) ->
             val (cn, en, value) = item
-            value?.let { Triple(cn, en, it) }
+            value?.let { TelemetryReadout(metric, cn, en, it) }
         }
     val showLuminary = TelemetryMetric.LUMINARY in prefs.telemetryMetrics && today != null && (
         today.sunrise != null || today.sunset != null || today.moonPhase != null ||
@@ -3605,6 +3603,9 @@ internal fun TelemetryGrid(
 
     // 同级遥测读数合并为一个连续面板，用分隔线组织，不再一项套一张卡。
     if (items.isEmpty() && !showLuminary) return
+
+    // 每一格单独可点：弹窗展示这一项的数值与含义，和特色功能页的指标弹窗同一形态。
+    var selectedReadout by remember { mutableStateOf<TelemetryReadout?>(null) }
     if (isPhosphorVista) {
         val columns = when {
             LocalDensity.current.fontScale > 1.25f -> 1
@@ -3617,8 +3618,12 @@ internal fun TelemetryGrid(
                 val rows = items.chunked(columns)
                 rows.forEachIndexed { index, row ->
                     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        row.forEach { (cn, en, value) ->
-                            TeleCell(cn, en, value, cur, city, Modifier.weight(1f).fillMaxHeight())
+                        row.forEach { readout ->
+                            TeleCell(
+                                readout.cn, readout.en, readout.value, cur, city,
+                                Modifier.weight(1f).fillMaxHeight(),
+                                onClick = { selectedReadout = readout },
+                            )
                         }
                         repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                     }
@@ -3629,8 +3634,7 @@ internal fun TelemetryGrid(
                 VistaLuminary(today, utcOffsetSeconds)
             }
         }
-        return
-    }
+    } else {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -3650,8 +3654,12 @@ internal fun TelemetryGrid(
                 Modifier.fillMaxWidth().height(IntrinsicSize.Max),
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
             ) {
-                rowItems.forEachIndexed { itemIndex, (cn, en, value) ->
-                    TeleCell(cn, en, value, cur, city, Modifier.weight(1f).fillMaxHeight())
+                rowItems.forEachIndexed { itemIndex, readout ->
+                    TeleCell(
+                        readout.cn, readout.en, readout.value, cur, city,
+                        Modifier.weight(1f).fillMaxHeight(),
+                        onClick = { selectedReadout = readout },
+                    )
                     if (!isPhosphorVista && itemIndex < rowItems.lastIndex) {
                         Box(
                             Modifier
@@ -3712,6 +3720,64 @@ internal fun TelemetryGrid(
             }
         }
     }
+    }
+    TelemetryMetricDialog(selectedReadout) { selectedReadout = null }
+}
+
+/** 遥测卡的一格读数：带上指标本身，点开时才知道该解释哪一项。 */
+private data class TelemetryReadout(
+    val metric: TelemetryMetric,
+    val cn: String,
+    val en: String,
+    val value: String,
+)
+
+/** 读数格的含义说明：口径一句话，避免首页只给数字不给解释。 */
+private fun telemetryMeaning(metric: TelemetryMetric): String = when (metric) {
+    TelemetryMetric.HUMIDITY ->
+        "空气中的水汽相对饱和的百分比。偏高时体感闷热、衣物不易晾干；偏低时口干、静电与扬尘更明显。"
+    TelemetryMetric.WIND ->
+        "近地面风向与平均风速。用于判断风寒体感、通风条件，以及骑行与户外活动是否合适。"
+    TelemetryMetric.PRESSURE ->
+        "当前气压。短时间内明显下降通常预示天气转坏，持续回升则多为转晴。"
+    TelemetryMetric.UV ->
+        "紫外线指数，按世界卫生组织分级：0-2 弱、3-5 中等、6-7 强、8-10 很强、11 以上极强。"
+    TelemetryMetric.VISIBILITY ->
+        "水平能见距离。低于 1 km 多由雾、霾或强降水造成，出行与驾驶需要减速。"
+    TelemetryMetric.DEW_POINT ->
+        "空气冷却到水汽饱和时的温度。与气温越接近，越容易起雾、结露或出现降水。"
+    TelemetryMetric.CLOUD_COVER ->
+        "天空被云遮挡的比例。云量高时日照偏弱、昼夜温差变小；云量低时夜间辐射降温更明显。"
+    TelemetryMetric.WIND_GUST ->
+        "短时阵风风速，通常明显高于平均风速。影响骑行、高空作业与晾晒安全。"
+    TelemetryMetric.PRECIPITATION ->
+        "当前降水强度（单位时间的雨量），用于判断此刻雨势大小，不等同于累计降水量。"
+    TelemetryMetric.LUMINARY ->
+        "当天的日出日落与月相、月出月落，用于安排户外活动与拍摄时间。"
+}
+
+/** 点按读数格后弹出的说明对话框：与特色功能页的指标弹窗同一套库对话框。 */
+@Composable
+private fun TelemetryMetricDialog(readout: TelemetryReadout?, onDismiss: () -> Unit) {
+    val cs = MochiTheme.colorScheme
+    MochiDialog(
+        visible = readout != null,
+        onDismissRequest = onDismiss,
+        title = readout?.cn.orEmpty(),
+        message = readout?.let { telemetryMeaning(it.metric) },
+        dismissOnOutsideTap = true,
+        actions = persistentListOf(MochiDialogAction("关闭", MochiDialogActionRole.Cancel)),
+    ) {
+        readout?.let {
+            Text(
+                it.value,
+                Modifier.padding(horizontal = 16.dp),
+                style = MaterialTheme.typography.headlineMedium,
+                color = cs.primary,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
 }
 
 private fun telemetryMetricAvailable(
@@ -3742,9 +3808,15 @@ private fun TeleCell(
     cur: CurrentWeather,
     city: com.zhisheng.weather.model.City?,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
+    val clickableModifier = if (onClick != null) {
+        modifier.clickable(role = Role.Button, onClickLabel = "查看$cn 说明", onClick = onClick)
+    } else {
+        modifier
+    }
     if (isPhosphorVista) {
-        Column(modifier.heightIn(min = 76.dp).padding(vertical = 14.dp),
+        Column(clickableModifier.heightIn(min = 76.dp).padding(vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3760,7 +3832,7 @@ private fun TeleCell(
         }
         return
     }
-    Column(modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+    Column(clickableModifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
         TeleLabel(cn, en)
         Spacer(Modifier.height(5.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -4232,30 +4304,21 @@ internal fun IndicesRow(data: WeatherData, selected: Set<LifeIndexMetric>, modif
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .then(if (isPhosphorVista) Modifier.zhishengPanel() else Modifier),
+            .mochiCardSurface()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        if (isPhosphorVista) {
+        items.chunked(2).forEachIndexed { rowIndex, rowItems ->
+            if (rowIndex > 0) Spacer(Modifier.height(8.dp))
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                VistaModuleIcon(R.drawable.ph_person_simple_walk, "生活指数", tint = ZhishengOrange)
-                Spacer(Modifier.width(8.dp))
-                Text("生活建议", style = MaterialTheme.typography.labelLarge, color = ZhishengTextSecondary)
-            }
-            HorizontalDivider(color = ZhishengCardBorder.copy(alpha = 0.5f))
-        }
-        items.chunked(2).forEach { rowItems ->
-            Row(
-                Modifier.fillMaxWidth().height(76.dp),
+                Modifier.fillMaxWidth().heightIn(min = 76.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 rowItems.forEach { item ->
-                    LifeIndexCard(item, Modifier.weight(1f).clickable { advice = item })
+                    LifeIndexCard(item, Modifier.weight(1f)) { advice = item }
                 }
                 // 奇数项独占最后一行，避免人为留下半屏空栏。
+                if (rowItems.size < 2) Spacer(Modifier.weight(1f))
             }
-            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -4280,17 +4343,19 @@ internal fun lifeIndexIcon(english: String): Int = when (LifeIndexMetric.fromEng
 }
 
 @Composable
-private fun LifeIndexCard(item: LifeIndexUi, modifier: Modifier = Modifier) {
+private fun LifeIndexCard(item: LifeIndexUi, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     val accent = lifeIndexColor(item)
     Row(
         modifier
-            .then(
-                if (isPhosphorVista) Modifier else Modifier.zhishengCompactPanel(
-                    borderColor = accent.copy(alpha = if (item.positive == null) 1f else 0.5f),
-                ),
-            )
             .fillMaxHeight()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .clip(RoundedCornerShape(12.dp))
+            // 点击区就是整张卡片（含内边距和图标），不再只吃文字那一小块
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "查看${item.name}建议",
+                onClick = onClick,
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

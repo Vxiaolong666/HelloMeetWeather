@@ -71,6 +71,9 @@ import com.zhisheng.weather.ui.theme.isPhosphorVista
 import com.zhisheng.weather.ui.theme.zhishengCompactPanel
 import com.zhisheng.weather.ui.theme.zhishengPanel
 import com.zhisheng.weather.ui.theme.zhishengScreen
+import ui.feice.mochi.basic.MochiSearchBar
+import ui.feice.mochi.navigation.MochiBackButton
+import ui.feice.mochi.theme.MochiTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -182,43 +185,30 @@ internal fun SearchScreenContent(state: SearchUiState, onQueryChanged: (String) 
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
     fun dismissKeyboard() { focus.clearFocus(force = true); keyboard?.hide() }
-    Box(Modifier.fillMaxSize().zhishengScreen().statusBarsPadding().navigationBarsPadding().imePadding()) {
-        Column(Modifier.align(Alignment.TopCenter).fillMaxHeight().widthIn(max = chrome.contentMaxWidth)
-            .fillMaxWidth().padding(horizontal = if (isPhosphorVista) chrome.pagePadding else 14.dp)) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.IconButton(onClick = { dismissKeyboard(); onBack() }) {
-                    if (isPhosphorVista) PhosphorIcon(R.drawable.ph_arrow_left, "返回", Modifier.size(24.dp), ZhishengText)
-                    else Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = ZhishengOrange)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("添加地点", style = MaterialTheme.typography.titleLarge, color = ZhishengText)
-                    Text(
-                        "搜索城市、区县或街道，点结果即可加入首页",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ZhishengTextTertiary,
-                    )
-                }
-            }
-            OutlinedTextField(value = state.query, onValueChange = onQueryChanged,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                placeholder = { Text(if (state.preciseAddress) "城市、街道或地点" else "城市、区县或拼音", color = ZhishengTextTertiary) },
-                leadingIcon = if (isPhosphorVista) ({ PhosphorIcon(R.drawable.ph_magnifying_glass, null, Modifier.size(22.dp), ZhishengTextSecondary) }) else null,
-                trailingIcon = if (state.query.isNotEmpty()) ({ androidx.compose.material3.IconButton(onClick = { onQueryChanged("") }) {
-                    PhosphorIcon(R.drawable.ph_x, "清空搜索", Modifier.size(20.dp), ZhishengTextSecondary)
-                } }) else null,
-                singleLine = true, shape = chrome.compactShape,
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { dismissKeyboard(); onSearch() }),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ZhishengMint,
-                    unfocusedBorderColor = ZhishengTextTertiary.copy(alpha = 0.35f),
-                    focusedTextColor = ZhishengText, unfocusedTextColor = ZhishengText, cursorColor = ZhishengMint))
+    // 与设置二级页完全同一个外壳：库标题脚手架 + 液态玻璃材质 + 越界手感。
+    MochiPageFrame(
+        title = "添加地点",
+        subtitle = "搜索城市、区县或街道，点结果即可加入首页",
+        onBack = { dismissKeyboard(); onBack() },
+    ) {
+        item {
+            MochiSearchBar(
+                query = state.query,
+                onQueryChange = onQueryChanged,
+                modifier = Modifier.padding(vertical = 4.dp),
+                placeholder = if (state.preciseAddress) "城市、街道或地点" else "城市、区县或拼音",
+                onSearch = { dismissKeyboard(); onSearch() },
+                onCancel = { dismissKeyboard() },
+            )
+        }
+        item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("${state.region.label} · ${state.results.size} 个结果", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
                 androidx.compose.material3.TextButton(onClick = { dismissKeyboard(); onSearch() }, modifier = Modifier.heightIn(min = 48.dp), enabled = state.query.isNotBlank() && !state.searching) {
                     Text(if (state.searching) "搜索中…" else "联网搜索", color = ZhishengMint)
                 }
             }
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        }
                 item(key = "search-scope-controls") {
                     Column {
                         SearchPlaceTools(state, onAreaChanged, onCityPicked)
@@ -239,7 +229,7 @@ internal fun SearchScreenContent(state: SearchUiState, onQueryChanged: (String) 
                 }
                 if (state.query.isBlank()) item {
                     Column(
-                        Modifier.fillMaxWidth().padding(top = 14.dp).zhishengPanel().padding(16.dp),
+                        Modifier.fillMaxWidth().padding(top = 14.dp).mochiCardSurface().padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -322,8 +312,6 @@ internal fun SearchScreenContent(state: SearchUiState, onQueryChanged: (String) 
                         runCatching { uri.openUri("https://www.geonames.org/") }
                     }.padding(vertical = 12.dp), style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
                 }
-            }
-        }
     }
 }
 

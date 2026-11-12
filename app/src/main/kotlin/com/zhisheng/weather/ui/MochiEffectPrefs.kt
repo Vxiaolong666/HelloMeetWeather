@@ -153,11 +153,14 @@ internal fun rememberMochiUiPrefs(): MochiUiPrefs {
 /**
  * mochi 页面统一的外观入口：配色来自主题，液态玻璃材质由「液态玻璃」页的开关、通透度与使用范围生成。
  * 主题只在根部接一次，页面里不写按玻璃开关的分支。
+ *
+ * [systemBarAppearance] 默认交给库按 mochi 配色决定状态栏图标深浅：页面底色来自 mochi 主题，
+ * 图标也应由同一套配色决定，否则深色页面可能配到深色图标、状态栏整条看不见。
  */
 @Composable
 internal fun MochiAppTheme(
     colors: MochiColorScheme,
-    systemBarAppearance: Boolean = false,
+    systemBarAppearance: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val prefs = rememberMochiUiPrefs()

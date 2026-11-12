@@ -72,6 +72,11 @@ import com.zhisheng.weather.ui.theme.ZhishengText
 import com.zhisheng.weather.ui.theme.ZhishengTextSecondary
 import com.zhisheng.weather.ui.theme.ZhishengTextTertiary
 import com.zhisheng.weather.ui.theme.zhishengScreen
+import kotlinx.collections.immutable.persistentListOf
+import ui.feice.mochi.basic.MochiSegmentedControl
+import ui.feice.mochi.navigation.MochiBackButton
+import ui.feice.mochi.theme.MochiDefaults
+import ui.feice.mochi.theme.MochiTheme
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -152,18 +157,23 @@ fun DailyForecastScreen(
     val selectedDay = trackDays.firstOrNull { it.dateMillis == selectedMillis }
         ?: trackDays.firstOrNull { forecastTemporalLabel(it.dateMillis, utcOffsetSeconds, nowMillis) == "今天" }
         ?: trackDays.firstOrNull()
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .zhishengScreen()
-            .statusBarsPadding()
-            .navigationBarsPadding(),
+    // 与设置二级页同一套外壳：库主题（含液态玻璃材质）+ 越界手感 + 库顶栏。
+    MochiPageFrame(
+        title = pageTitle,
+        subtitle = city?.displayName?.takeIf { it.isNotBlank() },
+        onBack = onBack,
     ) {
-        FeaturePageHeader(pageTitle, "FORECAST ARRAY", onBack)
-        ForecastViewToggle(vertical) { vertical = it }
+        item {
+            MochiSegmentedControl(
+                selectedIndex = if (vertical) 1 else 0,
+                onSelect = { vertical = it == 1 },
+                items = persistentListOf("横向", "纵向"),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
+        }
         if (visibleDays.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
-                TerminalPanel(Modifier.fillMaxWidth()) {
+            item {
+                MochiCardPanel(Modifier.fillMaxWidth().padding(vertical = 20.dp)) {
                     Column(Modifier.padding(horizontal = 18.dp, vertical = 20.dp)) {
                         Text("暂无预报", style = MaterialTheme.typography.labelSmall, color = ZhishengOrange)
                         Spacer(Modifier.height(8.dp))
@@ -173,47 +183,47 @@ fun DailyForecastScreen(
                     }
                 }
             }
-            return@Column
+            return@MochiPageFrame
         }
 
-        ForecastMeta(city, visibleDays.size, tempUnit)
-        if (!vertical) selectedDay?.let { day ->
-            val trackIndex = trackDays.indexOfFirst { it.dateMillis == day.dateMillis }
-            val prevDate = trackDays.getOrNull(trackIndex - 1)?.dateMillis
-            val nextDate = trackDays.getOrNull(trackIndex + 1)?.dateMillis
-            TerminalPanel(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                ForecastDateHeader(
-                    dateLabel = "${forecastTemporalLabel(day.dateMillis, utcOffsetSeconds)} · ${forecastDateLabel(day.dateMillis, utcOffsetSeconds)} · ${day.weatherText?.takeIf { it.isNotBlank() } ?: day.condition?.label ?: "天气预报"}",
-                    canPrev = prevDate != null,
-                    canNext = nextDate != null,
-                    onPrev = { prevDate?.let { selectedMillis = it } },
-                    onNext = { nextDate?.let { selectedMillis = it } },
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                )
+        item { ForecastMeta(city, visibleDays.size, tempUnit) }
+        if (!vertical) {
+            selectedDay?.let { day ->
+                val trackIndex = trackDays.indexOfFirst { it.dateMillis == day.dateMillis }
+                val prevDate = trackDays.getOrNull(trackIndex - 1)?.dateMillis
+                val nextDate = trackDays.getOrNull(trackIndex + 1)?.dateMillis
+                item {
+                    MochiCardPanel(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        ForecastDateHeader(
+                            dateLabel = "${forecastTemporalLabel(day.dateMillis, utcOffsetSeconds)} · ${forecastDateLabel(day.dateMillis, utcOffsetSeconds)} · ${day.weatherText?.takeIf { it.isNotBlank() } ?: day.condition?.label ?: "天气预报"}",
+                            canPrev = prevDate != null,
+                            canNext = nextDate != null,
+                            onPrev = { prevDate?.let { selectedMillis = it } },
+                            onNext = { nextDate?.let { selectedMillis = it } },
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                    }
+                }
             }
         }
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = PaddingValues(bottom = 24.dp),
-        ) {
-            if (vertical) {
-                item {
-                    ForecastVerticalList(
-                        days = trackDays,
-                        selectedMillis = selectedDay?.dateMillis,
-                        tempUnit = tempUnit,
-                        windUnit = windUnit,
-                        utcOffsetSeconds = utcOffsetSeconds,
-                        hourly = hourly,
-                        onSelect = { millis -> millis?.let { selectedMillis = it } },
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
-                }
-            } else {
+        if (vertical) {
+            item {
+                ForecastVerticalList(
+                    days = trackDays,
+                    selectedMillis = selectedDay?.dateMillis,
+                    tempUnit = tempUnit,
+                    windUnit = windUnit,
+                    utcOffsetSeconds = utcOffsetSeconds,
+                    hourly = hourly,
+                    onSelect = { millis -> millis?.let { selectedMillis = it } },
+                    modifier = Modifier,
+                )
+            }
+        } else {
             item { FeatureSectionTitle(1, sectionTitle, "DAY / NIGHT / RANGE") }
             item {
-                TerminalPanel(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                MochiCardPanel(
+                    Modifier.fillMaxWidth(),
                 ) {
                     ForecastWorkbench(
                         trackDays, tempUnit, windUnit, utcOffsetSeconds,
@@ -229,7 +239,7 @@ fun DailyForecastScreen(
                 val dayHours = forecastHoursForDate(hourly, day.dateMillis, utcOffsetSeconds)
                 if (forecastHasHourlyTemperatures(dayHours)) {
                     item {
-                        TerminalPanel(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        MochiCardPanel(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                             Column(Modifier.padding(14.dp)) {
                                 ForecastHourlyTemperature(dayHours, tempUnit, utcOffsetSeconds)
                             }
@@ -238,7 +248,7 @@ fun DailyForecastScreen(
                 }
                 item { FeatureSectionTitle(2, "当日详情", "DAY DETAIL") }
                 item {
-                    TerminalPanel(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    MochiCardPanel(Modifier.fillMaxWidth()) {
                         Column(
                             Modifier.padding(horizontal = 14.dp, vertical = 12.dp).swipeAdjacentDays(
                                 onPrev = { prevDate?.let { selectedMillis = it } },
@@ -269,9 +279,8 @@ fun DailyForecastScreen(
             item {
                 ForecastSummaryPanel(
                     digest = buildForecastDigest(visibleDays, tempUnit, utcOffsetSeconds, city?.locationKey.orEmpty(), nowMillis),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            }
             }
         }
     }
@@ -1233,7 +1242,7 @@ private fun ForecastSummaryPanel(
     modifier: Modifier = Modifier,
 ) {
     val placement = forecastGirlPlacement(digest.emote)
-    TerminalPanel(modifier) {
+    MochiCardPanel(modifier) {
         Column {
             Box(Modifier.fillMaxWidth().heightIn(min = 150.dp)) {
                 Image(

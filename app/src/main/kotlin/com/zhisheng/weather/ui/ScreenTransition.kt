@@ -20,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -49,8 +48,8 @@ internal enum class PageTransitionStyle(val key: String, val cn: String) {
 }
 
 // 全站只使用这一套运动参数：短时长、单一缓动、纯层合成（不触发重新测量）。
-private const val ENTER_MS = 210
-private const val EXIT_MS = 160
+internal const val OVERLAY_ENTER_MS = 210
+internal const val OVERLAY_EXIT_MS = 160
 private const val STACK_ENTER_MS = 150
 private const val STACK_EXIT_MS = 110
 private const val OVERLAY_SCALE = 0.985f
@@ -58,72 +57,26 @@ private const val DEPTH_SCALE = 0.92f
 // 「打开应用式」：从按下的那一点长成整屏，返回时缩回同一点（库导航里的真来源是 mochiNavSource）。
 private const val APP_SCALE = 0.28f
 
-/**
- * 首页 → 二级页：默认淡入 + 从按下位置极轻微展开；可选侧推、景深或关闭动画。
- * 旧实现把整页缩到 0.9 并叠加 22% 屏宽的横向位移；动画期间首页仍常驻，
- * 加上新旧两份重型页面，三份内容同时组合合成是掉帧主因。
- */
-internal fun overlayEnter(
-    motionEnabled: Boolean = true,
-    origin: TransformOrigin = TransformOrigin.Center,
-    style: PageTransitionStyle = PageTransitionStyle.FADE,
-): EnterTransition {
-    if (!motionEnabled || style == PageTransitionStyle.NONE) return EnterTransition.None
-    return when (style) {
-        PageTransitionStyle.FADE -> fadeIn(tween(ENTER_MS, easing = FastOutSlowInEasing)) +
-            scaleIn(
-                tween(ENTER_MS, easing = FastOutSlowInEasing),
-                initialScale = OVERLAY_SCALE,
-                transformOrigin = origin,
-            )
-        PageTransitionStyle.SLIDE -> slideInHorizontally { fullWidth -> fullWidth / 3 } +
-            fadeIn(tween(ENTER_MS, easing = FastOutSlowInEasing))
-        PageTransitionStyle.DEPTH -> scaleIn(
-            tween(ENTER_MS, easing = FastOutSlowInEasing),
-            initialScale = DEPTH_SCALE,
-            transformOrigin = origin,
-        ) + fadeIn(tween(ENTER_MS, easing = FastOutSlowInEasing))
-        PageTransitionStyle.APP -> scaleIn(
-            tween(ENTER_MS, easing = FastOutSlowInEasing),
-            initialScale = APP_SCALE,
-            transformOrigin = origin,
-        ) + fadeIn(tween(ENTER_MS, easing = FastOutSlowInEasing))
-        PageTransitionStyle.NONE -> EnterTransition.None
-    }
+/** 覆盖层的起始缩放：进度 0 时用它，进度 1 时回到 1。进入与返回严格互为反向。 */
+internal fun overlayStartScale(style: PageTransitionStyle): Float = when (style) {
+    PageTransitionStyle.DEPTH -> DEPTH_SCALE
+    PageTransitionStyle.APP -> APP_SCALE
+    else -> OVERLAY_SCALE
 }
 
-/** 返回首页：与进入严格反向；侧推返回关闭时退回淡变，不做横移。 */
-internal fun overlayExit(
-    motionEnabled: Boolean = true,
-    origin: TransformOrigin = TransformOrigin.Center,
-    style: PageTransitionStyle = PageTransitionStyle.FADE,
-    swipeBack: Boolean = true,
-): ExitTransition {
-    if (!motionEnabled || style == PageTransitionStyle.NONE) return ExitTransition.None
-    return when {
-        style == PageTransitionStyle.SLIDE && swipeBack ->
-            slideOutHorizontally { fullWidth -> fullWidth / 3 } +
-                fadeOut(tween(EXIT_MS, easing = FastOutSlowInEasing))
-        style == PageTransitionStyle.DEPTH ->
-            scaleOut(
-                tween(EXIT_MS, easing = FastOutSlowInEasing),
-                targetScale = DEPTH_SCALE,
-                transformOrigin = origin,
-            ) + fadeOut(tween(EXIT_MS, easing = FastOutSlowInEasing))
-        style == PageTransitionStyle.APP ->
-            scaleOut(
-                tween(EXIT_MS, easing = FastOutSlowInEasing),
-                targetScale = APP_SCALE,
-                transformOrigin = origin,
-            ) + fadeOut(tween(EXIT_MS, easing = FastOutSlowInEasing))
-        else -> fadeOut(tween(EXIT_MS, easing = FastOutSlowInEasing)) +
-            scaleOut(
-                tween(EXIT_MS, easing = FastOutSlowInEasing),
-                targetScale = OVERLAY_SCALE,
-                transformOrigin = origin,
-            )
-    }
-}
+/** 覆盖层的起始横向位移（相对自身宽度）：只有开着侧推返回的「侧推」样式才横移。 */
+internal fun overlayStartShiftFraction(style: PageTransitionStyle, swipeBack: Boolean): Float =
+    if (style == PageTransitionStyle.SLIDE && swipeBack) 1f / 3f else 0f
+
+/*
+ * 首页 → 二级页不再用 AnimatedVisibility 的隐式进出场，而是由调用方用一条 0..1 的进度
+ * 直接驱动整层 alpha / 缩放 / 横移（见 MainActivity 的 overlay 动画）：
+ * - 进：进度 0 → 1，等价于原来的 fadeIn + scaleIn / slideIn；
+ * - 出：进度 1 → 0，严格反向，天然得到 fadeOut + scaleOut / slideOut；
+ * - 进度归零后才卸载内容，返回因此不会因为「内容被立刻拆掉」而看不到动画。
+ * 旧实现把整页缩到 0.9 并叠加 22% 屏宽的横移；动画期间首页仍常驻，
+ * 新旧两份重型页面同时合成是掉帧主因，所以这里的幅度都保持极轻。
+ */
 
 /**
  * 二级页之间：默认一次短交叉淡变；侧推样式采用库导航同款的横向推入，

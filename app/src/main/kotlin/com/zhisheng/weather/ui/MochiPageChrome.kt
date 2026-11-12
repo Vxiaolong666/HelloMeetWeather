@@ -1,10 +1,14 @@
 package com.zhisheng.weather.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -93,6 +97,7 @@ internal fun mochiSettingsRouteTitle(route: String): String = when (route) {
 @Composable
 internal fun MochiSettingsScaffold(
     title: String,
+    modifier: Modifier = Modifier,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     showSave: Boolean = true,
@@ -103,6 +108,7 @@ internal fun MochiSettingsScaffold(
     val navigator = MochiNavigator.current
     MochiLazyCompactTitleScaffold(
         title = title,
+        modifier = modifier,
         subtitle = subtitle,
         navigationIcon = { MochiBackButton(onClick = onBack, history = ::mochiSettingsRouteTitle) },
         actions = actions ?: if (showSave) {
@@ -131,6 +137,7 @@ internal fun MochiSettingsScaffold(
 internal fun MochiPageFrame(
     title: String,
     onBack: () -> Unit,
+    modifier: Modifier = Modifier,
     subtitle: String? = null,
     showSave: Boolean = false,
     actions: (@Composable RowScope.() -> Unit)? = null,
@@ -142,6 +149,7 @@ internal fun MochiPageFrame(
         ProvideMochiOverscroll {
             MochiSettingsScaffold(
                 title = title,
+                modifier = modifier,
                 subtitle = subtitle,
                 onBack = onBack,
                 showSave = showSave,

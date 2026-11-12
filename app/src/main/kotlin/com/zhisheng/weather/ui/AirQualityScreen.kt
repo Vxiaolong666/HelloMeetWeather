@@ -85,8 +85,12 @@ import com.zhisheng.weather.ui.theme.ZhishengText
 import com.zhisheng.weather.ui.theme.ZhishengTextSecondary
 import com.zhisheng.weather.ui.theme.ZhishengTextTertiary
 import com.zhisheng.weather.ui.theme.zhishengOverlayColor
-import com.zhisheng.weather.ui.theme.zhishengPanel
 import com.zhisheng.weather.ui.theme.zhishengScreen
+import kotlinx.collections.immutable.persistentListOf
+import ui.feice.mochi.basic.MochiBarButton
+import ui.feice.mochi.basic.MochiDialog
+import ui.feice.mochi.basic.MochiDialogAction
+import ui.feice.mochi.basic.MochiDialogActionRole
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -172,36 +176,16 @@ fun AirQualityScreen(
     val publishLabel = weather?.updateTime?.let { "${Fmt.clock(it, utcOffset)} 发布" } ?: "更新时间未知"
     var showLegend by remember { mutableStateOf(false) }
 
-    // 不透明页面背景 + 状态栏/导航栏内边距：防止下层首页（TopBar/城市名）透出。
-    Box(Modifier.fillMaxSize().zhishengScreen()) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .verticalScroll(rememberScrollState()),
-        ) {
-            FeaturePageHeader(
-                "空气质量",
-                subtitle = publishLabel,
-                onBack = onBack,
-                trailing = {
-                    IconButton(onClick = { showLegend = true }, modifier = Modifier.size(44.dp)) {
-                        PhosphorIcon(R.drawable.ph_info, "空气质量图例与帮助", Modifier.size(20.dp), ZhishengTextSecondary)
-                    }
-                },
-            )
-
-            // 头部：城市 + 发布时间
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
-                Text(cityName ?: "当前位置", style = MaterialTheme.typography.titleMedium, color = ZhishengText)
-                Spacer(Modifier.height(3.dp))
-                Text(publishLabel, style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // 参考首页空气质量卡片：大数字 + 等级 + 首要污染物 + 六档污染指数指示器
+    // 页面外壳交给组件库：库顶栏 + 返回按钮 + 图例胶囊，内容按分组卡片排列。
+    MochiPageFrame(
+        title = "空气质量",
+        subtitle = (cityName ?: "当前位置") + " · " + publishLabel,
+        onBack = onBack,
+        actions = { MochiBarButton("图例", onClick = { showLegend = true }) },
+        overlay = { if (showLegend) AqiLegendDialog { showLegend = false } },
+    ) {
+        // 参考首页空气质量卡片：大数字 + 等级 + 首要污染物 + 六档污染指数指示器
+        item {
             PanelCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -234,19 +218,23 @@ fun AirQualityScreen(
                 }
                 Spacer(Modifier.height(18.dp))
                 AqiIndicator(aqi?.value)
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    aqiAdvice(aqi?.value, aqi?.level, aqi?.suggest),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = ZhishengTextSecondary,
-                )
                 Spacer(Modifier.height(18.dp))
                 PollutantGrid(aqi)
             }
+        }
 
-            Spacer(Modifier.height(14.dp))
+        // 健康提示：说明段落，放进带渐变遮罩的库卡片
+        item {
+            MochiFadeNote(
+                text = aqiAdvice(aqi?.value, aqi?.level, aqi?.suggest),
+                title = "健康提示",
+                iconRes = R.drawable.ph_leaf,
+                accent = aqiColor(aqi?.value),
+            )
+        }
 
-            // Open-Meteo 空气质量扩展：EU/US AQI、CO₂、甲烷、气溶胶、沙尘、UV、花粉
+        // Open-Meteo 空气质量扩展：EU/US AQI、CO₂、甲烷、气溶胶、沙尘、UV、花粉
+        item {
             PanelCard {
                 Text("空气质量扩展指标", style = MaterialTheme.typography.titleMedium, color = ZhishengText)
                 Spacer(Modifier.height(14.dp))
@@ -255,17 +243,14 @@ fun AirQualityScreen(
                 Text("花粉（CAMS 欧洲域）", style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
                 Spacer(Modifier.height(10.dp))
                 PollenGrid(aqi)
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "EU/US AQI 与 CO₂/甲烷/气溶胶/沙尘/UV 来自 Open-Meteo CAMS；氨与花粉仅欧洲域提供，国内显示为—。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = ZhishengTextTertiary,
-                )
             }
+        }
+        item {
+            MochiFadeNote("EU/US AQI 与 CO₂/甲烷/气溶胶/沙尘/UV 来自 Open-Meteo CAMS；氨与花粉仅欧洲域提供，国内显示为—。")
+        }
 
-            Spacer(Modifier.height(14.dp))
-
-            // 24 小时空气质量预报（逐时 / 逐日切换）
+        // 24 小时空气质量预报（逐时 / 逐日切换）
+        item {
             PanelCard {
                 var mode by remember { mutableIntStateOf(0) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -284,10 +269,10 @@ fun AirQualityScreen(
                 Spacer(Modifier.height(14.dp))
                 if (mode == 0) HourlyAqiChart(weather, utcOffset) else DailyAqiChart(weather)
             }
+        }
 
-            Spacer(Modifier.height(14.dp))
-
-            // 附近城市空气质量：地图 + 数值徽标排
+        // 附近城市空气质量：地图 + 数值徽标排
+        item {
             PanelCard {
                 Text("附近空气质量", style = MaterialTheme.typography.titleMedium, color = ZhishengText)
                 Spacer(Modifier.height(14.dp))
@@ -307,10 +292,7 @@ fun AirQualityScreen(
                     }
                 }
             }
-
-            Spacer(Modifier.height(24.dp))
         }
-        if (showLegend) AqiLegendDialog { showLegend = false }
     }
 }
 
@@ -433,13 +415,13 @@ private fun markersCameraCenter(markers: List<NearbyCityAqi>): LatLng? {
     return LatLng(points.map { it.first }.average(), points.map { it.second }.average())
 }
 
+/**
+ * 页面分组卡：容器换成组件库分组卡片，里面的图表与数值原样保留。
+ * 库脚手架的内容区已经左右各留 16dp，这里不能再加，否则卡片会缩成中间一小条。
+ */
 @Composable
 private fun PanelCard(content: @Composable ColumnScope.() -> Unit) {
-    Box(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).zhishengPanel(),
-    ) {
-        Column(Modifier.padding(18.dp), content = content)
-    }
+    MochiPageCard(content = content)
 }
 
 private data class PollutantTip(
@@ -934,77 +916,66 @@ private fun AqiIndicator(value: Int?) {
     }
 }
 
-/** 图例 + 帮助弹窗：六档颜色、区间、健康提示与读数说明。 */
+/** 图例 + 帮助弹窗：改用库对话框，六档颜色、区间、健康提示与读数说明原样保留。 */
 @Composable
 private fun AqiLegendDialog(onDismiss: () -> Unit) {
     val palette = LocalZhishengPalette.current
-    AlertDialog(
+    MochiDialog(
+        visible = true,
         onDismissRequest = onDismiss,
-        containerColor = zhishengOverlayColor(),
-        title = {
+        title = "空气质量图例与帮助",
+        dismissOnOutsideTap = true,
+        actions = persistentListOf(MochiDialogAction("知道了", MochiDialogActionRole.Primary)),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Text(
-                "空气质量图例与帮助",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = ZhishengText,
+                "AQI（空气质量指数）越大，空气污染程度越高。页面里的大数字、指示器、柱状图和附近城市标记使用同一套六档颜色。",
+                style = MaterialTheme.typography.bodySmall,
+                color = ZhishengTextSecondary,
             )
-        },
-        text = {
-            Column(
-                Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    "AQI（空气质量指数）越大，空气污染程度越高。页面里的大数字、指示器、柱状图和附近城市标记使用同一套六档颜色。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = ZhishengTextSecondary,
-                )
-                AqiLevels.forEach { level ->
-                    val tint = level.color(palette.isLight)
-                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box(
-                            Modifier.padding(top = 3.dp).size(14.dp)
-                                .clip(RoundedCornerShape(4.dp)).background(tint),
+            AqiLevels.forEach { level ->
+                val tint = level.color(palette.isLight)
+                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(
+                        Modifier.padding(top = 3.dp).size(14.dp)
+                            .clip(RoundedCornerShape(4.dp)).background(tint),
+                    )
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            "${level.label} · AQI ${level.range}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = tint,
                         )
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                "${level.label} · AQI ${level.range}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = tint,
-                            )
-                            Text(
-                                level.advice,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = ZhishengTextSecondary,
-                            )
-                        }
+                        Text(
+                            level.advice,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ZhishengTextSecondary,
+                        )
                     }
                 }
-                HorizontalDivider(color = ZhishengCardBorder)
-                Text(
-                    "读数与数据说明",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = ZhishengText,
-                )
-                listOf(
-                    "· 色带按六档等宽排列，当前档高亮，白色圆点标出所处等级。",
-                    "· 柱状图可点按或左右拖动，选中柱显示具体 AQI 与等级名称。",
-                    "· AQI 口径以卡片标注为准（国标 / 美标等）；带「估算」标记的数值由本地模型推算，仅供参考。",
-                    "· 逐时数据来自小时预报，逐日数据来自多日预报，附近城市为收藏城市的最近一次快照。",
-                    "· 颜色与健康提示仅用于日常参考，防护措施请以当地官方发布为准。",
-                ).forEach { line ->
-                    Text(line, style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
-                }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("知道了", color = palette.mint, fontWeight = FontWeight.SemiBold)
+            HorizontalDivider(color = ZhishengCardBorder)
+            Text(
+                "读数与数据说明",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = ZhishengText,
+            )
+            listOf(
+                "· 色带按六档等宽排列，当前档高亮，白色圆点标出所处等级。",
+                "· 柱状图可点按或左右拖动，选中柱显示具体 AQI 与等级名称。",
+                "· AQI 口径以卡片标注为准（国标 / 美标等）；带「估算」标记的数值由本地模型推算，仅供参考。",
+                "· 逐时数据来自小时预报，逐日数据来自多日预报，附近城市为收藏城市的最近一次快照。",
+                "· 颜色与健康提示仅用于日常参考，防护措施请以当地官方发布为准。",
+            ).forEach { line ->
+                Text(line, style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
             }
-        },
-    )
+        }
+    }
 }
 
 private fun aqiAdvice(value: Int?, level: String?, suggest: String?): String {

@@ -34,6 +34,9 @@ import androidx.compose.ui.unit.sp
 import com.zhisheng.weather.model.Nowcast
 import com.zhisheng.weather.model.WeatherData
 import com.zhisheng.weather.ui.theme.*
+import ui.feice.mochi.navigation.MochiBackButton
+import ui.feice.mochi.theme.MochiDefaults
+import ui.feice.mochi.theme.MochiTheme
 import kotlinx.coroutines.delay
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -62,68 +65,56 @@ internal fun rememberPrecipitationPresentation(data: WeatherData): Precipitation
 @Composable
 fun PrecipitationDetailScreen(data: WeatherData, cityName: String?, onBack: () -> Unit) {
     val presentation = rememberPrecipitationPresentation(data)
-    val chrome = LocalZhishengChrome.current
-    LazyColumn(
-        Modifier.fillMaxSize().zhishengScreen().statusBarsPadding().navigationBarsPadding(),
-        contentPadding = PaddingValues(horizontal = chrome.pagePadding, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+    // 与设置二级页同一套外壳：库主题（含液态玻璃材质）+ 越界手感 + 库顶栏。
+    MochiPageFrame(
+        title = "短时降水",
+        subtitle = cityName?.takeIf { it.isNotBlank() },
+        onBack = onBack,
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = ZhishengText)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("短时降水", color = ZhishengText, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                    cityName?.takeIf { it.isNotBlank() }?.let {
+            item {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(presentation.summary, fontSize = 28.sp, lineHeight = 38.sp,
+                        fontWeight = FontWeight.Medium, color = ZhishengText)
+                    precipitationCoverageLabel(presentation, data.utcOffsetSeconds)?.let {
                         Text(it, color = ZhishengTextSecondary, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
-        }
-        item {
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 22.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(presentation.summary, fontSize = 28.sp, lineHeight = 38.sp,
-                    fontWeight = FontWeight.Medium, color = ZhishengText)
-                precipitationCoverageLabel(presentation, data.utcOffsetSeconds)?.let {
-                    Text(it, color = ZhishengTextSecondary, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        if (presentation.points.isNotEmpty() || presentation.history.isNotEmpty()) {
-            item {
-                Column(Modifier.fillMaxWidth().zhishengPanel().padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("降水强度", Modifier.weight(1f), color = ZhishengText, fontWeight = FontWeight.Medium)
-                        Text("滑动查看", color = ZhishengTextTertiary,
-                            style = MaterialTheme.typography.labelSmall)
+            if (presentation.points.isNotEmpty() || presentation.history.isNotEmpty()) {
+                item {
+                    MochiPageCard(
+                        contentPadding = PaddingValues(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                    ) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("降水强度", Modifier.weight(1f), color = ZhishengText, fontWeight = FontWeight.Medium)
+                            Text("滑动查看", color = ZhishengTextTertiary,
+                                style = MaterialTheme.typography.labelSmall)
+                        }
+                        PrecipitationTimeline(presentation, data.utcOffsetSeconds, interactive = true)
+                        Text("mm/h · 每小时降水量",
+                            color = ZhishengTextTertiary, style = MaterialTheme.typography.labelSmall)
                     }
-                    PrecipitationTimeline(presentation, data.utcOffsetSeconds, interactive = true)
-                    Text("mm/h · 每小时降水量",
-                        color = ZhishengTextTertiary, style = MaterialTheme.typography.labelSmall)
+                }
+            } else {
+                item {
+                    Text("暂无可查看的降水曲线", color = ZhishengTextSecondary,
+                        style = MaterialTheme.typography.bodyMedium)
                 }
             }
-        } else {
             item {
-                Text("暂无可查看的降水曲线", color = ZhishengTextSecondary,
-                    style = MaterialTheme.typography.bodyMedium)
+                // 来源与回溯说明原样放进带渐变遮罩的库卡片。
+                MochiFadeNote(
+                    listOf(
+                        precipitationSourceLabel(data, presentation),
+                        precipitationHistoryLabel(data, presentation),
+                    ),
+                    title = "数据说明",
+                )
             }
-        }
-        item {
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(precipitationSourceLabel(data, presentation), color = ZhishengTextSecondary,
-                    style = MaterialTheme.typography.bodySmall)
-                Text(precipitationHistoryLabel(data, presentation), color = ZhishengTextSecondary,
-                    style = MaterialTheme.typography.bodySmall)
-            }
-        }
     }
 }
 
