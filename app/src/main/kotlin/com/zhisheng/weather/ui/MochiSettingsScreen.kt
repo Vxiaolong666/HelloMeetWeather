@@ -81,6 +81,7 @@ import ui.feice.mochi.navigation.mochiNavSource
 import ui.feice.mochi.navigation.rememberMochiNavigator
 import ui.feice.mochi.navigation.rememberMochiTabScaffoldState
 import ui.feice.mochi.theme.MochiDefaults
+import ui.feice.mochi.theme.LocalMochiMaterials
 import ui.feice.mochi.theme.MochiTheme
 
 /** 首页顶栏「新设置」入口的回调，避免改动 HomeScreen / CitySharedChromeHost 的整条参数链。null = 不展示入口。 */
@@ -213,13 +214,20 @@ fun MochiSettingsScreen(
                 swipeBackEnabled = uiPrefs.swipeBack && MochiTransitionConfig.motionEnabled,
             ) { route ->
                 when (route) {
-                    "settings.main" -> MochiTabScaffold(
-                        items = tabs,
-                        state = tabState,
-                        behavior = tabBehavior,
-                        collapseOnScroll = uiPrefs.tabCollapse,
-                    ) { index ->
-                        MochiLazyCompactTitleScaffold(
+                    "settings.main" -> {
+                        // 标签栏和栏共用 bar 材质：这里只给标签栏单独降级，正文里的栏在内部还原。
+                        val fullMaterials = rememberMochiMaterials(uiPrefs, mochiColors.isDark)
+                        CompositionLocalProvider(
+                            LocalMochiMaterials provides fullMaterials.withTabBar("tabbar" in uiPrefs.glassTargets),
+                        ) {
+                            MochiTabScaffold(
+                                items = tabs,
+                                state = tabState,
+                                behavior = tabBehavior,
+                                collapseOnScroll = uiPrefs.tabCollapse,
+                            ) { index ->
+                                CompositionLocalProvider(LocalMochiMaterials provides fullMaterials) {
+                                    MochiLazyCompactTitleScaffold(
                             title = "设置",
                             subtitle = when (index) {
                                 0 -> "数据与位置"
@@ -337,6 +345,9 @@ fun MochiSettingsScreen(
                                 glassOn = uiPrefs.glass,
                             )
                             }
+                        }
+                    }
+                    }
                         }
                     }
                     "settings.hdr" -> MochiHdrSettingsPage(uiPrefs)

@@ -244,7 +244,8 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
     val supported = MochiHdr.supported
     val ios27 = prefs.glassStyle == "ios27"
     val glassOnly = !prefs.glass
-    var showHdrGlassConfirm by remember { mutableStateOf(false) }
+    // 栏内按钮玻璃与 HDR 高光同时开启时的确认弹窗
+    var hdrConfirm by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         MochiSettingsScaffold(
@@ -312,7 +313,7 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
                     )
                     MochiListRow(
                         title = "跟随主题强调色",
-                        subtitle = "玻璃保持中性，开关、选中项用主题的强调色",
+                        subtitle = "玻璃保持中性，选中项用主题的强调色",
                         trailing = {
                             MochiSwitch(
                                 checked = prefs.glassThemeAccent,
@@ -326,17 +327,15 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
             item {
                 MochiListSection(
                     header = "使用范围",
-                    footer = "标签栏与栏内按钮分开设置；菜单、警告框、面板、玻璃按钮未单独开启时" +
-                        "按组件库的回退顺序取上一档玻璃（警告框取菜单，其余取栏）。",
+                    footer = "标签栏、栏、栏内按钮各管一处：标签栏只管底部标签栏，栏是顶栏与大标题栏，" +
+                        "栏内按钮是顶栏上的圆形按钮。菜单、警告框、面板、玻璃按钮没有单独开启时按组件库的" +
+                        "回退顺序取上一档玻璃（警告框取菜单，菜单、面板、玻璃按钮取栏）。",
                 ) {
-                    GlassTargetRow("标签栏", "bar", prefs, scope)
+                    GlassTargetRow("栏", "bar", prefs, scope)
+                    GlassTargetRow("标签栏", "tabbar", prefs, scope)
                     GlassTargetRow("栏内按钮", "control", prefs, scope) { on ->
-                        // 栏内按钮玻璃与 HDR 高光同时开启有已知兼容问题，先让用户确认。
-                        if (on && prefs.hdrEnabled && supported) {
-                            showHdrGlassConfirm = true
-                        } else {
-                            scope.launch { SettingsRepository.setMochiGlassTarget("control", on) }
-                        }
+                        if (on && prefs.hdrEnabled) hdrConfirm = true
+                        else scope.launch { SettingsRepository.setMochiGlassTarget("control", on) }
                     }
                     GlassTargetRow("菜单", "menu", prefs, scope)
                     GlassTargetRow("警告框", "alert", prefs, scope)
@@ -393,17 +392,19 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
                 }
             }
         }
+        // 栏内按钮玻璃和 HDR 高光同时开启：两者都会提亮边缘，先让用户确认。
         MochiConfirmDialog(
-            title = "同时开启可能不兼容",
-            message = "当前栏内按钮液态玻璃效果与 HDR 高光同时开启可能存在兼容性问题，是否仍要开启？",
+            title = "液态玻璃与 HDR 高光同时开启",
+            message = "当前栏内按钮液态玻璃效果与 HDR 高光同时开启可能存在兼容性问题，" +
+                "部分设备上按钮边缘可能过亮或闪烁。仍然开启吗？",
             confirmLabel = "仍然开启",
             onConfirm = {
-                showHdrGlassConfirm = false
+                hdrConfirm = false
                 scope.launch { SettingsRepository.setMochiGlassTarget("control", true) }
             },
-            onDismiss = { showHdrGlassConfirm = false },
+            onDismiss = { hdrConfirm = false },
             destructive = false,
-            visible = showHdrGlassConfirm,
+            visible = hdrConfirm,
         )
     }
 }

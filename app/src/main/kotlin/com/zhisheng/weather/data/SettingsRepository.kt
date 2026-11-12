@@ -399,7 +399,7 @@ enum class HomeModule(val key: String, val cn: String, val en: String) {
 object SettingsRepository {
     /** 液态玻璃默认对全部浮层生效；单项关闭后该处退回纯色（菜单、警告框、面板按组件库的回退顺序取上一档）。 */
     val MOCHI_GLASS_TARGETS_DEFAULT: Set<String> =
-        setOf("bar", "control", "menu", "alert", "sheet", "clear")
+        setOf("bar", "tabbar", "control", "menu", "alert", "sheet", "clear")
 
     private val KEY_SOURCE_PRIORITY = stringPreferencesKey("weather_source_priority_v1")
     val sourcePriority: Flow<List<SourcePref>> by lazy {
