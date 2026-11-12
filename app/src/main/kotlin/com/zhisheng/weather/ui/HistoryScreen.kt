@@ -573,46 +573,46 @@ private fun LazyListScope.recentWeekItems(
         item { VistaRecentHistory(week, tempUnit, windUnit, endDate) }
         return
     }
-    val summary = week.summary
-    val range = recentRangeDisplay(week)
-        item {
-            Column(Modifier.fillMaxWidth().mochiCardSurface().padding(18.dp)) {
-                Text(
-                    range.dates,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 24.sp, lineHeight = 28.sp),
-                    color = ZhishengOrange,
-                    maxLines = 2,
-                )
-                Text(
-                    "${range.years} · ${city.displayName} · 过去7天",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ZhishengTextTertiary,
-                )
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    recentWeekInsight(week, tempUnit),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = ZhishengReading,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        lineHeight = 26.sp,
-                    ),
-                    color = ZhishengText,
-                )
-                Spacer(Modifier.height(7.dp))
-                Text(
-                    if (vista) "最近七个完整日期，不含今天。" else "只显示已经结束的日期；今天的数据尚未完整，不进入统计。",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
-                    color = ZhishengTextTertiary,
-                )
-                Spacer(Modifier.height(16.dp))
-                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    SummaryMetric("平均高温", summary.averageHigh?.let { "${Fmt.temp(it, tempUnit)}°" } ?: "记录不足")
-                    SummaryMetric("平均低温", summary.averageLow?.let { "${Fmt.temp(it, tempUnit)}°" } ?: "记录不足")
-                    SummaryMetric("累计降水", formatMm(week.totalPrecipitationMm))
-                }
+    item {
+        val summary = week.summary
+        val range = recentRangeDisplay(week)
+        Column(Modifier.fillMaxWidth().mochiCardSurface().padding(18.dp)) {
+            Text(
+                range.dates,
+                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 24.sp, lineHeight = 28.sp),
+                color = ZhishengOrange,
+                maxLines = 2,
+            )
+            Text(
+                "${range.years} · ${city.displayName} · 过去7天",
+                style = MaterialTheme.typography.labelSmall,
+                color = ZhishengTextTertiary,
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                recentWeekInsight(week, tempUnit),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontFamily = ZhishengReading,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 26.sp,
+                ),
+                color = ZhishengText,
+            )
+            Spacer(Modifier.height(7.dp))
+            Text(
+                if (vista) "最近七个完整日期，不含今天。" else "只显示已经结束的日期；今天的数据尚未完整，不进入统计。",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
+                color = ZhishengTextTertiary,
+            )
+            Spacer(Modifier.height(16.dp))
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                SummaryMetric("平均高温", summary.averageHigh?.let { "${Fmt.temp(it, tempUnit)}°" } ?: "记录不足")
+                SummaryMetric("平均低温", summary.averageLow?.let { "${Fmt.temp(it, tempUnit)}°" } ?: "记录不足")
+                SummaryMetric("累计降水", formatMm(week.totalPrecipitationMm))
             }
         }
+    }
         item { FeatureSectionTitle(1, if (vista) "七日天气" else "七日观测带", "7-DAY WEATHER STRIP") }
         item {
             Text(

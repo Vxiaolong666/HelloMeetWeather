@@ -52,9 +52,9 @@ class NavigationAndCityListStructureTest {
     fun citySearchHasAnExplicitLabeledBackControl() {
         val search = File(projectDir, "src/main/kotlin/com/zhisheng/weather/ui/SearchScreen.kt").readText()
 
-        assertTrue(search.contains("IconButton(onClick = { dismissKeyboard(); onBack() })"))
-        assertTrue(search.contains("Icons.AutoMirrored.Filled.ArrowBack, \"返回\""))
-        // Both styles retain a labelled back action; real clicks are checked natively.
-        assertTrue(search.contains("PhosphorIcon(R.drawable.ph_arrow_left, \"返回\""))
+        assertTrue(search.contains("MochiPageFrame("))
+        assertTrue(search.contains("title = \"添加地点\""))
+        // 返回按钮由库标题脚手架统一渲染并带无障碍标签；这里只校验动作仍然接上。
+        assertTrue(search.contains("onBack = { dismissKeyboard(); onBack() }"))
     }
 }

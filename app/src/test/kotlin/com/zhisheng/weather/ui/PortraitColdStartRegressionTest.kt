@@ -31,6 +31,6 @@ class PortraitColdStartRegressionTest {
         assertTrue(activity.contains("setIntent(Intent(intent).setAction(Intent.ACTION_MAIN))"))
         assertTrue(activity.contains("var screen by rememberSaveable { mutableStateOf(AppScreen.HOME) }"))
         assertFalse(activity.contains("shortcutCommand.value = ShortcutCommand(Intent.ACTION_MAIN"))
-        assertTrue(activity.contains("if (screen == AppScreen.HOME) WeatherContinuity"))
+        assertTrue(activity.contains("if (homeSettled) WeatherContinuity(this@SharedTransitionLayout, this) else null"))
     }
 }

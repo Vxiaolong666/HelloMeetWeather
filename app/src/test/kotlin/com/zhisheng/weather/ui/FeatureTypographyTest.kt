@@ -32,6 +32,6 @@ class FeatureTypographyTest {
         assertTrue(chrome.contains("fontSize = 18.sp"))
         assertTrue(history.contains("fontSize = 24.sp"))
         assertFalse(history.contains("MaterialTheme.typography.displaySmall"))
-        assertTrue(radar.contains("Column(Modifier.fillMaxSize().zhishengScreen().statusBarsPadding().navigationBarsPadding())"))
+        assertTrue(radar.contains("title = \"降水地图\""))
     }
 }
