@@ -3,6 +3,7 @@ package com.zhisheng.weather.ui
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -26,6 +27,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.dp
+import ui.feice.mochi.anim.MochiSprings
 import kotlin.math.abs
 
 internal enum class AppScreen {
@@ -47,15 +49,32 @@ internal enum class PageTransitionStyle(val key: String, val cn: String) {
     }
 }
 
-// 全站只使用这一套运动参数：短时长、单一缓动、纯层合成（不触发重新测量）。
-internal const val OVERLAY_ENTER_MS = 210
-internal const val OVERLAY_EXIT_MS = 160
+// 全站只使用这一套运动参数：纯层合成（不触发重新测量）。
+/*
+ * 覆盖层的进出场弹簧必须与库导航（设置页内部 push/pop）完全同一条：
+ * MochiNavDefaults.spec() 的 open/close 是 MochiSprings.smooth(300)。
+ * 之前这里用 tween(210/160)，设置页返回是 300ms 弹簧、天气页返回是 160ms 淡变，
+ * 观感自然像两套互不相干的转场。
+ */
+internal val overlayMotionSpec: AnimationSpec<Float> =
+    MochiSprings.smooth(300, visibilityThreshold = 0.0005f)
+
 private const val STACK_ENTER_MS = 150
 private const val STACK_EXIT_MS = 110
 private const val OVERLAY_SCALE = 0.985f
 private const val DEPTH_SCALE = 0.92f
 // 「打开应用式」：从按下的那一点长成整屏，返回时缩回同一点（库导航里的真来源是 mochiNavSource）。
 private const val APP_SCALE = 0.28f
+
+/** 下层页（首页）被覆盖层压住时的缩放，取值与设置里的「下层页缩放」一致。 */
+internal fun overlayUnderScale(backScale: String): Float = when (backScale) {
+    "none" -> 1f
+    "deep" -> 0.88f
+    else -> 0.95f
+}
+
+/** 下层页压暗程度，与 MochiNavDefaults.spec() 的 scrim 默认值一致。 */
+internal const val OVERLAY_SCRIM_ALPHA = 0.18f
 
 /** 覆盖层的起始缩放：进度 0 时用它，进度 1 时回到 1。进入与返回严格互为反向。 */
 internal fun overlayStartScale(style: PageTransitionStyle): Float = when (style) {
@@ -67,16 +86,6 @@ internal fun overlayStartScale(style: PageTransitionStyle): Float = when (style)
 /** 覆盖层的起始横向位移（相对自身宽度）：只有开着侧推返回的「侧推」样式才横移。 */
 internal fun overlayStartShiftFraction(style: PageTransitionStyle, swipeBack: Boolean): Float =
     if (style == PageTransitionStyle.SLIDE && swipeBack) 1f / 3f else 0f
-
-/*
- * 首页 → 二级页不再用 AnimatedVisibility 的隐式进出场，而是由调用方用一条 0..1 的进度
- * 直接驱动整层 alpha / 缩放 / 横移（见 MainActivity 的 overlay 动画）：
- * - 进：进度 0 → 1，等价于原来的 fadeIn + scaleIn / slideIn；
- * - 出：进度 1 → 0，严格反向，天然得到 fadeOut + scaleOut / slideOut；
- * - 进度归零后才卸载内容，返回因此不会因为「内容被立刻拆掉」而看不到动画。
- * 旧实现把整页缩到 0.9 并叠加 22% 屏宽的横移；动画期间首页仍常驻，
- * 新旧两份重型页面同时合成是掉帧主因，所以这里的幅度都保持极轻。
- */
 
 /**
  * 二级页之间：默认一次短交叉淡变；侧推样式采用库导航同款的横向推入，

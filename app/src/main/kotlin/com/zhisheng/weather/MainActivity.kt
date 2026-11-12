@@ -17,12 +17,14 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import com.zhisheng.weather.ui.theme.ZhishengBg
 import com.zhisheng.weather.ui.components.LocalWeatherContinuity
 import com.zhisheng.weather.ui.components.WeatherContinuity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -84,10 +86,11 @@ import com.zhisheng.weather.ui.LocalMochiSettingsEntry
 import com.zhisheng.weather.ui.MochiPrecipitationDetailScreen
 import com.zhisheng.weather.ui.MochiSearchScreen
 import com.zhisheng.weather.ui.AtmosphereLabScreen
-import com.zhisheng.weather.ui.OVERLAY_ENTER_MS
-import com.zhisheng.weather.ui.OVERLAY_EXIT_MS
+import com.zhisheng.weather.ui.OVERLAY_SCRIM_ALPHA
+import com.zhisheng.weather.ui.overlayMotionSpec
 import com.zhisheng.weather.ui.overlayStartScale
 import com.zhisheng.weather.ui.overlayStartShiftFraction
+import com.zhisheng.weather.ui.overlayUnderScale
 import com.zhisheng.weather.ui.appSwipeBack
 import com.zhisheng.weather.ui.LocalMochiToast
 import com.zhisheng.weather.ui.MochiAppToastHost
@@ -482,16 +485,16 @@ class MainActivity : ComponentActivity() {
                         }
                         overlayVisible -> {
                             overlayMounted = true
-                            overlayProgress.animateTo(1f, tween(OVERLAY_ENTER_MS, easing = FastOutSlowInEasing))
+                            overlayProgress.animateTo(1f, overlayMotionSpec)
                         }
                         overlayMounted -> {
-                            overlayProgress.animateTo(0f, tween(OVERLAY_EXIT_MS, easing = FastOutSlowInEasing))
+                            overlayProgress.animateTo(0f, overlayMotionSpec)
                             overlayMounted = false
                         }
                     }
                 }
                 // 首页的氛围动效、共享元素与光晕只在覆盖层完全退出后恢复：
-                // 否则返回首页的那一刻首页整体重排，会把仅 160ms 的退场动画挤成看不见的一帧。
+                // 否则返回首页的那一刻首页整体重排，会把退场动画挤成看不见的一帧。
                 val homeSettled = !overlayMounted
                 SharedTransitionLayout(Modifier.fillMaxSize()) {
                     AnimatedContent(
@@ -544,6 +547,24 @@ class MainActivity : ComponentActivity() {
                                 screen = AppScreen.MOCHI_SETTINGS
                             },
                         ) {
+                        // 首页作为下层页一起参与动画：覆盖层进出时按「下层页缩放」后退并被压暗，
+                        // 参数与设置页内部 MochiNavHost 的 underScale / scrim 完全一致，
+                        // 这样天气页和设置页返回首页时看到的是同一套转场。
+                        val homeUnderScale = remember(uiPrefs.backScale) { overlayUnderScale(uiPrefs.backScale) }
+                        Box(
+                            Modifier.fillMaxSize().background(ZhishengBg)
+                                .graphicsLayer {
+                                    val p = overlayProgress.value
+                                    val s = 1f - (1f - homeUnderScale) * p
+                                    scaleX = s
+                                    scaleY = s
+                                }
+                                .drawWithContent {
+                                    drawContent()
+                                    val p = overlayProgress.value
+                                    if (p > 0f) drawRect(Color.Black.copy(alpha = OVERLAY_SCRIM_ALPHA * p))
+                                },
+                        ) {
                         HomeScreen(
                             viewModel = vm,
                             ambienceActive = homeSettled,
@@ -581,6 +602,7 @@ class MainActivity : ComponentActivity() {
                             onYesterdayClick = { screen = AppScreen.YESTERDAY_DETAIL },
                             onFeatureHubClick = { screen = AppScreen.FEATURES },
                         )
+                        }
                         }
                         var overlayScreen by remember { mutableStateOf(AppScreen.MOCHI_SETTINGS) }
                         var overlayWasVisible by remember { mutableStateOf(false) }

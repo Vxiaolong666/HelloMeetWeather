@@ -4489,68 +4489,55 @@ private fun YesterdayCard(
 }
 
 // —— 台风 ——
-private val TyphoonAccentLight = Color(0xFF1C6FA8)
-private val TyphoonAccentDark = Color(0xFF74C4FF)
 
-/** 台风入口卡：漩涡图标 + 大标题 + 能力标签 + 底部行动入口，整卡可点。 */
+/**
+ * 台风入口卡：与其他首页模块卡共用 [HudCard]（库卡片材质、圆角、分组留白），
+ * 信息层级也对齐特色功能 / 昨日复盘：图标 + 标题 + 一行副标题 + 「查看 →」，能力标签降为注释级。
+ */
 @Composable
 private fun TyphoonCard(typhoons: List<TyphoonInfo>, modifier: Modifier, onClick: () -> Unit) {
-    val palette = LocalZhishengPalette.current
-    val chrome = LocalZhishengChrome.current
-    val shape = RoundedCornerShape(24.dp)
-    val cardColor = if (palette.isLight) Color.White else palette.card
-    val accent = if (palette.isLight) TyphoonAccentLight else TyphoonAccentDark
     val active = typhoons.firstOrNull()
     val region = "西北太平洋 · 南海"
-    Column(
-        modifier
-            .fillMaxWidth()
-            .padding(horizontal = if (isPhosphorVista) chrome.pagePadding else 16.dp)
-            .clip(shape)
-            .background(cardColor)
-            .border(1.dp, palette.cardBorder.copy(alpha = 0.65f), shape)
-            .clickable(role = Role.Button, onClickLabel = "打开台风路径", onClick = onClick)
-            .padding(horizontal = 22.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    val activeName = active?.name?.takeIf { it.isNotBlank() } ?: active?.id
+    HudCard(
+        modifier = modifier.fillMaxWidth()
+            .clickable(role = Role.Button, onClickLabel = "打开台风路径", onClick = onClick),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            TyphoonSwirlIcon(Modifier.size(56.dp))
-            Text(
-                "台风追踪",
-                style = MaterialTheme.typography.headlineSmall,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = palette.text,
-            )
-        }
-        Text(
-            if (active == null) region
-            else "$region · ${active.name?.takeIf { it.isNotBlank() } ?: active.id ?: "台风"} 活动中",
-            style = MaterialTheme.typography.bodyMedium,
-            color = palette.textSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-            listOf("实况路径", "预报走势", "风圈范围").forEach { label ->
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TyphoonSwirlIcon(Modifier.size(26.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("台风追踪", style = MaterialTheme.typography.titleSmall, color = ZhishengText)
+                    Text(
+                        if (activeName == null) "$region · 暂无活动台风"
+                        else "$region · $activeName 活动中",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ZhishengTextTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
                 Text(
-                    label,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = palette.text,
-                    fontWeight = FontWeight.SemiBold,
+                    "查看  →",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ZhishengMint,
+                    fontWeight = FontWeight.Bold,
                 )
             }
-        }
-        HorizontalDivider(thickness = 1.dp, color = palette.cardBorder.copy(alpha = 0.7f))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "打开台风路径",
-                Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-                color = accent,
-                fontWeight = FontWeight.Bold,
-            )
-            PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(22.dp), accent)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                listOf("实况路径", "预报走势", "风圈范围").forEach { label ->
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ZhishengTextSecondary,
+                    )
+                }
+            }
         }
     }
 }
