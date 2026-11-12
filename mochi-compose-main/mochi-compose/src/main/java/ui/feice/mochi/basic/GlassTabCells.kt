@@ -147,7 +147,15 @@ private fun GlassTabCell(
                         .mochiBlur { labelBlur(selectedness(), behavior.labelBlur) }
                 } else {
                     // 竖向排布：文字常驻，整条栏同一时刻只有一个模糊窗口（选中块最靠近的那一格）。
-                    Modifier.mochiBlur { stackedLabelBlur(selectedness(), behavior.labelBlur) }
+                    // 和横排一样按模糊强度压低透明度，避免糊成一层重影。
+                    Modifier
+                        .graphicsLayer {
+                            mochiBlurAlpha(
+                                stackedLabelAlpha(selectedness()),
+                                stackedLabelBlur(selectedness(), behavior.labelBlur),
+                            )
+                        }
+                        .mochiBlur { stackedLabelBlur(selectedness(), behavior.labelBlur) }
                 },
             )
         }

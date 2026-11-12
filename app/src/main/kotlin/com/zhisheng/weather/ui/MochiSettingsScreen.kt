@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhisheng.weather.R
 import com.zhisheng.weather.data.AccentTone
+import com.zhisheng.weather.ui.about.AboutPage
 import com.zhisheng.weather.data.AppIconManager
 import com.zhisheng.weather.data.AppIconStyle
 import com.zhisheng.weather.data.AmbienceLevel
@@ -63,6 +64,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ui.feice.mochi.basic.MochiBadge
 import ui.feice.mochi.basic.MochiBarIconButton
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.basic.MochiSwitch
@@ -97,7 +99,6 @@ internal val LocalMochiSettingsEntry = staticCompositionLocalOf<(() -> Unit)?> {
 @Composable
 fun MochiSettingsScreen(
     onBack: () -> Unit,
-    onAbout: () -> Unit = {},
     onLocate: () -> Unit,
     locating: Boolean,
     locateMessage: String?,
@@ -215,10 +216,10 @@ fun MochiSettingsScreen(
             ) { route ->
                 when (route) {
                     "settings.main" -> {
-                        // 标签栏和栏共用 bar 材质：这里只给标签栏单独降级，正文里的栏在内部还原。
-                        val fullMaterials = rememberMochiMaterials(uiPrefs, mochiColors.isDark)
+                        // 标签栏和栏共用 bar 材质：外层只给标签栏用它的那份，正文里还原成页面的材质。
+                        val materials = rememberMochiMaterials(uiPrefs, mochiColors.isDark)
                         CompositionLocalProvider(
-                            LocalMochiMaterials provides fullMaterials.withTabBar("tabbar" in uiPrefs.glassTargets),
+                            LocalMochiMaterials provides materials.tabBar,
                         ) {
                             MochiTabScaffold(
                                 items = tabs,
@@ -226,7 +227,7 @@ fun MochiSettingsScreen(
                                 behavior = tabBehavior,
                                 collapseOnScroll = uiPrefs.tabCollapse,
                             ) { index ->
-                                CompositionLocalProvider(LocalMochiMaterials provides fullMaterials) {
+                                CompositionLocalProvider(LocalMochiMaterials provides materials.page) {
                                     MochiLazyCompactTitleScaffold(
                             title = "设置",
                             subtitle = when (index) {
@@ -236,7 +237,7 @@ fun MochiSettingsScreen(
                             },
                             navigationIcon = { MochiBackButton(onClick = onBack) },
                             actions = {
-                                MochiBarIconButton(onClick = onAbout) {
+                                MochiBarIconButton(onClick = { openSettingsPage("settings.about") }) {
                                     PhosphorIcon(R.drawable.ph_info, null, Modifier.size(22.dp), MochiTheme.colorScheme.onSurface)
                                 }
                             },
@@ -350,6 +351,7 @@ fun MochiSettingsScreen(
                     }
                         }
                     }
+                    "settings.about" -> AboutPage(onBack = { nav.pop() })
                     "settings.hdr" -> MochiHdrSettingsPage(uiPrefs)
                     "settings.glass" -> MochiGlassSettingsPage(uiPrefs)
                     "settings.pressGlow" -> MochiPressGlowSettingsPage(uiPrefs)
@@ -820,6 +822,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
                 title = "液态玻璃",
                 subtitle = "栏、菜单、面板与按钮的材质，可单独选择用在哪里",
                 value = if (glassOn) "开" else "关",
+                titleTrailing = { MochiBadge("Beta") },
                 chevron = true,
                 onClick = { onPush("settings.glass") },
             )

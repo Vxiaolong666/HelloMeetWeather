@@ -168,14 +168,17 @@ internal fun MochiAppTheme(
     MochiTheme(
         colors = colors,
         systemBarAppearance = systemBarAppearance,
-        materials = materials,
+        materials = materials.page,
         content = content,
     )
 }
 
+/** 页面与标签栏各一份材质：标签栏和栏共用 `bar`，需要单独降级 / 单独开启。 */
+internal data class MochiMaterialSet(val page: MochiMaterials, val tabBar: MochiMaterials)
+
 /** 材质随玻璃设置变化时重算；供 [MochiAppTheme] 与标签栏单独覆写共用。 */
 @Composable
-internal fun rememberMochiMaterials(prefs: MochiUiPrefs, isDark: Boolean): MochiMaterials =
+internal fun rememberMochiMaterials(prefs: MochiUiPrefs, isDark: Boolean): MochiMaterialSet =
     remember(
         prefs.glass, prefs.glassBlur, prefs.glassTint, prefs.glassBlurOnly, prefs.glassStyle,
         prefs.glassLight, prefs.glassDark, prefs.glassThemeAccent, prefs.glassTargets, isDark,
@@ -186,10 +189,10 @@ internal fun rememberMochiMaterials(prefs: MochiUiPrefs, isDark: Boolean): Mochi
 /**
  * 按「液态玻璃」页的设置拼材质。关掉某项时该处退回纯色；菜单、警告框、面板、玻璃按钮按组件库的
  * 回退顺序（menu → bar、alert → menu、sheet → bar、clear → control）取上一档。
- * 「标签栏」不在这里关：它和栏共用一个材质，由设置页在 MochiTabScaffold 外层单独覆写。
+ * 标签栏单独一份：它的玻璃由 `bar` 驱动，栏关掉时也要能只给标签栏玻璃。
  */
-private fun buildMochiMaterials(prefs: MochiUiPrefs, isDark: Boolean): MochiMaterials {
-    if (!prefs.glass) return MochiMaterials()
+private fun buildMochiMaterials(prefs: MochiUiPrefs, isDark: Boolean): MochiMaterialSet {
+    if (!prefs.glass) return MochiMaterialSet(MochiMaterials(), MochiMaterials())
     val base = iosMaterials(
         isDark = isDark,
         glassTint = prefs.glassTint,
@@ -204,7 +207,7 @@ private fun buildMochiMaterials(prefs: MochiUiPrefs, isDark: Boolean): MochiMate
     )
     val targets = prefs.glassTargets
     fun pick(on: Boolean, glass: MochiGlass?) = if (on) glass else null
-    return MochiMaterials(
+    val page = MochiMaterials(
         bar = pick("bar" in targets, base.bar),
         scrollEdge = base.scrollEdge,
         control = pick("control" in targets, base.control ?: base.bar),
@@ -213,11 +216,10 @@ private fun buildMochiMaterials(prefs: MochiUiPrefs, isDark: Boolean): MochiMate
         sheet = pick("sheet" in targets, base.sheet ?: base.bar),
         clear = pick("clear" in targets, base.clear ?: base.control ?: base.bar),
     )
+    // 标签栏读 bar：不看「栏」的开关，只看自己的开关，栏关掉时也能单独给标签栏玻璃。
+    val tabBar = page.copy(bar = pick("tabbar" in targets, base.bar))
+    return MochiMaterialSet(page, tabBar)
 }
-
-/** 标签栏单独一份材质：关掉「标签栏」时只把 bar 置空，页面内的栏仍保留自己的玻璃。 */
-internal fun MochiMaterials.withTabBar(on: Boolean): MochiMaterials =
-    if (on || bar == null) this else copy(bar = null)
 
 /** 所有 mochi 页面共用的一套配色：由「主题配色」页的 4 项设置生成，改完立即生效。 */
 @Composable

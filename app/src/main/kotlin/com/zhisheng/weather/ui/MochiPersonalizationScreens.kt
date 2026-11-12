@@ -45,6 +45,7 @@ import ui.feice.mochi.basic.MochiActivityIndicator
 import ui.feice.mochi.basic.MochiButton
 import ui.feice.mochi.basic.MochiButtonGroup
 import ui.feice.mochi.basic.MochiButtonStyle
+import ui.feice.mochi.basic.MochiIntensitySlider
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.basic.MochiSheetDetent
 import ui.feice.mochi.basic.MochiSwitch
@@ -244,8 +245,8 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
     val supported = MochiHdr.supported
     val ios27 = prefs.glassStyle == "ios27"
     val glassOnly = !prefs.glass
-    // 栏内按钮玻璃与 HDR 高光同时开启时的确认弹窗
-    var hdrConfirm by remember { mutableStateOf(false) }
+    // 液态玻璃与 HDR 高光同时开启时的确认弹窗：值为待开启的项（bar / control / hdr）
+    var confirmTarget by remember { mutableStateOf<String?>(null) }
 
     Box(Modifier.fillMaxSize()) {
         MochiSettingsScaffold(
@@ -327,14 +328,21 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
             item {
                 MochiListSection(
                     header = "使用范围",
-                    footer = "标签栏、栏、栏内按钮各管一处：标签栏只管底部标签栏，栏是顶栏与大标题栏，" +
-                        "栏内按钮是顶栏上的圆形按钮。菜单、警告框、面板、玻璃按钮没有单独开启时按组件库的" +
-                        "回退顺序取上一档玻璃（警告框取菜单，菜单、面板、玻璃按钮取栏）。",
+                    footer = "标签栏、栏、栏内按钮各管一处：标签栏只管底部标签栏（和栏互不影响），" +
+                        "栏是顶栏与大标题栏，栏内按钮是顶栏上的圆形按钮。菜单、警告框、面板、玻璃按钮" +
+                        "没有单独开启时按组件库的回退顺序取上一档玻璃（警告框取菜单，其余取栏）；" +
+                        "栏开着玻璃时，栏内按钮即使关掉也会跟随栏。",
                 ) {
-                    GlassTargetRow("栏", "bar", prefs, scope)
-                    GlassTargetRow("标签栏", "tabbar", prefs, scope)
+                    GlassTargetRow("栏", "bar", prefs, scope) { on ->
+                        if (on && prefs.hdrEnabled) confirmTarget = "bar"
+                        else scope.launch { SettingsRepository.setMochiGlassTarget("bar", on) }
+                    }
+                    GlassTargetRow("标签栏", "tabbar", prefs, scope) { on ->
+                        if (on && prefs.hdrEnabled) confirmTarget = "tabbar"
+                        else scope.launch { SettingsRepository.setMochiGlassTarget("tabbar", on) }
+                    }
                     GlassTargetRow("栏内按钮", "control", prefs, scope) { on ->
-                        if (on && prefs.hdrEnabled) hdrConfirm = true
+                        if (on && prefs.hdrEnabled) confirmTarget = "control"
                         else scope.launch { SettingsRepository.setMochiGlassTarget("control", on) }
                     }
                     GlassTargetRow("菜单", "menu", prefs, scope)
@@ -358,7 +366,16 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
                         trailing = {
                             MochiSwitch(
                                 checked = prefs.hdrEnabled && supported,
-                                onCheckedChange = { scope.launch { SettingsRepository.setMochiHdrEnabled(it) } },
+                                onCheckedChange = { on ->
+                                    // 反向联动：栏 / 栏内按钮已经开着玻璃时，打开 HDR 也要先确认。
+                                    if (on && ("bar" in prefs.glassTargets || "tabbar" in prefs.glassTargets ||
+                                            "control" in prefs.glassTargets)
+                                    ) {
+                                        confirmTarget = "hdr"
+                                    } else {
+                                        scope.launch { SettingsRepository.setMochiHdrEnabled(on) }
+                                    }
+                                },
                                 enabled = supported,
                             )
                         },
@@ -392,19 +409,35 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
                 }
             }
         }
-        // 栏内按钮玻璃和 HDR 高光同时开启：两者都会提亮边缘，先让用户确认。
+        // 液态玻璃与 HDR 高光同时开启：两者都会提亮边缘，先让用户确认；确认按钮用红色。
+        val target = confirmTarget
         MochiConfirmDialog(
             title = "液态玻璃与 HDR 高光同时开启",
-            message = "当前栏内按钮液态玻璃效果与 HDR 高光同时开启可能存在兼容性问题，" +
-                "部分设备上按钮边缘可能过亮或闪烁。仍然开启吗？",
-            confirmLabel = "仍然开启",
-            onConfirm = {
-                hdrConfirm = false
-                scope.launch { SettingsRepository.setMochiGlassTarget("control", true) }
+            message = when (target) {
+                "bar" -> "当前栏液态玻璃效果与 HDR 高光同时开启可能存在兼容性问题，" +
+                    "部分设备上栏的边缘可能过亮或闪烁。仍然开启吗？"
+                "tabbar" -> "当前标签栏液态玻璃效果与 HDR 高光同时开启可能存在兼容性问题，" +
+                    "部分设备上标签栏边缘可能过亮或闪烁。仍然开启吗？"
+                "control" -> "当前栏内按钮液态玻璃效果与 HDR 高光同时开启可能存在兼容性问题，" +
+                    "部分设备上按钮边缘可能过亮或闪烁。仍然开启吗？"
+                else -> "当前栏、标签栏或栏内按钮的液态玻璃效果与 HDR 高光同时开启可能存在兼容性问题，" +
+                    "部分设备上边缘可能过亮或闪烁。仍然开启吗？"
             },
-            onDismiss = { hdrConfirm = false },
-            destructive = false,
-            visible = hdrConfirm,
+            confirmLabel = "仍然开启",
+            confirmFilledError = true,
+            onConfirm = {
+                val pending = target
+                confirmTarget = null
+                when (pending) {
+                    "bar" -> scope.launch { SettingsRepository.setMochiGlassTarget("bar", true) }
+                    "tabbar" -> scope.launch { SettingsRepository.setMochiGlassTarget("tabbar", true) }
+                    "control" -> scope.launch { SettingsRepository.setMochiGlassTarget("control", true) }
+                    "hdr" -> scope.launch { SettingsRepository.setMochiHdrEnabled(true) }
+                }
+            },
+            onDismiss = { confirmTarget = null },
+            destructive = true,
+            visible = target != null,
         )
     }
 }
@@ -917,12 +950,16 @@ internal fun MochiGraphicsSettingsPage(prefs: MochiUiPrefs) {
                     title = "当前档位",
                     value = MochiGraphicsLevels[levelIndex].first,
                 )
-                MochiSegmentedControl(
-                    selectedIndex = levelIndex,
-                    onSelect = { i ->
-                        scope.launch { SettingsRepository.setMochiGraphicsLevel(MochiGraphicsLevels[i].second) }
+                MochiIntensitySlider(
+                    value = levelIndex / (MochiGraphicsLevels.size - 1).toFloat(),
+                    onValueChange = { v ->
+                        val i = (v * (MochiGraphicsLevels.size - 1)).roundToInt()
+                            .coerceIn(0, MochiGraphicsLevels.lastIndex)
+                        if (i != levelIndex) {
+                            scope.launch { SettingsRepository.setMochiGraphicsLevel(MochiGraphicsLevels[i].second) }
+                        }
                     },
-                    items = MochiGraphicsLevels.map { it.first }.toImmutableList(),
+                    stops = MochiGraphicsLevels.size,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                 )
                 MochiListRow(

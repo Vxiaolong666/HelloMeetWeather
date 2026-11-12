@@ -502,6 +502,12 @@ public fun MochiTabBar(
                                             if (shift > 0.dp) {
                                                 mochiBlurAlpha(labelAlpha(selectedness(i)), labelBlur(selectedness(i), behavior.labelBlur))
                                                 translationY = shift.toPx() * (1f - selectedness(i))
+                                            } else {
+                                                // 上下排布：文字常驻，模糊时同样压低透明度，和横排的观感保持一致
+                                                mochiBlurAlpha(
+                                                    stackedLabelAlpha(selectedness(i)),
+                                                    stackedLabelBlur(selectedness(i), behavior.labelBlur),
+                                                )
                                             }
                                         }.mochiBlur {
                                             if (shift > 0.dp) labelBlur(selectedness(i), behavior.labelBlur)

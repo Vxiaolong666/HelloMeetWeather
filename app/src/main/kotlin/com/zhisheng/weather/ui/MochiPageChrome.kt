@@ -22,6 +22,7 @@ import ui.feice.mochi.basic.MochiConfirmationDialog
 import ui.feice.mochi.basic.MochiDialog
 import ui.feice.mochi.basic.MochiDialogAction
 import ui.feice.mochi.basic.MochiDialogActionRole
+import ui.feice.mochi.basic.MochiDialogDefaults
 import ui.feice.mochi.basic.MochiToastHost
 import ui.feice.mochi.basic.MochiToastState
 import ui.feice.mochi.effect.overscroll.ProvideMochiOverscroll
@@ -51,6 +52,7 @@ internal fun MochiAppToastHost(state: MochiToastState) {
 
 /** 供 MochiBackButton(history=…) 用的返回历史标题。 */
 internal fun mochiSettingsRouteTitle(route: String): String = when (route) {
+    "settings.about" -> "关于"
     "settings.hdr" -> "HDR 高光"
     "settings.pressGlow" -> "按压高光"
     "settings.transition" -> "应用转场与侧推"
@@ -189,6 +191,7 @@ internal fun MochiConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     destructive: Boolean = true,
+    confirmFilledError: Boolean = false,
     visible: Boolean = true,
 ) {
     MochiConfirmationDialog(
@@ -196,8 +199,20 @@ internal fun MochiConfirmDialog(
         onDismissRequest = onDismiss,
         title = title,
         message = message,
+        // 填充红色：确认按钮用错误色底 + 反白字，破坏性操作在警告框里最醒目
+        colors = if (confirmFilledError) {
+            MochiDialogDefaults.colors(
+                primary = MochiTheme.colorScheme.error,
+                onPrimary = MochiTheme.colorScheme.onError,
+            )
+        } else {
+            MochiDialogDefaults.colors()
+        },
         actions = persistentListOf(
-            MochiDialogAction(confirmLabel, if (destructive) MochiDialogActionRole.Destructive else MochiDialogActionRole.Primary) {
+            MochiDialogAction(
+                confirmLabel,
+                if (destructive && !confirmFilledError) MochiDialogActionRole.Destructive else MochiDialogActionRole.Primary,
+            ) {
                 onConfirm()
             },
             MochiDialogAction("取消", MochiDialogActionRole.Cancel),

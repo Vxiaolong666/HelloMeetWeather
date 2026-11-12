@@ -107,13 +107,27 @@ internal fun labelBlur(t: Float, enabled: Boolean = true): Dp {
  */
 internal fun stackedLabelBlur(selectedness: Float, enabled: Boolean = true): Dp {
     if (!enabled) return 0.dp
-    val t = selectedness.coerceIn(0f, 1f)
-    if (t <= 0.5f) return 0.dp
-    // 1 - t = 选中块离这一格中心的距离（0 = 落定，0.5 = 两格正中间）；两端不糊，中间最深
-    val phase = (1f - abs(4f * (1f - t) - 1f)).coerceIn(0f, 1f)
+    val phase = stackedBlurPhase(selectedness)
     if (phase < 0.02f) return 0.dp
     return MochiBlurTransitions.Appear.blur * phase
 }
+
+/**
+ * 上下排布里模糊窗口的进度（0 = 清晰，1 = 最深），和 [stackedLabelBlur] 共用同一条曲线。
+ */
+internal fun stackedBlurPhase(selectedness: Float): Float {
+    val t = selectedness.coerceIn(0f, 1f)
+    if (t <= 0.5f) return 0f
+    // 1 - t = 选中块离这一格中心的距离（0 = 落定，0.5 = 两格正中间）；两端不糊，中间最深
+    return (1f - abs(4f * (1f - t) - 1f)).coerceIn(0f, 1f)
+}
+
+/**
+ * 横排在标签淡入时压低透明度，模糊才不会糊成一层重影。上下排布的文字常驻、没有淡入，
+ * 这里按同一条模糊进度补上透明度压制（幅度更轻，文字始终读得清），两种排布看起来一致。
+ */
+internal fun stackedLabelAlpha(selectedness: Float): Float =
+    1f - 0.35f * stackedBlurPhase(selectedness)
 
 /** 只在选中时显示标签（竖排）时，没选中的图标往下挪多少才在整格里居中：(2dp 间距 + 12sp 行高) / 2 */
 internal val LabelShift = 7.dp
