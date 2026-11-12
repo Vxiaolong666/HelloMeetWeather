@@ -1,7 +1,7 @@
-// 迁移自 mochi-compose demo 的关于页（不迁移 demo 图标资源，仅迁移绘制与动画逻辑）。
-// 品牌团子：与 demo 启动图标 / Logo 同一份设计稿。
+// Copyright 2026, mochi-compose contributors
+// SPDX-License-Identifier: Apache-2.0
 
-package com.zhisheng.weather.ui.about
+package ui.feice.mochi.demo.about
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
@@ -19,6 +19,10 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 
+/**
+ * 品牌团子的颜色和几何：和启动图标、docs/assets 里的 Logo 是同一份（100 单位的设计稿）。
+ * 竹签斜 -35°，团子是略扁的椭圆，彼此轻挤；改这里要同步改图标的生成脚本。
+ */
 internal object Dango {
     val Top = Color(0xFFD97757)
     val Mid = Color(0xFFFFF8F0)

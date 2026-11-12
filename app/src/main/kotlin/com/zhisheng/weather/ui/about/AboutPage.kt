@@ -1,5 +1,5 @@
-// 迁移自 mochi-compose demo 的关于页（品牌图标随 demo 的 Icons 映射迁移，仅 demo 的图片 logo avatar_feice 不迁移，
-// 开发者头像改用文字首字母占位）。布局、文案与彩蛋逻辑原样保留。
+// 迁移自 mochi-compose demo 的关于页（demo 的图片 logo avatar_feice 不迁移，开发者头像改用文字首字母占位）。
+// 顶部品牌图标已重设为天气主题的太阳 + 云 + 小雨，戳按 / 长按蓄力 / 彩蛋飘带逻辑保留。
 
 package com.zhisheng.weather.ui.about
 
@@ -69,11 +69,11 @@ private const val GitHub = "https://github.com/feice11"
 private const val Bilibili = "https://space.bilibili.com/626797481"
 private const val Afdian = "https://afdian.com/a/feice"
 
-/** 长按团子多久进入彩蛋 */
+/** 长按天气图标多久进入彩蛋 */
 private const val ChargeMillis = 800
 
 /**
- * 关于页：作者、赞助与交流群、鸣谢。顶部的团子能戳（中间那颗被按扁、挤开两边），
+ * 关于页：作者、赞助与交流群、鸣谢。顶部的天气图标能戳（云被按扁、太阳让开、雨滴散开），
  * 长按蓄满进入彩蛋（[RibbonEggOverlay]：玻璃飘带、折射和色散）；交流群只写入群步骤，群号由爱发电在赞助后私信发出。
  */
 @Composable
@@ -91,7 +91,7 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
     val open: (String) -> Unit = { url ->
         runCatching { uriHandler.openUri(url) }.onFailure {
             // 没有能打开链接的应用：复制下来，让用户自己粘贴
-            context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Mochi", url))
+            context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("枳生天气", url))
             toast.show("已复制链接", subtitle = url)
         }
     }
@@ -101,10 +101,10 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
     var taps by remember { mutableIntStateOf(0) }
     var egg by remember { mutableStateOf<RibbonEggState?>(null) }
     var root by remember { mutableStateOf(Offset.Zero) }
-    var dango by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var mark by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
     fun startEgg() {
-        val lc = dango ?: return
+        val lc = mark ?: return
         val center = lc.positionInRoot() + Offset(lc.size.width / 2f, lc.size.height / 2f) - root
         egg = RibbonEggState(center)
     }
@@ -117,19 +117,19 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
             modifier = Modifier.ribbonEggEffect(egg),
             navigationIcon = { MochiBackButton(onClick = onBack) },
         ) {
-            // —— 团子 + 名字 ——
+            // —— 天气图标 + 名字 ——
             demoItem {
                 Column(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         Modifier
                             .size(136.dp)
-                            .onGloballyPositioned { dango = it }
+                            .onGloballyPositioned { mark = it }
                             .pointerInput(Unit) {
                                 awaitEachGesture {
                                     awaitFirstDown()
                                     val job = scope.launch {
                                         coroutineScope {
-                                            // 蓄力：每过 1/4 轻震一下，团子越鼓越抖
+                                            // 蓄力：每过 1/4 轻震一下，图标越鼓越抖
                                             val ticker = launch {
                                                 var step = 0
                                                 snapshotFlow { (charge.value * 4).toInt() }.collect {
@@ -144,7 +144,7 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
                                         }
                                         haptics.confirm()
                                         startEgg()
-                                        // 团子弹回原样，飘带从它这里抽出来
+                                        // 图标弹回原样，飘带从它这里抽出来
                                         scope.launch { charge.animateTo(0f, spring(dampingRatio = 0.55f, stiffness = 240f)) }
                                     }
                                     val up = waitForUpOrCancellation()
@@ -158,23 +158,23 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
                                                 poke.animateTo(1f, tween(70))
                                                 poke.animateTo(0f, spring(dampingRatio = 0.3f, stiffness = 480f))
                                             }
-                                            if (++taps == 5) toast.show("试试长按团子？", subtitle = "按住别松手")
+                                            if (++taps == 5) toast.show("试试长按天气图标？", subtitle = "按住别松手")
                                         }
                                     }
                                 }
                             },
                     ) {
-                        DangoMark(
+                        WeatherMark(
                             Modifier.fillMaxSize(),
                             poke = { poke.value },
                             swell = { charge.value },
                             tremble = { charge.value.let { c -> 2.5f * c * sin(c * 70f) } },
                         )
                     }
-                    Text("Mochi", style = ts.largeTitle, modifier = Modifier.padding(top = 4.dp))
-                    Text("麻薯", style = ts.titleMedium.emphasized(), color = Dango.Top)
+                    Text("枳生天气", style = ts.largeTitle, modifier = Modifier.padding(top = 4.dp))
+                    Text("ZHISHENG WEATHER", style = ts.titleMedium.emphasized(), color = WeatherMarkColors.Ink)
                     Text(
-                        "软软弹弹、跟手顺滑的 Compose 组件库",
+                        "看得见天气，也看得见天空 · 实时天气、空气质量与逐时预报",
                         style = ts.subhead.copy(textAlign = TextAlign.Center),
                         color = cs.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),
@@ -261,7 +261,7 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
             }
             demoItem {
                 Text(
-                    "Made with 🍡 by 稽品飞车 · Apache-2.0",
+                    "Made with ⛅ by 稽品飞车 · Apache-2.0",
                     style = ts.footnote.copy(textAlign = TextAlign.Center),
                     color = cs.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),

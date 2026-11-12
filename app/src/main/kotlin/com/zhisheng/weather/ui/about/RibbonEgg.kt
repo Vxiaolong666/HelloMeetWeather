@@ -207,7 +207,7 @@ private fun DrawScope.drawRibbonsFallback(s: RibbonEggState) {
                 if (x == -far) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
                 x += 12f
             }
-            drawPath(path, Dango.Balls[k].copy(alpha = 0.35f), style = Stroke(m * 0.06f, cap = StrokeCap.Round))
+            drawPath(path, WeatherMarkColors.Ribbons[k].copy(alpha = 0.35f), style = Stroke(m * 0.06f, cap = StrokeCap.Round))
         }
     }
 }
