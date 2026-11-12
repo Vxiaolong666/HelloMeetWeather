@@ -711,7 +711,10 @@ private fun RadarInstrumentPage(
         }
 
         RadarBottomController(
-            modifier = Modifier.align(Alignment.BottomCenter).heightIn(max = maxHeight * .48f).verticalScroll(rememberScrollState()),
+            // 地图铺到屏幕最下沿，控制条要让出系统手势条的高度。
+            modifier = Modifier.align(Alignment.BottomCenter).heightIn(max = maxHeight * .48f)
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState()),
             source = source,
             frames = playbackFrames,
             nowIndex = nowBoundary,

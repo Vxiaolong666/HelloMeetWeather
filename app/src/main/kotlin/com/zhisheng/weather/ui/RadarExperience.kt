@@ -42,29 +42,33 @@ fun RadarScreen(city: City?, utcOffsetSeconds: Int?, onBack: () -> Unit, weather
             while (true) { now = System.currentTimeMillis(); delay(30_000) }
         }
     }
-    // 与设置二级页同一个外壳：库标题脚手架 + 液态玻璃材质 + 越界手感。
-    MochiPageFrame(
+    // 与设置二级页同一个外壳：库顶栏 + 液态玻璃材质 + 越界手感。
+    // 正文用列布局而不是懒加载列表：地图要靠 weight 吃掉顶栏以下的整块高度，
+    // 塞进列表最后一项会在屏幕底部留下一条空底色（列表底部留白）。
+    MochiColumnPageFrame(
         title = "降水地图",
         subtitle = city?.displayName?.takeIf { it.isNotBlank() },
         onBack = onBack,
     ) {
-        item {
-            MochiSegmentedControl(
-                selectedIndex = tab,
-                onSelect = { tab = it },
-                items = persistentListOf("附近回波", "未来2小时"),
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            )
-        }
+        MochiSegmentedControl(
+            selectedIndex = tab,
+            onSelect = { tab = it },
+            items = persistentListOf("附近回波", "未来2小时"),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        )
         if (tab == 0) {
-            item {
-                // 地图是靠手势的原生子视图，单独占满一屏，不参与列表滚动。
-                Box(Modifier.fillParentMaxHeight(0.82f).fillMaxWidth()) {
-                    RadarMapScreen(city, utcOffsetSeconds, onBack)
-                }
+            // 地图是靠手势的原生子视图，占满分段控件以下的剩余高度，不参与滚动。
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                RadarMapScreen(city, utcOffsetSeconds, onBack)
             }
         } else {
-            radarFutureItems(radarPointForecast(weather, now), now, utcOffsetSeconds)
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f).navigationBarsPadding(),
+                contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                radarFutureItems(radarPointForecast(weather, now), now, utcOffsetSeconds)
+            }
         }
     }
 }

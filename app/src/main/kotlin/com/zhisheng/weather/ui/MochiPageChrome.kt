@@ -53,6 +53,8 @@ import ui.feice.mochi.list.MochiListSection
 import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.navigation.MochiLazyCompactTitleScaffold
 import ui.feice.mochi.navigation.MochiNavigator
+import ui.feice.mochi.navigation.MochiTitleBar
+import ui.feice.mochi.theme.MochiDefaults
 import ui.feice.mochi.theme.MochiTheme
 
 /**
@@ -157,6 +159,40 @@ internal fun MochiPageFrame(
                 content = content,
             )
             overlay()
+        }
+    }
+}
+
+/**
+ * 全屏内容型二级页的统一外壳：库顶栏 + 高度自适应的正文。
+ *
+ * [MochiPageFrame] 的正文是懒加载列表，最后一项和屏幕底边之间必然留着列表底部留白，
+ * 地图、图形预览这类「正文本身就是一整块、要靠 weight 吃掉剩余高度」的页面用它会多出一条空带。
+ * 这里换成普通 [Column]，顶栏、主题、返回按钮与 [MochiPageFrame] 完全一致，只是正文不再滚动，
+ * 子项可以用 `Modifier.weight(1f)` 占满顶栏以下的剩余高度。
+ */
+@Composable
+internal fun MochiColumnPageFrame(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = rememberMochiColorScheme()
+    MochiAppTheme(colors = colors) {
+        ProvideMochiOverscroll {
+            Column(modifier.fillMaxSize().background(MochiDefaults.groupedBackground())) {
+                MochiTitleBar(
+                    title = title,
+                    subtitle = subtitle,
+                    navigationIcon = { MochiBackButton(onClick = onBack, history = ::mochiSettingsRouteTitle) },
+                    actions = actions,
+                    background = MochiDefaults.groupedBackground(),
+                )
+                content()
+            }
         }
     }
 }
