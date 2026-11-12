@@ -103,6 +103,12 @@ import com.zhisheng.weather.ui.theme.ZhishengTextSecondary
 import com.zhisheng.weather.ui.theme.ZhishengTextTertiary
 import com.zhisheng.weather.ui.theme.zhishengDialogPanel
 import kotlinx.coroutines.delay
+import ui.feice.mochi.basic.MochiButton
+import ui.feice.mochi.basic.MochiButtonStyle
+import ui.feice.mochi.basic.MochiTextField
+import ui.feice.mochi.list.MochiListRow
+import ui.feice.mochi.list.MochiListSection
+import ui.feice.mochi.theme.MochiTheme
 
 private val EnterEase = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 private val ExitEase = CubicBezierEasing(0.7f, 0f, 0.84f, 0f)
@@ -110,6 +116,10 @@ private const val CAIYUN_APPLICATION_MANAGE_URL = "https://platform.caiyunapp.co
 private const val AMAP_APPLICATION_MANAGE_URL = "https://console.amap.com/dev/key/app"
 private const val BAIDU_APPLICATION_MANAGE_URL = "https://lbsyun.baidu.com/apiconsole/key"
 
+/**
+ * 旧版终端风接入弹窗：天气 / 定位服务的生产链路已全部切到 [MochiProviderWizard]
+ * 新版页面，这里连同 [ProviderSetupPanel] 一起保留给快照与视觉回归使用。
+ */
 @Composable
 fun ProviderWizard(kind: ProviderWizardKind, onClose: () -> Unit) {
     val factory = remember(kind) {
@@ -327,20 +337,23 @@ private fun ProviderHeader(state: ProviderSetupUiState, onBack: () -> Unit, onCl
     }
 }
 
+/** 各服务接入向导的步骤标签，旧版步骤条与 mochi 新版页面共用。 */
+internal fun providerStepLabels(kind: ProviderWizardKind): List<String> = when (kind) {
+    ProviderWizardKind.QWEATHER ->
+        listOf("选择路线", "创建项目", "获取凭据", "获取 Host", "真实验证", "接入完成")
+    ProviderWizardKind.CAIYUN ->
+        listOf("准备", "进入应用管理", "打开访问控制", "复制并验证", "接入完成")
+    ProviderWizardKind.AMAP ->
+        listOf("准备", "创建 Web 应用", "复制并验证", "接入完成")
+    ProviderWizardKind.BAIDU ->
+        listOf("准备", "创建服务端应用", "复制并验证", "接入完成")
+    ProviderWizardKind.SENIVERSE, ProviderWizardKind.MOJI ->
+        listOf("准备", "个人控制台", "复制并验证", "接入完成")
+}
+
 @Composable
 private fun StepRail(state: ProviderSetupUiState) {
-    val labels = when (state.kind) {
-        ProviderWizardKind.QWEATHER ->
-            listOf("选择路线", "创建项目", "获取凭据", "获取 Host", "真实验证", "接入完成")
-        ProviderWizardKind.CAIYUN ->
-            listOf("准备", "进入应用管理", "打开访问控制", "复制并验证", "接入完成")
-        ProviderWizardKind.AMAP ->
-            listOf("准备", "创建 Web 应用", "复制并验证", "接入完成")
-        ProviderWizardKind.BAIDU ->
-            listOf("准备", "创建服务端应用", "复制并验证", "接入完成")
-        ProviderWizardKind.SENIVERSE, ProviderWizardKind.MOJI ->
-            listOf("准备", "个人控制台", "复制并验证", "接入完成")
-    }
+    val labels = providerStepLabels(state.kind)
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             repeat(labels.size) { index ->
@@ -367,8 +380,9 @@ private fun StepRail(state: ProviderSetupUiState) {
     }
 }
 
+/** 步骤内容承载全部业务文案与输入逻辑，旧版面板与 mochi 新版页面共用同一份。 */
 @Composable
-private fun ProviderStepContent(state: ProviderSetupUiState, model: ProviderSetupViewModel) {
+internal fun ProviderStepContent(state: ProviderSetupUiState, model: ProviderSetupViewModel) {
     when (state.kind) {
         ProviderWizardKind.QWEATHER -> QweatherStep(state, model)
         ProviderWizardKind.CAIYUN -> CaiyunStep(state, model)
@@ -755,35 +769,31 @@ private fun DomesticProviderStep(state: ProviderSetupUiState, model: ProviderSet
 private fun StepIntro(title: String, body: String) {
     Text(
         title,
-        style = MaterialTheme.typography.headlineSmall.copy(fontFamily = ZhishengReading),
-        color = ZhishengText,
+        style = MaterialTheme.typography.headlineSmall,
+        color = MochiTheme.colorScheme.onSurface,
         fontWeight = FontWeight.Bold,
     )
     Spacer(Modifier.height(8.dp))
     Text(
         body,
-        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = ZhishengReading, lineHeight = 22.sp),
-        color = ZhishengTextSecondary,
+        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+        color = MochiTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(16.dp))
 }
 
 @Composable
 private fun TerminalCommand(command: String) {
-    // 由命令提示符改为带图标的圆角信息条：保留原文案，去掉等宽终端观感。
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(ZhishengCardBorder.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
-            .border(1.dp, ZhishengCardBorder.copy(alpha = 0.42f), RoundedCornerShape(12.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(14.dp), ZhishengMint)
-        Spacer(Modifier.width(10.dp))
-        Text(command, color = ZhishengText, style = MaterialTheme.typography.bodyMedium)
+    MochiListSection {
+        MochiListRow(
+            title = "接入命令",
+            subtitle = command,
+            leading = {
+                PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(18.dp), mochiLeadingIconTint())
+            },
+        )
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(12.dp))
 }
 
 @Composable
@@ -792,12 +802,12 @@ private fun FactRow(label: String, value: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Text("[$label]", color = ZhishengOrange, style = MaterialTheme.typography.labelMedium)
+        Text(label, color = MochiTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.width(12.dp))
         Text(
             value,
-            color = ZhishengTextSecondary,
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading, lineHeight = 19.sp),
+            color = MochiTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 19.sp),
             modifier = Modifier.weight(1f),
         )
     }
@@ -808,12 +818,12 @@ private fun InstructionList(vararg lines: String) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         lines.forEachIndexed { index, line ->
             Row(verticalAlignment = Alignment.Top) {
-                Text("%02d".format(index + 1), color = ZhishengOrange, style = MaterialTheme.typography.labelMedium)
+                Text("%02d".format(index + 1), color = MochiTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.width(12.dp))
                 Text(
                     line,
-                    color = ZhishengTextSecondary,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = ZhishengReading),
+                    color = MochiTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -824,37 +834,18 @@ private fun InstructionList(vararg lines: String) {
 
 @Composable
 private fun ProviderLink(label: String, detail: String, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    val focused by interaction.collectIsFocusedAsState()
-    val pressed by interaction.collectIsPressedAsState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .defaultMinSize(minHeight = 52.dp)
-            .scale(if (pressed) 0.99f else 1f)
-            .border(2.dp, if (focused) ZhishengCyan else Color.Transparent)
-            .padding(2.dp)
-            .background(if (hovered) ZhishengCyan.copy(alpha = 0.08f) else ZhishengCard)
-            .border(1.dp, ZhishengCardBorder)
-            .hoverable(interaction)
-            .focusable(interactionSource = interaction)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, color = ZhishengCyan, style = MaterialTheme.typography.titleSmall)
-            Text(detail, color = ZhishengTextTertiary, style = MaterialTheme.typography.labelSmall)
-        }
-        Text("↗", color = ZhishengCyan, style = MaterialTheme.typography.titleMedium)
+    MochiListSection {
+        MochiListRow(
+            title = label,
+            subtitle = detail,
+            leading = {
+                PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(18.dp), mochiLeadingIconTint())
+            },
+            chevron = true,
+            onClick = onClick,
+        )
     }
+    Spacer(Modifier.height(8.dp))
 }
 
 @Composable
@@ -864,46 +855,13 @@ private fun AuthChoice(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    val focused by interaction.collectIsFocusedAsState()
-    val pressed by interaction.collectIsPressedAsState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = 64.dp)
-            .scale(if (pressed) 0.99f else 1f)
-            .border(2.dp, if (focused) ZhishengCyan else Color.Transparent)
-            .padding(2.dp)
-            .background(
-                when {
-                    selected -> ZhishengMint.copy(alpha = 0.09f)
-                    hovered -> ZhishengCyan.copy(alpha = 0.08f)
-                    else -> ZhishengCard
-                },
-            )
-            .border(1.dp, if (selected) ZhishengMint else ZhishengCardBorder)
-            .hoverable(interaction)
-            .focusable(interactionSource = interaction)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                role = Role.RadioButton,
-                onClick = onClick,
-            )
-            .semantics { this.selected = selected }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = if (selected) ZhishengMint else ZhishengText, style = MaterialTheme.typography.titleSmall)
-            Text(
-                subtitle,
-                color = ZhishengTextTertiary,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
-            )
-        }
-        Text(if (selected) "[●]" else "[ ]", color = if (selected) ZhishengMint else ZhishengTextTertiary)
+    MochiListSection {
+        MochiListRow(
+            title = title,
+            subtitle = subtitle,
+            checked = selected,
+            onClick = onClick,
+        )
     }
 }
 
@@ -911,12 +869,12 @@ private fun AuthChoice(
 private fun PublicKeyBlock(text: String) {
     Text(
         text,
-        color = ZhishengTextSecondary,
+        color = MochiTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.labelSmall.copy(fontFamily = ZhishengMono, lineHeight = 16.sp),
         modifier = Modifier
             .fillMaxWidth()
-            .background(ZhishengCard)
-            .border(1.dp, ZhishengCardBorder)
+            .background(MochiTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+            .border(1.dp, MochiTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
             .padding(12.dp),
     )
     Spacer(Modifier.height(8.dp))
@@ -932,15 +890,16 @@ private fun CopyPublicKeyButton(text: String, modifier: Modifier = Modifier) {
             copied = false
         }
     }
-    TerminalButton(
-        label = if (copied) "已复制" else "复制公钥",
+    MochiButton(
         onClick = {
             copyToClipboard(context, "qweather-public-key", text)
             copied = true
         },
-        tone = if (copied) ButtonTone.SUCCESS else ButtonTone.PRIMARY,
         modifier = modifier,
-    )
+        style = if (copied) MochiButtonStyle.Tonal else MochiButtonStyle.Filled,
+    ) {
+        Text(if (copied) "已复制" else "复制公钥")
+    }
 }
 
 @Composable
@@ -953,12 +912,7 @@ private fun ClipboardPasteButton(label: String, onPaste: (String) -> Unit) {
             feedback = null
         }
     }
-    TerminalButton(
-        label = when (feedback) {
-            ClipboardFeedback.PASTED -> "已从剪贴板粘贴"
-            ClipboardFeedback.EMPTY -> "剪贴板没有可用文字"
-            null -> label
-        },
+    MochiButton(
         onClick = {
             val text = readClipboardText(context)
             if (text == null) {
@@ -968,13 +922,17 @@ private fun ClipboardPasteButton(label: String, onPaste: (String) -> Unit) {
                 feedback = ClipboardFeedback.PASTED
             }
         },
-        tone = when (feedback) {
-            ClipboardFeedback.PASTED -> ButtonTone.SUCCESS
-            ClipboardFeedback.EMPTY -> ButtonTone.ERROR
-            null -> ButtonTone.NEUTRAL
-        },
         modifier = Modifier.fillMaxWidth(),
-    )
+        style = MochiButtonStyle.Outlined,
+    ) {
+        Text(
+            when (feedback) {
+                ClipboardFeedback.PASTED -> "已从剪贴板粘贴"
+                ClipboardFeedback.EMPTY -> "剪贴板没有可用文字"
+                null -> label
+            }
+        )
+    }
     Spacer(Modifier.height(12.dp))
 }
 
@@ -992,67 +950,22 @@ internal fun TerminalField(
     sensitive: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
 ) {
-    var reveal by remember { mutableStateOf(false) }
-    LaunchedEffect(enabled) { if (!enabled) reveal = false }
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    val outline = when {
-        error != null -> ZhishengRed
-        focused -> ZhishengCyan
-        else -> Color.Transparent
-    }
-    val border = if (error != null) ZhishengRed else ZhishengCardBorder
-
     Column(modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-        Text(label, color = ZhishengTextSecondary, style = MaterialTheme.typography.labelMedium)
+        Text(label, color = MochiTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(8.dp))
-        BasicTextField(
+        MochiTextField(
             value = value,
             onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = label,
             enabled = enabled,
-            singleLine = true,
-            interactionSource = interaction,
-            visualTransformation = if (sensitive && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(keyboardType = if (sensitive && keyboardType == KeyboardType.Text) KeyboardType.Password else keyboardType),
-            cursorBrush = SolidColor(ZhishengMint),
-            textStyle = MaterialTheme.typography.bodyMedium.copy(color = ZhishengText, fontFamily = ZhishengMono),
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = 52.dp)
-                .alpha(if (enabled) 1f else 0.55f)
-                .border(2.dp, outline)
-                .padding(2.dp)
-                .background(ZhishengCard)
-                .border(1.dp, border)
-                .semantics { if (error != null) this.error(error) },
-            decorationBox = { inner ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.weight(1f)) { inner() }
-                    if (sensitive) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .semantics {
-                                    contentDescription = (if (reveal) "隐藏" else "显示") + label
-                                    selected = reveal
-                                }
-                                .clickable(enabled = enabled || reveal, role = Role.Button) { reveal = !reveal },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            PhosphorIcon(R.drawable.ph_eye, null, Modifier.size(22.dp), if (reveal) ZhishengMint else ZhishengCyan)
-                        }
-                    }
-                }
-            },
-        )
-        Text(
-            error ?: helper,
-            color = if (error != null) ZhishengRed else ZhishengTextTertiary,
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = ZhishengReading),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 20.dp).padding(top = 4.dp),
+            secure = sensitive,
+            error = error,
+            supportingText = helper,
+            clearButton = false,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = if (sensitive && keyboardType == KeyboardType.Text) KeyboardType.Password else keyboardType,
+            ),
         )
     }
 }
@@ -1066,41 +979,25 @@ private fun ConnectionTrace(state: ProviderSetupUiState) {
         ProviderTestStage.entries.filterNot { it == ProviderTestStage.SIGN }
     }
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp)
-            .background(ZhishengCard)
-            .border(1.dp, ZhishengCardBorder)
-            .padding(12.dp)
-            .semantics { liveRegion = LiveRegionMode.Polite },
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
     ) {
-        Text("连接进度", color = ZhishengTextTertiary, style = MaterialTheme.typography.labelSmall, letterSpacing = 1.sp)
-        stages.forEach { stage ->
-            val marker: String
-            val color: Color
-            when {
-                stage in state.completedStages -> {
-                    marker = "[完成]"
-                    color = ZhishengMint
-                }
-                stage == state.activeStage && state.status == ProviderSetupStatus.ERROR -> {
-                    marker = "[!]"
-                    color = ZhishengRed
-                }
-                stage == state.activeStage && state.testing -> {
-                    marker = "[..]"
-                    color = ZhishengCyan
-                }
-                else -> {
-                    marker = "[ ]"
-                    color = ZhishengTextTertiary
-                }
-            }
-            Row {
-                Text(marker, color = color, style = MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.width(12.dp))
-                Text(stage.label, color = color, style = MaterialTheme.typography.labelMedium)
+        MochiListSection(header = "连接进度") {
+            stages.forEach { stage ->
+                val done = stage in state.completedStages
+                val failed = stage == state.activeStage && state.status == ProviderSetupStatus.ERROR
+                val running = stage == state.activeStage && state.testing
+                MochiListRow(
+                    title = stage.label,
+                    value = when {
+                        done -> "完成"
+                        failed -> "失败"
+                        running -> "验证中"
+                        else -> "等待"
+                    },
+                    checked = done,
+                    loading = running,
+                    destructive = failed,
+                )
             }
         }
     }
@@ -1109,26 +1006,25 @@ private fun ConnectionTrace(state: ProviderSetupUiState) {
 @Composable
 private fun ResultBanner(state: ProviderSetupUiState) {
     val result = state.result ?: return
-    val success = result.ok
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp)
-            .border(1.dp, if (success) ZhishengMint else ZhishengRed)
-            .padding(12.dp)
-            .semantics { liveRegion = LiveRegionMode.Polite },
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
     ) {
-        Text(
-            (if (success) "[完成] " else "[注意] ") + result.title,
-            color = if (success) ZhishengMint else ZhishengRed,
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            result.detail,
-            color = ZhishengTextSecondary,
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = ZhishengReading),
-        )
+        MochiListSection {
+            MochiListRow(
+                title = result.title,
+                subtitle = result.detail,
+                leading = {
+                    PhosphorIcon(
+                        if (result.ok) R.drawable.ph_check else R.drawable.ph_warning,
+                        null,
+                        Modifier.size(20.dp),
+                        if (result.ok) mochiLeadingIconTint() else MochiTheme.colorScheme.error,
+                    )
+                },
+                checked = result.ok,
+                destructive = !result.ok,
+            )
+        }
     }
 }
 
@@ -1137,11 +1033,11 @@ private fun SuccessStep(state: ProviderSetupUiState) {
     val (provider, command, body) = when (state.kind) {
         ProviderWizardKind.QWEATHER -> Triple(
             "和风天气", "qweather",
-            "连接验证和本机保存都已完成。关闭弹窗后，可以在天气来源中锁定和风天气。",
+            "连接验证和本机保存都已完成。返回设置后，可以在天气来源中锁定和风天气。",
         )
         ProviderWizardKind.CAIYUN -> Triple(
             "彩云天气", "caiyun",
-            "连接验证和本机保存都已完成。关闭弹窗后，可以在天气来源中锁定彩云天气。",
+            "连接验证和本机保存都已完成。返回设置后，可以在天气来源中锁定彩云天气。",
         )
         ProviderWizardKind.AMAP -> Triple(
             "高德地理服务", "amap-geo",
@@ -1163,6 +1059,41 @@ private fun SuccessStep(state: ProviderSetupUiState) {
     ResultBanner(state)
 }
 
+internal fun providerFinalInputStep(state: ProviderSetupUiState): Boolean =
+    (state.kind == ProviderWizardKind.QWEATHER && state.step == 4) ||
+        (state.kind == ProviderWizardKind.CAIYUN && state.step == 3) ||
+        (state.kind == ProviderWizardKind.AMAP && state.step == 2) ||
+        (state.kind == ProviderWizardKind.BAIDU && state.step == 2) ||
+        (state.kind in setOf(ProviderWizardKind.SENIVERSE, ProviderWizardKind.MOJI) && state.step == 2)
+
+internal fun providerFinished(state: ProviderSetupUiState): Boolean =
+    state.status == ProviderSetupStatus.SUCCESS || state.step == state.lastStep
+
+/** 页脚主按钮文案：旧版面板与 mochi 新版页面共用，避免两处逻辑漂移。 */
+internal fun providerPrimaryLabel(state: ProviderSetupUiState): String = when {
+    providerFinished(state) -> "完成"
+    providerFinalInputStep(state) -> "开始真实验证并保存"
+    state.step == 0 -> when {
+        state.kind == ProviderWizardKind.QWEATHER && state.authMode == QweatherAuthMode.API_KEY ->
+            "使用 API KEY 快速接入"
+        state.kind == ProviderWizardKind.CAIYUN -> "开始接入"
+        state.kind == ProviderWizardKind.AMAP -> "开始接入"
+        state.kind == ProviderWizardKind.BAIDU -> "开始接入"
+        state.kind == ProviderWizardKind.SENIVERSE || state.kind == ProviderWizardKind.MOJI -> "开始接入"
+        else -> "开始高级配置"
+    }
+    state.kind == ProviderWizardKind.QWEATHER && state.step == 1 -> "项目已打开，去创建凭据"
+    state.kind == ProviderWizardKind.QWEATHER && state.step == 2 -> if (
+        state.authMode == QweatherAuthMode.API_KEY
+    ) "Key 已粘贴，去获取 Host" else "JWT 凭据已填好，去获取 Host"
+    state.kind == ProviderWizardKind.QWEATHER && state.step == 3 -> "Host 已粘贴，进入验证"
+    state.kind == ProviderWizardKind.CAIYUN && state.step == 1 -> "已登录，去创建天气应用"
+    state.kind == ProviderWizardKind.CAIYUN && state.step == 2 -> "应用已创建，去复制 Token"
+    state.kind == ProviderWizardKind.AMAP && state.step == 1 -> "Web 服务应用已创建，去粘贴 Key"
+    state.kind == ProviderWizardKind.BAIDU && state.step == 1 -> "服务端应用已创建，去粘贴 AK"
+    else -> "进入下一步"
+}
+
 @Composable
 private fun ProviderFooter(
     state: ProviderSetupUiState,
@@ -1172,35 +1103,9 @@ private fun ProviderFooter(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val finalInput = (state.kind == ProviderWizardKind.QWEATHER && state.step == 4) ||
-        (state.kind == ProviderWizardKind.CAIYUN && state.step == 3) ||
-        (state.kind == ProviderWizardKind.AMAP && state.step == 2)
-        || (state.kind == ProviderWizardKind.BAIDU && state.step == 2)
-        || (state.kind in setOf(ProviderWizardKind.SENIVERSE, ProviderWizardKind.MOJI) && state.step == 2)
-    val finished = state.status == ProviderSetupStatus.SUCCESS || state.step == state.lastStep
-    val primaryLabel = when {
-        finished -> "完成"
-        finalInput -> "开始真实验证并保存"
-        state.step == 0 -> when {
-            state.kind == ProviderWizardKind.QWEATHER && state.authMode == QweatherAuthMode.API_KEY ->
-                "使用 API KEY 快速接入"
-            state.kind == ProviderWizardKind.CAIYUN -> "开始接入"
-            state.kind == ProviderWizardKind.AMAP -> "开始接入"
-            state.kind == ProviderWizardKind.BAIDU -> "开始接入"
-            state.kind == ProviderWizardKind.SENIVERSE || state.kind == ProviderWizardKind.MOJI -> "开始接入"
-            else -> "开始高级配置"
-        }
-        state.kind == ProviderWizardKind.QWEATHER && state.step == 1 -> "项目已打开，去创建凭据"
-        state.kind == ProviderWizardKind.QWEATHER && state.step == 2 -> if (
-            state.authMode == QweatherAuthMode.API_KEY
-        ) "Key 已粘贴，去获取 Host" else "JWT 凭据已填好，去获取 Host"
-        state.kind == ProviderWizardKind.QWEATHER && state.step == 3 -> "Host 已粘贴，进入验证"
-        state.kind == ProviderWizardKind.CAIYUN && state.step == 1 -> "已登录，去创建天气应用"
-        state.kind == ProviderWizardKind.CAIYUN && state.step == 2 -> "应用已创建，去复制 Token"
-        state.kind == ProviderWizardKind.AMAP && state.step == 1 -> "Web 服务应用已创建，去粘贴 Key"
-        state.kind == ProviderWizardKind.BAIDU && state.step == 1 -> "服务端应用已创建，去粘贴 AK"
-        else -> "进入下一步"
-    }
+    val finalInput = providerFinalInputStep(state)
+    val finished = providerFinished(state)
+    val primaryLabel = providerPrimaryLabel(state)
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val primaryAction = {

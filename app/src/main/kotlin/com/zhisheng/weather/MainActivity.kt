@@ -78,9 +78,6 @@ import com.zhisheng.weather.ui.weatherPresentationTime
 import com.zhisheng.weather.ui.home.HomeScreen
 import com.zhisheng.weather.ui.MochiSettingsScreen
 import com.zhisheng.weather.ui.LocalMochiSettingsEntry
-import com.zhisheng.weather.ui.MochiAtmosphereLabScreen
-import com.zhisheng.weather.ui.MochiProviderAccessScreen
-import com.zhisheng.weather.ui.MochiWeatherSourceScreen
 import com.zhisheng.weather.ui.MochiPrecipitationDetailScreen
 import com.zhisheng.weather.ui.MochiSearchScreen
 import com.zhisheng.weather.ui.AtmosphereLabScreen
@@ -200,8 +197,6 @@ class MainActivity : ComponentActivity() {
                 // 三星 / realme 会比小米更积极恢复任务状态；若保存 SEARCH，横向冷启动会误回城市选择页。
                 // 冷启动统一回主页（横放时由 standbyActive 展示气象时钟）；快捷方式仍由 command 明确跳转。
                 var screen by rememberSaveable { mutableStateOf(AppScreen.HOME) }
-                // 大气实验室 / 自有服务 / 天气来源是两套设置共用的跨页二级页，返回时需回到打开它的那套设置。
-                var settingsReturnTo by rememberSaveable { mutableStateOf(AppScreen.MOCHI_SETTINGS) }
                 // 从首页五日卡片进入时携带的日期；null 表示按默认（今天）选中。
                 var forecastDate by rememberSaveable { mutableStateOf<Long?>(null) }
                 var cityPickedRequest by rememberSaveable { mutableIntStateOf(0) }
@@ -386,7 +381,6 @@ class MainActivity : ComponentActivity() {
                         }
                         ACTION_SEARCH -> screen = AppScreen.SEARCH
                         ACTION_SETTINGS -> {
-                            settingsReturnTo = AppScreen.MOCHI_SETTINGS
                             screen = AppScreen.MOCHI_SETTINGS
                         }
                         ACTION_TYPHOON -> screen = if (ReleaseFeatures.typhoon) AppScreen.TYPHOON else AppScreen.HOME
@@ -428,12 +422,7 @@ class MainActivity : ComponentActivity() {
                 // 系统返回键、侧推手势、左上角返回按钮三处共用同一套返回语义。
                 fun navigateBack() {
                     if (screen == AppScreen.SEARCH) choosingInitialCity = false
-                    screen = when (screen) {
-                        AppScreen.ATMOSPHERE_LAB,
-                        AppScreen.PROVIDER_ACCESS,
-                        AppScreen.WEATHER_SOURCE -> settingsReturnTo
-                        else -> AppScreen.HOME
-                    }
+                    screen = AppScreen.HOME
                 }
                 BackHandler(enabled = screen != AppScreen.HOME) { navigateBack() }
 
@@ -496,7 +485,6 @@ class MainActivity : ComponentActivity() {
                         style = landscapeStandbyStyle,
                         onRefresh = { vm.refreshFromUser() },
                         onSettings = {
-                            settingsReturnTo = AppScreen.MOCHI_SETTINGS
                             screen = AppScreen.MOCHI_SETTINGS
                         },
                     )
@@ -524,7 +512,6 @@ class MainActivity : ComponentActivity() {
                             com.zhisheng.weather.ui.theme.LocalVistaGlowPhase provides
                                 if (screen == AppScreen.HOME) liveGlow else frozenGlow,
                             LocalMochiSettingsEntry provides {
-                                settingsReturnTo = AppScreen.MOCHI_SETTINGS
                                 screen = AppScreen.MOCHI_SETTINGS
                             },
                         ) {
@@ -546,7 +533,6 @@ class MainActivity : ComponentActivity() {
                                 startupPromptsSuppressed = false
                             },
                             onSettingsClick = {
-                                settingsReturnTo = AppScreen.MOCHI_SETTINGS
                                 screen = AppScreen.MOCHI_SETTINGS
                             },
                             onHistoryClick = { screen = AppScreen.HISTORY },
@@ -619,23 +605,8 @@ class MainActivity : ComponentActivity() {
                                         activeCityLatitude = uiState.selectedCity?.latitude,
                                         activeCityLongitude = uiState.selectedCity?.longitude,
                                         sourceLoading = uiState.loading,
-                                        onAtmosphereLab = { if (ReleaseFeatures.weatherAtmosphere) screen = AppScreen.ATMOSPHERE_LAB },
-                                        onManageProviders = { screen = AppScreen.PROVIDER_ACCESS },
-                                        onOpenWeatherSource = { screen = AppScreen.WEATHER_SOURCE },
                                     )
                                     }
-                                    AppScreen.ATMOSPHERE_LAB -> if (ReleaseFeatures.weatherAtmosphere) MochiAtmosphereLabScreen(
-                                        initialLevel = uiState.prefs.ambience,
-                                        onBack = { screen = settingsReturnTo },
-                                    )
-                                    AppScreen.PROVIDER_ACCESS -> MochiProviderAccessScreen(
-                                        onBack = { screen = settingsReturnTo },
-                                    )
-                                    AppScreen.WEATHER_SOURCE -> MochiWeatherSourceScreen(
-                                        weather = uiState.weather,
-                                        onManageProviders = { screen = AppScreen.PROVIDER_ACCESS },
-                                        onBack = { screen = settingsReturnTo },
-                                    )
                                     AppScreen.DAILY_FORECAST -> DailyForecastScreen(
                                         city = uiState.selectedCity,
                                         days = uiState.weather?.currentAndFutureDaily(weatherPresentationTime()).orEmpty(),
@@ -778,7 +749,7 @@ class MainActivity : ComponentActivity() {
                     },
                 )
                 locationProviderWizard?.let { kind ->
-                    com.zhisheng.weather.ui.ProviderWizard(kind) {
+                    com.zhisheng.weather.ui.MochiProviderWizard(kind) {
                         locationProviderWizard = null
                         val ready = if (kind == com.zhisheng.weather.ui.ProviderWizardKind.AMAP)
                             com.zhisheng.weather.data.SecretStore.amapRuntime.ready else com.zhisheng.weather.data.SecretStore.baiduRuntime.ready

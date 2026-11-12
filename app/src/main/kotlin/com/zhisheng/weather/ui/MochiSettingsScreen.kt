@@ -107,13 +107,10 @@ fun MochiSettingsScreen(
     activeSupplementSources: List<String>,
     activeCityName: String?,
     sourceLoading: Boolean,
-    onAtmosphereLab: () -> Unit,
     initialSection: Int = 0,
     activeWeather: WeatherData? = null,
     activeCityLatitude: Double? = null,
     activeCityLongitude: Double? = null,
-    onManageProviders: () -> Unit = {},
-    onOpenWeatherSource: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -275,8 +272,8 @@ fun MochiSettingsScreen(
                                 toggleDeveloper = { enabled ->
                                     scope.launch { SettingsRepository.setDeveloperMode(enabled) }
                                 },
-                                onWeatherSource = onOpenWeatherSource,
-                                onProviders = onManageProviders,
+                                onWeatherSource = { openSettingsPage("settings.weatherSource") },
+                                onProviders = { openSettingsPage("settings.providers") },
                             )
                             1 -> mochiHomeSection(
                                 homeBriefingStyle = homeBriefingStyle, tempUnit = tempUnit,
@@ -337,7 +334,7 @@ fun MochiSettingsScreen(
                                 onBurnIn = { scope.launch { SettingsRepository.setStandbyBurnInProtection(it) } },
                                 onLandscapeStyle = { scope.launch { SettingsRepository.setLandscapeStandbyStyle(LandscapeStandbyStyle.from(it)) } },
                                 onKeepScreenOn = { scope.launch { SettingsRepository.setKeepScreenOn(it) } },
-                                onAtmosphereLab = onAtmosphereLab,
+                                onAtmosphereLab = { openSettingsPage("settings.atmosphere") },
                                 onGraphicsLevel = { scope.launch { SettingsRepository.setMochiGraphicsLevel(it) } },
                                 onGel = { scope.launch { SettingsRepository.setMochiGel(it) } },
                                 gel = uiPrefs.gel,
@@ -352,6 +349,17 @@ fun MochiSettingsScreen(
                         }
                     }
                     "settings.about" -> AboutPage(onBack = { nav.pop() })
+                    // 天气源、服务商、氛围实验室也从设置进，走同一套库导航转场与侧滑返回
+                    "settings.weatherSource" -> MochiWeatherSourceScreen(
+                        weather = activeWeather,
+                        onManageProviders = { openSettingsPage("settings.providers") },
+                        onBack = { nav.pop() },
+                    )
+                    "settings.providers" -> MochiProviderAccessScreen(onBack = { nav.pop() })
+                    "settings.atmosphere" -> MochiAtmosphereLabScreen(
+                        initialLevel = ambience,
+                        onBack = { nav.pop() },
+                    )
                     "settings.hdr" -> MochiHdrSettingsPage(uiPrefs)
                     "settings.glass" -> MochiGlassSettingsPage(uiPrefs)
                     "settings.pressGlow" -> MochiPressGlowSettingsPage(uiPrefs)

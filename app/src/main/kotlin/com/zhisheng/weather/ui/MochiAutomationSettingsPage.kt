@@ -35,6 +35,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ui.feice.mochi.basic.MochiStepper
 import ui.feice.mochi.basic.MochiSwitch
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
@@ -70,7 +71,6 @@ internal fun MochiAutomationSettingsPage() {
     var testing by remember { mutableStateOf(false) }
     var testFeedback by rememberSaveable { mutableStateOf<String?>(null) }
     var editingTime by rememberSaveable { mutableStateOf<String?>(null) }
-    var pickingForeground by rememberSaveable { mutableStateOf(false) }
     var pickingBackground by rememberSaveable { mutableStateOf(false) }
     var details by rememberSaveable { mutableStateOf(false) }
 
@@ -147,11 +147,19 @@ internal fun MochiAutomationSettingsPage() {
     ) {
         item {
             MochiListSection(header = "天气刷新", footer = "使用应用时，每隔一段时间自动更新当前地点。") {
+                // 步进器：照 demo「专注时长」的写法，5 分钟一格，点一下轻震、按住连发。
                 MochiListRow(
                     title = "天气刷新间隔",
-                    value = "${settings.foregroundMinutes} 分钟",
-                    chevron = true,
-                    onClick = { pickingForeground = true },
+                    subtitle = "每格 5 分钟，可按住连续加减",
+                    trailing = {
+                        MochiStepper(
+                            value = settings.foregroundMinutes,
+                            onValueChange = { onChange(settings.copy(foregroundMinutes = it)) },
+                            range = 5..30,
+                            step = 5,
+                            format = { "$it 分钟" },
+                        )
+                    },
                 )
                 MochiListRow(
                     title = "后台刷新",
@@ -329,14 +337,6 @@ internal fun MochiAutomationSettingsPage() {
         }
     }
 
-    MochiChoiceDialog(
-        visible = pickingForeground,
-        title = "天气刷新间隔",
-        options = listOf(5, 10, 15, 30).map { "${it} 分钟" to it.toString() },
-        selected = settings.foregroundMinutes.toString(),
-        onSelect = { onChange(settings.copy(foregroundMinutes = it.toInt())) },
-        onDismiss = { pickingForeground = false },
-    )
     MochiChoiceDialog(
         visible = pickingBackground,
         title = if (settings.backgroundEnabled) "后台刷新间隔" else "提醒检查间隔",

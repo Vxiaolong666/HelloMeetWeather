@@ -22,7 +22,8 @@ data class AutomationSettings(
         else -> backgroundMinutes
     }
     fun normalized() = copy(
-        foregroundMinutes = foregroundMinutes.takeIf { it in setOf(5, 10, 15, 30) } ?: 5,
+        // 与刷新间隔步进器一致：5..30 分钟内每 5 分钟一格，旧版 5/10/15/30 仍然合法。
+        foregroundMinutes = foregroundMinutes.takeIf { it in 5..30 && it % 5 == 0 } ?: 5,
         backgroundMinutes = backgroundMinutes.takeIf { it in setOf(15, 30, 60, 120) } ?: 30,
         morningMinute = morningMinute.coerceIn(0, 1439),
         eveningMinute = eveningMinute.coerceIn(0, 1439),

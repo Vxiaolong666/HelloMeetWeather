@@ -59,8 +59,8 @@ import ui.feice.mochi.theme.MochiTheme
 /*
  * 设置链路三个跨页二级页的 mochi 版：天气来源 / 服务接入 / 氛围实验室。
  * 页面骨架、分组、列表行、开关、分段控件、返回按钮、弹窗全部使用库组件；
- * 复杂的业务向导（ProviderWizard / WeatherSourceComparison）与天气模拟表面
- * 是库没有对应能力的自绘实现，作为整体保留，交互与写入路径与原页一致。
+ * 服务接入引导改走 MochiProviderWizard 新版页面（库步骤进度 + 库卡片/输入/按钮），
+ * 天气来源比较与天气模拟表面仍是自绘实现，交互与写入路径与原页一致。
  */
 
 @Composable
@@ -138,7 +138,11 @@ fun MochiWeatherSourceScreen(
     MochiPageFrame(title = "天气来源", onBack = onBack, subtitle = "WEATHER SOURCE", showSave = true) {
         item {
             MochiListSection(header = "当前主源", footer = primary.desc) {
-                MochiListRow(title = primary.cn, subtitle = "主天气数据当前从此来源获取")
+                MochiListRow(
+                    title = primary.cn,
+                    subtitle = "主天气数据当前从此来源获取",
+                    leading = { PhosphorIcon(weatherSourceIcon(primary), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
+                )
             }
         }
         item {
@@ -169,6 +173,7 @@ fun MochiWeatherSourceScreen(
                                 source == null -> "使用当前主源 ${primary.cn}"
                                 else -> source.desc
                             },
+                            leading = { PhosphorIcon(weatherSourceIcon(source), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                             checked = source == primary,
                             enabled = choice.enabled && !saving,
                             onClick = { source?.let { select(null, it) } },
@@ -184,6 +189,7 @@ fun MochiWeatherSourceScreen(
                             title = module.cn,
                             value = policy[module]?.cn ?: "跟随主源",
                             subtitle = weather?.sourceDiagnostics?.get(module.key),
+                            leading = { PhosphorIcon(weatherModuleIcon(module), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                             chevron = true,
                             enabled = !saving,
                             onClick = { editing = module.key },
@@ -195,7 +201,10 @@ fun MochiWeatherSourceScreen(
                 MochiListSection(header = "缺失数据补全顺序", footer = "主源缺少某个模块时按顺序向其他来源补全。") {
                     if (priority.isEmpty()) MochiListRow(title = "未启用补全")
                     priority.forEachIndexed { index, source ->
-                        MochiListRow(title = "${index + 1}. ${source.cn}")
+                        MochiListRow(
+                            title = "${index + 1}. ${source.cn}",
+                            leading = { PhosphorIcon(weatherSourceIcon(source), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
+                        )
                         MochiListRow(
                             title = "↑ 上移",
                             enabled = !saving && index > 0,
@@ -223,6 +232,7 @@ fun MochiWeatherSourceScreen(
                             MochiListRow(
                                 title = "+ ${source.cn}",
                                 subtitle = source.desc,
+                                leading = { PhosphorIcon(weatherSourceIcon(source), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                                 enabled = !saving,
                                 onClick = { savePriority(priority + source); addingPriority = false },
                             )
@@ -236,12 +246,14 @@ fun MochiWeatherSourceScreen(
                 MochiListRow(
                     title = "管理自有服务接入",
                     subtitle = "和风 / 彩云 / 心知 / 墨迹 / 高德 / 百度",
+                    leading = { PhosphorIcon(R.drawable.ph_database, null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                     chevron = true,
                     enabled = !saving,
                     onClick = onManageProviders,
                 )
                 MochiListRow(
                     title = "比较天气来源",
+                    leading = { PhosphorIcon(R.drawable.ph_eye, null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                     chevron = true,
                     enabled = comparisonCity != null && !saving,
                     onClick = {
@@ -264,6 +276,7 @@ fun MochiWeatherSourceScreen(
             options = choices.map { (it.source?.cn ?: "跟随主源") to (it.source?.key ?: "") },
             selected = policy[editingModule]?.key ?: "",
             enabled = { key -> choices.firstOrNull { (it.source?.key ?: "") == key }?.enabled == true && !saving },
+            iconFor = { key -> weatherSourceIcon(key.takeIf { it.isNotEmpty() }?.let(SourcePref::from)) },
             onSelect = { key ->
                 select(editingModule, key.takeIf { it.isNotEmpty() }?.let(SourcePref::from))
             },
@@ -341,7 +354,7 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
                             title = item.title,
                             subtitle = item.description,
                             value = if (item.ready) "已接入" else "未接入",
-                            leading = { PhosphorIcon(item.icon, null, Modifier.size(22.dp)) },
+                            leading = { PhosphorIcon(item.icon, null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                             checked = item.ready,
                             chevron = true,
                             onClick = { wizard = item.kind },
@@ -376,7 +389,7 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
         )
     }
     wizard?.let { kind ->
-        ProviderWizard(kind = kind, onClose = { wizard = null })
+        MochiProviderWizard(kind = kind, onClose = { wizard = null })
     }
 }
 

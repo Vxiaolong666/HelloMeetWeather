@@ -171,7 +171,7 @@ fun ProviderAccessScreen(onBack: () -> Unit) {
         )
     }
 
-    wizard?.let { ProviderWizard(kind = it, onClose = { wizard = null }) }
+    wizard?.let { MochiProviderWizard(kind = it, onClose = { wizard = null }) }
 }
 
 @Composable

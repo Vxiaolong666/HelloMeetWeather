@@ -152,6 +152,7 @@ internal fun MochiChoiceDialog(
     enabled: (String) -> Boolean = { true },
     footer: String? = null,
     visible: Boolean = true,
+    iconFor: ((String) -> Int?)? = null,
 ) {
     val message = listOfNotNull(subtitle, footer).joinToString("\n").takeIf { it.isNotBlank() }
     MochiDialog(
@@ -169,6 +170,9 @@ internal fun MochiChoiceDialog(
                 options.forEach { (label, key) ->
                     MochiListRow(
                         title = label,
+                        leading = iconFor?.invoke(key)?.let { icon ->
+                            { PhosphorIcon(icon, null, Modifier.size(22.dp), mochiLeadingIconTint()) }
+                        },
                         checked = key == selected,
                         enabled = enabled(key),
                         onClick = {
@@ -225,6 +229,15 @@ internal fun MochiConfirmDialog(
 internal fun MochiSectionNote(text: String) {
     Text(text, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
 }
+
+/**
+ * 列表行首图标的颜色：深色模式用白色，浅色模式用主题色。
+ * [PhosphorIcon] 默认 tint 是 Unspecified，会跟随 LocalContentColor；浅色分组卡片里
+ * 该值被解析成白色，图标与浅底同色看不见，所以这些位置必须显式指定 tint。
+ */
+@Composable
+internal fun mochiLeadingIconTint(): Color =
+    if (MochiTheme.colorScheme.isDark) Color.White else MochiTheme.colorScheme.primary
 
 @Composable
 internal fun MochiToastCheckIcon(tint: Color) {

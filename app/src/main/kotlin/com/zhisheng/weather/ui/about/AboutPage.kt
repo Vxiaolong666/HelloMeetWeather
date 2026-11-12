@@ -186,7 +186,7 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
             demoItem {
                 MochiListSection(
                     header = "开发者",
-                    footer = "Mochi 由我一个人在业余时间开发维护，免费开源。赞助会用在打磨手感、补组件和测试设备上。",
+                    footer = "感谢枳生天气与 mochi-compose 两位原作者的开源成果；本项目在其基础上做二次开发，免费开源、无广告与统计 SDK。",
                 ) {
                     MochiListRow(
                         "稽品飞车",
@@ -210,30 +210,26 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
                     StepRow(3, "申请入群时填写爱发电订单号", subtitle = "在爱发电「我的订单」里可以看到")
                 }
             }
-            // —— 鸣谢 ——
+            // —— 鸣谢：与 README「致谢」保持一致，列出本项目实际用到的上游项目 ——
             demoItem {
-                MochiListSection(header = "鸣谢") {
+                MochiListSection(
+                    header = "鸣谢",
+                    footer = "天气数据版权归和风天气、Open-Meteo 与小米公开天气接口相关提供方，数据仅供参考。",
+                ) {
                     LinkRow(
-                        "Kyant0",
-                        null,
+                        "枳生天气 ZhishengWeather",
+                        "MIT",
                         Icons.GITHUB,
-                        Tone.Neutral.tile(),
-                        subtitle = "提供了圆角算法。",
-                    ) { open("https://github.com/Kyant0") }
+                        Tone.Primary.tile(),
+                        subtitle = "本项目的基础：原版界面设计、数据链路、终端氛围效果与桌面小组件",
+                    ) { open("https://github.com/zhishengplus/ZhishengWeather") }
                     LinkRow(
-                        "Bear",
-                        null,
+                        "mochi-compose",
+                        "Apache-2.0",
                         Icons.GITHUB,
-                        Tone.Neutral.tile(),
-                        subtitle = "做了计数器的滚轮动画。",
-                    ) { open("https://github.com/mif9499") }
-                    LinkRow(
-                        "Nevoit",
-                        null,
-                        Icons.GITHUB,
-                        Tone.Neutral.tile(),
-                        subtitle = "一直骂我。",
-                    ) { open("https://github.com/Nevodev") }
+                        Tone.Tertiary.tile(),
+                        subtitle = "设置页与二级页面重构所用的组件库，软、弹、跟手的交互体验",
+                    ) { open("https://github.com/feice11/mochi-compose") }
                     MochiListDisclosure(
                         "其他开源项目",
                         expanded = more,
@@ -247,21 +243,27 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
                             )
                         },
                     ) {
-                        MochiListRow("MaterialKolor", subtitle = "Material 3 动态取色", chevron = true, onClick = {
-                            open("https://github.com/jordond/MaterialKolor")
+                        MochiListRow("Capsule", subtitle = "Kyant0 · Mochi 使用的形状库", chevron = true, onClick = {
+                            open("https://github.com/Kyant0/Capsule")
                         })
-                        MochiListRow("Ionicons", subtitle = "演示里的图标", chevron = true, onClick = {
-                            open("https://github.com/ionic-team/ionicons")
+                        MochiListRow("Backdrop", subtitle = "Kyant0 · Liquid Glass 背景玻璃效果", chevron = true, onClick = {
+                            open("https://github.com/Kyant0/Backdrop")
                         })
-                        MochiListRow("miuix", subtitle = "工程规范参考", chevron = true, onClick = {
-                            open("https://github.com/compose-miuix-ui/miuix")
+                        MochiListRow("MapLibre Native Android", subtitle = "地图渲染", chevron = true, onClick = {
+                            open("https://github.com/maplibre/maplibre-native-android")
+                        })
+                        MochiListRow("Ionicons", subtitle = "MIT · Mochi 图标库所用图标", chevron = true, onClick = {
+                            open("https://ionic.io/ionicons")
+                        })
+                        MochiListRow("commons-suncalc", subtitle = "日月升落计算", chevron = true, onClick = {
+                            open("https://github.com/shred/commons-suncalc")
                         })
                     }
                 }
             }
             demoItem {
                 Text(
-                    "Made with ⛅ by 稽品飞车 · Apache-2.0",
+                    "基于枳生天气（MIT）与 mochi-compose（Apache-2.0）二次开发",
                     style = ts.footnote.copy(textAlign = TextAlign.Center),
                     color = cs.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),

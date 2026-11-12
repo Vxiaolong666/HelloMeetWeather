@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -53,6 +54,10 @@ public data class MochiStepSliderColors(
     val tick: Color,
     /** 已经铺过的刻度点（在 [fill] 上） */
     val tickOnFill: Color,
+    /** 可选：用渐变 Brush 代替纯色 [fill] 画已填充段（App 自定义档位渐变用） */
+    val fillBrush: Brush? = null,
+    /** 可选：已填充段上的星点颜色，配合渐变还原「高画面效果」的质感 */
+    val sparkleColor: Color? = null,
 )
 
 public object MochiStepSliderDefaults {
@@ -72,7 +77,11 @@ public object MochiStepSliderDefaults {
         thumb: Color = Color.White,
         tick: Color = MochiTheme.colorScheme.onSurface.copy(alpha = 0.18f),
         tickOnFill: Color = Color.White.copy(alpha = 0.28f),
-    ): MochiStepSliderColors = MochiStepSliderColors(container, fill, thumb, tick, tickOnFill)
+        fillBrush: Brush? = null,
+        sparkleColor: Color? = null,
+    ): MochiStepSliderColors = MochiStepSliderColors(
+        container, fill, thumb, tick, tickOnFill, fillBrush, sparkleColor,
+    )
 }
 
 /**
@@ -187,11 +196,27 @@ public fun MochiStepSlider(
                 for (i in 0 until n) {
                     drawCircle(colors.tick, dot, Offset(cx(i.toFloat()), size.height / 2f), alpha = alpha)
                 }
-                // 主色段：从左端铺到拇指右边，拖出两端时不超出
+                // 主色段：从左端铺到拇指右边，拖出两端时不超出。给了 fillBrush 就用渐变铺。
                 val fill = Rect(pad, pad, thumbX + h / 2f, pad + h)
-                drawPath(fillPath.get(fill, h / 2f, ControlSmoothing), colors.fill, alpha = alpha)
+                val fillShape = fillPath.get(fill, h / 2f, ControlSmoothing)
+                if (colors.fillBrush != null) drawPath(fillShape, colors.fillBrush, alpha = alpha)
+                else drawPath(fillShape, colors.fill, alpha = alpha)
                 // 拇指
                 val r = (h / 2f - ring) * (1f + 0.06f * press.value)
+                // 渐变段上的星点：确定性位置，只落在拇指左边，不会跟着手指闪烁
+                colors.sparkleColor?.let { sparkle ->
+                    val right = (thumbX - r - dot).coerceAtLeast(pad)
+                    if (right > pad) {
+                        for (k in 0 until 14) {
+                            val tx = (k * 0.618034f) % 1f
+                            val ty = (k * 0.381966f) % 1f
+                            val x = pad + (right - pad) * tx
+                            val y = pad + h * (0.16f + 0.68f * ty)
+                            val rad = h * (0.012f + 0.015f * ((k * 0.236068f) % 1f))
+                            drawCircle(sparkle, rad, Offset(x, y), alpha = alpha * 0.55f)
+                        }
+                    }
+                }
                 // 铺过的点画在主色上（被拇指盖住的不画）
                 for (i in 0 until n) {
                     val x = cx(i.toFloat())

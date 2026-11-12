@@ -1,5 +1,7 @@
 package com.zhisheng.weather.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,9 +47,10 @@ import ui.feice.mochi.basic.MochiActivityIndicator
 import ui.feice.mochi.basic.MochiButton
 import ui.feice.mochi.basic.MochiButtonGroup
 import ui.feice.mochi.basic.MochiButtonStyle
-import ui.feice.mochi.basic.MochiIntensitySlider
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.basic.MochiSheetDetent
+import ui.feice.mochi.basic.MochiStepSlider
+import ui.feice.mochi.basic.MochiStepSliderDefaults
 import ui.feice.mochi.basic.MochiSwitch
 import ui.feice.mochi.basic.MochiTabBar
 import ui.feice.mochi.basic.MochiTabBarBehavior
@@ -918,6 +921,17 @@ internal fun MochiTabBarSettingsPage(prefs: MochiUiPrefs) {
 private val MochiGraphicsLevels = listOf("中" to "mid", "高" to "high", "极致" to "extra")
 
 /**
+ * 三档各自的填充渐变，保留项目原有的「蓝 → 紫流动渐变 + 星点」设计：
+ * 中档补齐柔和的磷光青 → 蓝，高档是库 CodexBlue → 紫，极致把这套蓝紫推到更浓。
+ * 每档三个色标，切换档位时用 animateColorAsState 让渐变平滑过渡。
+ */
+private val GraphicsGradients = listOf(
+    listOf(Color(0xFF2E9FB8), Color(0xFF3189C9), Color(0xFF3D7FD1)),
+    listOf(Color(0xFF339CFF), Color(0xFF5C82F2), Color(0xFF8B55EF)),
+    listOf(Color(0xFF2E86FF), Color(0xFF7A4BF0), Color(0xFFB45CF7)),
+)
+
+/**
  * 画面效果独立页：参考 demo 引导页的动效设置，三档切换 + 可持续播放的动效预览。
  * 档位写入 MochiGraphics.level，预览用库自己的模糊文字 / 转动指示器 / 果冻按压。
  */
@@ -928,6 +942,19 @@ internal fun MochiGraphicsSettingsPage(prefs: MochiUiPrefs) {
     var frame by rememberSaveable { mutableIntStateOf(0) }
     val levelIndex = MochiGraphicsLevels.indexOfFirst { it.second == prefs.graphicsLevel }.coerceAtLeast(0)
     val captions = persistentListOf("液态玻璃", "模糊淡入", "弹性按压")
+
+    // 分段滑条沿用库的标准交互，填充段换成项目自己的档位渐变（含星点）。
+    val target = GraphicsGradients[levelIndex]
+    val c0 by animateColorAsState(target[0], animationSpec = tween(320), label = "graphics-0")
+    val c1 by animateColorAsState(target[1], animationSpec = tween(320), label = "graphics-1")
+    val c2 by animateColorAsState(target[2], animationSpec = tween(320), label = "graphics-2")
+    val sparkle by animateColorAsState(
+        Color.White.copy(alpha = 0.26f + 0.22f * levelIndex),
+        animationSpec = tween(320),
+        label = "graphics-sparkle",
+    )
+    val fillBrush = remember(c0, c1, c2) { Brush.horizontalGradient(listOf(c0, c1, c2)) }
+    val sliderColors = MochiStepSliderDefaults.colors(fillBrush = fillBrush, sparkleColor = sparkle)
 
     LaunchedEffect(animate) {
         if (!animate) return@LaunchedEffect
@@ -944,22 +971,23 @@ internal fun MochiGraphicsSettingsPage(prefs: MochiUiPrefs) {
         item {
             MochiListSection(
                 header = "档位",
-                footer = "中：关闭 AGSL 着色器；高（默认）：全部开启；极致：模糊半径 ×1.5 并选择最高刷新率。极致不打开 HDR。",
+                footer = "点哪去哪、拖动跟手，每过一档轻震并带回弹吸附。三档各有自己的填充渐变：" +
+                    "中是磷光青蓝，高是蓝紫（原设计），极致是更浓的蓝紫。中：关闭 AGSL 着色器；" +
+                    "高（默认）：全部开启；极致：模糊半径 ×1.5 并选择最高刷新率，不打开 HDR。",
             ) {
                 MochiListRow(
                     title = "当前档位",
                     value = MochiGraphicsLevels[levelIndex].first,
                 )
-                MochiIntensitySlider(
-                    value = levelIndex / (MochiGraphicsLevels.size - 1).toFloat(),
-                    onValueChange = { v ->
-                        val i = (v * (MochiGraphicsLevels.size - 1)).roundToInt()
-                            .coerceIn(0, MochiGraphicsLevels.lastIndex)
+                MochiStepSlider(
+                    value = levelIndex,
+                    onValueChange = { i ->
                         if (i != levelIndex) {
                             scope.launch { SettingsRepository.setMochiGraphicsLevel(MochiGraphicsLevels[i].second) }
                         }
                     },
-                    stops = MochiGraphicsLevels.size,
+                    count = MochiGraphicsLevels.size,
+                    colors = sliderColors,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                 )
                 MochiListRow(
