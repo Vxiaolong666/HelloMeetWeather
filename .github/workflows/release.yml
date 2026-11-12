@@ -40,10 +40,23 @@ jobs:
           cp app/build/outputs/apk/publicRelease/app-publicRelease.apk "dist/ZhishengWeather-v${VERSION}.apk"
           sha256sum "dist/ZhishengWeather-v${VERSION}.apk" | tee dist/SHA256.txt
 
+      - name: Release notes // 从 CHANGELOG 提取本篇
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v target="## v${VERSION}" '
+            index($0, target) == 1 { capture = 1; next }
+            capture && index($0, "## ") == 1 { exit }
+            capture { print }
+          ' CHANGELOG.md > dist/release-notes.md
+          if [ ! -s dist/release-notes.md ]; then
+            echo "本次发行未在 CHANGELOG.md 中找到 v${VERSION} 章节。" > dist/release-notes.md
+          fi
+          cat dist/release-notes.md
+
       - name: Create GitHub Release // 创建发行版
         uses: softprops/action-gh-release@v2
         with:
+          body_path: dist/release-notes.md
           files: |
             dist/*.apk
             dist/SHA256.txt
-          generate_release_notes: true
