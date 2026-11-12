@@ -42,8 +42,11 @@ dependencyResolutionManagement {
 rootProject.name = "ZhishengWeather"
 include(":app")
 include(":backdrop")
-// Mochi Compose 组件库源码模块（只接入核心库与图标库，不引入 demo/外观模块）
+// Mochi Compose 组件库源码模块（核心库、图标库与 iOS 外观模块，不引入 demo/Nothing 外观）
 include(":mochi-compose")
 include(":mochi-icons")
+// iOS 外观与玻璃材质（系统语义色 + iOS 26.5 液态玻璃）
+include(":mochi-ios")
 project(":mochi-compose").projectDir = file("mochi-compose-main/mochi-compose")
 project(":mochi-icons").projectDir = file("mochi-compose-main/mochi-icons")
+project(":mochi-ios").projectDir = file("mochi-compose-main/mochi-ios")

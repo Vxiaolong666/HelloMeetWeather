@@ -7,7 +7,9 @@ import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -61,9 +63,11 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ui.feice.mochi.basic.MochiBarIconButton
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.basic.MochiSwitch
 import ui.feice.mochi.basic.MochiTabItem
+import ui.feice.mochi.basic.Text
 import ui.feice.mochi.effect.overscroll.ProvideMochiOverscroll
 import ui.feice.mochi.list.MochiListDefaults
 import ui.feice.mochi.list.MochiListRow
@@ -92,6 +96,7 @@ internal val LocalMochiSettingsEntry = staticCompositionLocalOf<(() -> Unit)?> {
 @Composable
 fun MochiSettingsScreen(
     onBack: () -> Unit,
+    onAbout: () -> Unit = {},
     onLocate: () -> Unit,
     locating: Boolean,
     locateMessage: String?,
@@ -197,7 +202,8 @@ fun MochiSettingsScreen(
         nav.push(route, from = from)
     }
     val tabBehavior = mochiTabBehaviorFor(uiPrefs)
-    MochiTheme(colors = mochiColors, systemBarAppearance = false) {
+    // 外观在根部接一次：iOS 外观开关只影响这里的材质与配色，页面内不写分支。
+    MochiAppTheme(colors = mochiColors) {
         ProvideMochiOverscroll {
             // 转场与侧推配置来自「外观与设备 → 应用转场与侧推」，同步作用于库导航。
             MochiNavHost(
@@ -221,6 +227,11 @@ fun MochiSettingsScreen(
                                 else -> "外观与设备"
                             },
                             navigationIcon = { MochiBackButton(onClick = onBack) },
+                            actions = {
+                                MochiBarIconButton(onClick = onAbout) {
+                                    PhosphorIcon(R.drawable.ph_info, null, Modifier.size(22.dp), MochiTheme.colorScheme.onSurface)
+                                }
+                            },
                         ) {
                             when (index) {
                             0 -> mochiDataSection(
@@ -323,11 +334,13 @@ fun MochiSettingsScreen(
                                 gel = uiPrefs.gel,
                                 onAppIcon = { showIconDialog = true },
                                 onPush = openSettingsPage,
+                                glassOn = uiPrefs.glass,
                             )
                             }
                         }
                     }
                     "settings.hdr" -> MochiHdrSettingsPage(uiPrefs)
+                    "settings.glass" -> MochiGlassSettingsPage(uiPrefs)
                     "settings.pressGlow" -> MochiPressGlowSettingsPage(uiPrefs)
                     "settings.transition" -> MochiTransitionSettingsPage(uiPrefs)
                     "settings.theme" -> MochiThemeSettingsPage(uiPrefs)
@@ -462,7 +475,7 @@ fun MochiSettingsScreen(
             }
         }
     }
-    MochiTheme(colors = mochiColors, systemBarAppearance = false) {
+    MochiAppTheme(colors = mochiColors) {
         MochiChoiceDialog(
             visible = showIconDialog,
             title = "应用图标",
@@ -511,6 +524,7 @@ private fun MochiSettingsNavRow(
     value: String? = null,
     enabled: Boolean = true,
     chevron: Boolean = true,
+    trailing: @Composable (() -> Unit)? = null,
 ) {
     // 默认用卡片真实底色，返回落地时不会突然被主题色铺一下；开关打开后才用主题色高亮。
     val sourceColor = if (MochiTransitionConfig.sourceHighlight) {
@@ -524,6 +538,7 @@ private fun MochiSettingsNavRow(
         value = value,
         enabled = enabled,
         chevron = chevron,
+        trailing = trailing,
         modifier = Modifier.mochiNavSource(
             mochiSettingsSourceKey(route),
             MochiListDefaults.SectionCorner,
@@ -531,6 +546,17 @@ private fun MochiSettingsNavRow(
         ),
         onClick = { onPush(route) },
     )
+}
+
+/** HDR 高光设置入口右侧的「Beta」小徽章。 */
+@Composable
+private fun BetaBadge() {
+    val cs = MochiTheme.colorScheme
+    Box(
+        Modifier
+            .background(cs.secondaryContainer, MochiTheme.shapes.full)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) { Text("Beta", style = MochiTheme.textStyles.labelSmall, color = cs.onSecondaryContainer) }
 }
 
 /** 二级设置页统一外壳：库顶栏 + 侧推返回按钮 + 懒加载列表。 */
@@ -764,6 +790,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
     onLandscapeStyle: (String) -> Unit, onKeepScreenOn: (Boolean) -> Unit,
     onAtmosphereLab: () -> Unit, onGraphicsLevel: (String) -> Unit,
     onGel: (Float) -> Unit, onAppIcon: () -> Unit, onPush: (String) -> Unit,
+    glassOn: Boolean,
 ) {
     item {
         MochiListSection(header = "界面") {
@@ -778,6 +805,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
                 themeMode.key, "浅色清透，深色柔和，也可跟随系统", onThemeMode)
             MochiChoiceRow("强调色亮度", listOf("标准" to "standard", "柔和" to "soft"),
                 accentTone.key, "调整界面强调色的亮度", onAccentTone)
+            MochiListRow(
+                title = "液态玻璃",
+                subtitle = "栏、菜单、面板与按钮的材质，可单独选择用在哪里",
+                value = if (glassOn) "开" else "关",
+                chevron = true,
+                onClick = { onPush("settings.glass") },
+            )
         }
     }
     item {
@@ -850,6 +884,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
                 title = "HDR 高光设置",
                 subtitle = "按压高光、边缘流光、亮度余量与全部参数",
                 onPush = onPush,
+                trailing = { BetaBadge() },
             )
             MochiSettingsNavRow(
                 route = "settings.pressGlow",

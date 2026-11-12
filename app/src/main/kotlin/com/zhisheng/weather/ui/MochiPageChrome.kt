@@ -44,7 +44,7 @@ internal const val MochiSettingsSaveNavId = "app.settings.save"
 @Composable
 internal fun MochiAppToastHost(state: MochiToastState) {
     val colors = rememberMochiColorScheme()
-    MochiTheme(colors = colors, systemBarAppearance = false) {
+    MochiAppTheme(colors = colors) {
         MochiToastHost(state)
     }
 }
@@ -118,7 +118,7 @@ internal fun MochiPageFrame(
     content: LazyListScope.() -> Unit,
 ) {
     val colors = rememberMochiColorScheme()
-    MochiTheme(colors = colors, systemBarAppearance = false) {
+    MochiAppTheme(colors = colors) {
         ProvideMochiOverscroll {
             MochiSettingsScaffold(
                 title = title,

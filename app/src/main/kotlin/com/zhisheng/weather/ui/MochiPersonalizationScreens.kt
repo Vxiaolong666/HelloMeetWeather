@@ -237,6 +237,200 @@ internal fun MochiHdrSettingsPage(prefs: MochiUiPrefs) {
     }
 }
 
+/** 液态玻璃：总开关、通透度、玻璃样式、使用范围与 HDR 高光。材质在 [MochiAppTheme] 根部接一次。 */
+@Composable
+internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
+    val scope = rememberCoroutineScope()
+    val supported = MochiHdr.supported
+    val ios27 = prefs.glassStyle == "ios27"
+    val glassOnly = !prefs.glass
+    var showHdrGlassConfirm by remember { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize()) {
+        MochiSettingsScaffold(
+            title = "液态玻璃",
+            subtitle = "Beta · 栏、菜单、面板与按钮的材质",
+        ) {
+            item {
+                MochiListSection(
+                    header = "材质",
+                    footer = "液态玻璃每帧都要重新渲染背后的内容，比纯色更耗电；关掉后各处退回纯色。" +
+                        "Android 13 以下会降级成两块纯色形状，Android 12 以下只有淡入淡出。",
+                ) {
+                    MochiListRow(
+                        title = "液态玻璃",
+                        subtitle = "浮在内容上的栏、菜单、面板和玻璃按钮用折射玻璃绘制",
+                        trailing = {
+                            MochiSwitch(
+                                checked = prefs.glass,
+                                onCheckedChange = { scope.launch { SettingsRepository.setMochiGlass(it) } },
+                            )
+                        },
+                    )
+                    MochiListRow(
+                        title = "滚动边缘模糊",
+                        subtitle = "内容滚到栏下面时渐进模糊，和玻璃是两项独立开关",
+                        trailing = {
+                            MochiSwitch(
+                                checked = prefs.glassBlur,
+                                onCheckedChange = { scope.launch { SettingsRepository.setMochiGlassBlur(it) } },
+                                enabled = !glassOnly,
+                            )
+                        },
+                    )
+                    MochiListRow(
+                        title = "iOS 27 玻璃",
+                        subtitle = "关闭时用 iOS 26.5 的系统原值；打开后可以另外调亮度",
+                        trailing = {
+                            MochiSwitch(
+                                checked = ios27,
+                                onCheckedChange = {
+                                    scope.launch {
+                                        SettingsRepository.setMochiGlassStyle(if (it) "ios27" else "ios26")
+                                    }
+                                },
+                                enabled = !glassOnly,
+                            )
+                        },
+                    )
+                    MochiListSliderRow(
+                        value = prefs.glassTint,
+                        onValueChange = { scope.launch { SettingsRepository.setMochiGlassTint(it) } },
+                        title = "通透度",
+                        valueText = "${(prefs.glassTint * 100).roundToInt()}%",
+                    )
+                    MochiListRow(
+                        title = "仅模糊",
+                        subtitle = "去掉折射和边光，只保留模糊与淡入淡出，更省电",
+                        trailing = {
+                            MochiSwitch(
+                                checked = prefs.glassBlurOnly,
+                                onCheckedChange = { scope.launch { SettingsRepository.setMochiGlassBlurOnly(it) } },
+                                enabled = !glassOnly,
+                            )
+                        },
+                    )
+                    MochiListRow(
+                        title = "跟随主题强调色",
+                        subtitle = "玻璃保持中性，开关、选中项用主题的强调色",
+                        trailing = {
+                            MochiSwitch(
+                                checked = prefs.glassThemeAccent,
+                                onCheckedChange = { scope.launch { SettingsRepository.setMochiGlassThemeAccent(it) } },
+                                enabled = !glassOnly,
+                            )
+                        },
+                    )
+                }
+            }
+            item {
+                MochiListSection(
+                    header = "使用范围",
+                    footer = "标签栏与栏内按钮分开设置；菜单、警告框、面板、玻璃按钮未单独开启时" +
+                        "按组件库的回退顺序取上一档玻璃（警告框取菜单，其余取栏）。",
+                ) {
+                    GlassTargetRow("标签栏", "bar", prefs, scope)
+                    GlassTargetRow("栏内按钮", "control", prefs, scope) { on ->
+                        // 栏内按钮玻璃与 HDR 高光同时开启有已知兼容问题，先让用户确认。
+                        if (on && prefs.hdrEnabled && supported) {
+                            showHdrGlassConfirm = true
+                        } else {
+                            scope.launch { SettingsRepository.setMochiGlassTarget("control", on) }
+                        }
+                    }
+                    GlassTargetRow("菜单", "menu", prefs, scope)
+                    GlassTargetRow("警告框", "alert", prefs, scope)
+                    GlassTargetRow("面板", "sheet", prefs, scope)
+                    GlassTargetRow("玻璃按钮", "clear", prefs, scope)
+                }
+            }
+            item {
+                MochiListSection(
+                    header = "HDR 高光",
+                    footer = if (supported) {
+                        "边缘流光与按压高光用超过 SDR 白的亮度画；玻璃边光同样按亮度余量提亮，不会过曝。"
+                    } else {
+                        "这台设备不支持 HDR 界面（需要 Android 14 以上和 HDR 屏幕），玻璃边光按 SDR 显示。"
+                    },
+                ) {
+                    MochiListRow(
+                        title = "HDR 高光",
+                        subtitle = "和「画面效果 → HDR 高光」是同一个开关，玻璃页也能直接打开",
+                        trailing = {
+                            MochiSwitch(
+                                checked = prefs.hdrEnabled && supported,
+                                onCheckedChange = { scope.launch { SettingsRepository.setMochiHdrEnabled(it) } },
+                                enabled = supported,
+                            )
+                        },
+                    )
+                    MochiListRow(
+                        title = "设备支持",
+                        value = if (supported) "支持" else "不支持",
+                    )
+                }
+            }
+            item {
+                MochiListSection(
+                    header = "iOS 27 玻璃亮度",
+                    footer = if (ios27) "只改玻璃面色，深色、浅色各一个，−1 到 1（0 原样）。" else
+                        "iOS 26.5 玻璃是系统固定配方，不跟这里变；切到 iOS 27 样式后生效。",
+                ) {
+                    MochiListSliderRow(
+                        value = prefs.glassLight,
+                        onValueChange = { scope.launch { SettingsRepository.setMochiGlassLight(it) } },
+                        valueRange = -1f..1f,
+                        title = "浅色亮度",
+                        valueText = "%+.0f%%".format(prefs.glassLight * 100),
+                    )
+                    MochiListSliderRow(
+                        value = prefs.glassDark,
+                        onValueChange = { scope.launch { SettingsRepository.setMochiGlassDark(it) } },
+                        valueRange = -1f..1f,
+                        title = "深色亮度",
+                        valueText = "%+.0f%%".format(prefs.glassDark * 100),
+                    )
+                }
+            }
+        }
+        MochiConfirmDialog(
+            title = "同时开启可能不兼容",
+            message = "当前栏内按钮液态玻璃效果与 HDR 高光同时开启可能存在兼容性问题，是否仍要开启？",
+            confirmLabel = "仍然开启",
+            onConfirm = {
+                showHdrGlassConfirm = false
+                scope.launch { SettingsRepository.setMochiGlassTarget("control", true) }
+            },
+            onDismiss = { showHdrGlassConfirm = false },
+            destructive = false,
+            visible = showHdrGlassConfirm,
+        )
+    }
+}
+
+@Composable
+private fun GlassTargetRow(
+    title: String,
+    key: String,
+    prefs: MochiUiPrefs,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onToggle: ((Boolean) -> Unit)? = null,
+) {
+    MochiListRow(
+        title = title,
+        trailing = {
+            MochiSwitch(
+                checked = key in prefs.glassTargets,
+                onCheckedChange = { on ->
+                    if (onToggle != null) onToggle(on)
+                    else scope.launch { SettingsRepository.setMochiGlassTarget(key, on) }
+                },
+                enabled = prefs.glass,
+            )
+        },
+    )
+}
+
 /** demo 的六个颜色预设，选中态用主题色边框。 */
 @Composable
 private fun HdrPalettePicker(selected: Int, onSelect: (Int) -> Unit) {

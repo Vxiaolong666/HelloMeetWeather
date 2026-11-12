@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -396,6 +397,10 @@ enum class HomeModule(val key: String, val cn: String, val en: String) {
 
 // 设置仓储
 object SettingsRepository {
+    /** 液态玻璃默认对全部浮层生效；单项关闭后该处退回纯色（菜单、警告框、面板按组件库的回退顺序取上一档）。 */
+    val MOCHI_GLASS_TARGETS_DEFAULT: Set<String> =
+        setOf("bar", "control", "menu", "alert", "sheet", "clear")
+
     private val KEY_SOURCE_PRIORITY = stringPreferencesKey("weather_source_priority_v1")
     val sourcePriority: Flow<List<SourcePref>> by lazy {
         store.data.map { prefs -> prefs[KEY_SOURCE_PRIORITY].orEmpty().split(',')
@@ -492,6 +497,16 @@ object SettingsRepository {
     private val KEY_MOCHI_TAB_COLLAPSE = booleanPreferencesKey("mochi_tab_collapse")
     // 打开应用式转场返回时，是否用主题色铺一下来源卡片。默认关闭（用卡片真实底色）。
     private val KEY_MOCHI_SOURCE_HIGHLIGHT = booleanPreferencesKey("mochi_source_highlight")
+    // mochi UI 个性化（第三批）：液态玻璃材质与使用范围
+    private val KEY_MOCHI_GLASS = booleanPreferencesKey("mochi_glass")
+    private val KEY_MOCHI_GLASS_BLUR = booleanPreferencesKey("mochi_glass_blur")
+    private val KEY_MOCHI_GLASS_TINT = floatPreferencesKey("mochi_glass_tint")
+    private val KEY_MOCHI_GLASS_BLUR_ONLY = booleanPreferencesKey("mochi_glass_blur_only")
+    private val KEY_MOCHI_GLASS_STYLE = stringPreferencesKey("mochi_glass_style")
+    private val KEY_MOCHI_GLASS_LIGHT = floatPreferencesKey("mochi_glass_light")
+    private val KEY_MOCHI_GLASS_DARK = floatPreferencesKey("mochi_glass_dark")
+    private val KEY_MOCHI_GLASS_THEME_ACCENT = booleanPreferencesKey("mochi_glass_theme_accent")
+    private val KEY_MOCHI_GLASS_TARGETS = stringSetPreferencesKey("mochi_glass_targets")
 
     fun init(context: Context) {
         store = context.applicationContext.settingsStore
@@ -671,6 +686,34 @@ object SettingsRepository {
     val mochiSourceHighlight: Flow<Boolean> by lazy {
         store.data.map { it[KEY_MOCHI_SOURCE_HIGHLIGHT] ?: false }.distinctUntilChanged()
     }
+    val mochiGlass: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS] ?: true }.distinctUntilChanged()
+    }
+    val mochiGlassBlur: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS_BLUR] ?: true }.distinctUntilChanged()
+    }
+    val mochiGlassTint: Flow<Float> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS_TINT] ?: 0.5f }.distinctUntilChanged()
+    }
+    val mochiGlassBlurOnly: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS_BLUR_ONLY] ?: false }.distinctUntilChanged()
+    }
+    val mochiGlassStyle: Flow<String> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS_STYLE] ?: "ios26" }.distinctUntilChanged()
+    }
+    val mochiGlassLight: Flow<Float> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS_LIGHT] ?: 0f }.distinctUntilChanged()
+    }
+    val mochiGlassDark: Flow<Float> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS_DARK] ?: 0f }.distinctUntilChanged()
+    }
+    val mochiGlassThemeAccent: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS_THEME_ACCENT] ?: true }.distinctUntilChanged()
+    }
+    val mochiGlassTargets: Flow<Set<String>> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS_TARGETS] ?: MOCHI_GLASS_TARGETS_DEFAULT }
+            .distinctUntilChanged()
+    }
 
     suspend fun setMochiColorMode(v: String) = store.edit { it[KEY_MOCHI_COLOR_MODE] = v }
     suspend fun setMochiSeed(v: Int) = store.edit { it[KEY_MOCHI_SEED] = v }
@@ -682,6 +725,18 @@ object SettingsRepository {
     suspend fun setMochiTabDroplet(v: Boolean) = store.edit { it[KEY_MOCHI_TAB_DROPLET] = v }
     suspend fun setMochiTabCollapse(v: Boolean) = store.edit { it[KEY_MOCHI_TAB_COLLAPSE] = v }
     suspend fun setMochiSourceHighlight(v: Boolean) = store.edit { it[KEY_MOCHI_SOURCE_HIGHLIGHT] = v }
+    suspend fun setMochiGlass(v: Boolean) = store.edit { it[KEY_MOCHI_GLASS] = v }
+    suspend fun setMochiGlassBlur(v: Boolean) = store.edit { it[KEY_MOCHI_GLASS_BLUR] = v }
+    suspend fun setMochiGlassTint(v: Float) = store.edit { it[KEY_MOCHI_GLASS_TINT] = v.coerceIn(0f, 1f) }
+    suspend fun setMochiGlassBlurOnly(v: Boolean) = store.edit { it[KEY_MOCHI_GLASS_BLUR_ONLY] = v }
+    suspend fun setMochiGlassStyle(v: String) = store.edit { it[KEY_MOCHI_GLASS_STYLE] = v }
+    suspend fun setMochiGlassLight(v: Float) = store.edit { it[KEY_MOCHI_GLASS_LIGHT] = v.coerceIn(-1f, 1f) }
+    suspend fun setMochiGlassDark(v: Float) = store.edit { it[KEY_MOCHI_GLASS_DARK] = v.coerceIn(-1f, 1f) }
+    suspend fun setMochiGlassThemeAccent(v: Boolean) = store.edit { it[KEY_MOCHI_GLASS_THEME_ACCENT] = v }
+    suspend fun setMochiGlassTarget(key: String, on: Boolean) = store.edit {
+        val current = it[KEY_MOCHI_GLASS_TARGETS] ?: MOCHI_GLASS_TARGETS_DEFAULT
+        it[KEY_MOCHI_GLASS_TARGETS] = if (on) current + key else current - key
+    }
 
     suspend fun setTempUnit(unit: String) = store.edit { it[KEY_TEMP_UNIT] = unit }
     suspend fun setShowTyphoon(show: Boolean) = store.edit { it[KEY_SHOW_TYPHOON] = show }

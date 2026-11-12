@@ -134,6 +134,8 @@ dependencies {
     // Mochi Compose：设置页重做所用的组件库（本地源码模块）
     implementation(project(":mochi-compose"))
     implementation(project(":mochi-icons"))
+    // iOS 外观与玻璃材质（系统语义色 + iOS 26.5 液态玻璃）
+    implementation(project(":mochi-ios"))
     // Liquid Glass (Backdrop)：与 mochi-compose 共用同一份官方构件，
     // 不再打包本地 vendored 的 :backdrop（同名类会让 R8 报重复定义）。
     implementation("io.github.kyant0:backdrop:1.0.6")

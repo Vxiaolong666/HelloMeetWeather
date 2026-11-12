@@ -20,6 +20,7 @@ CLAUDE.md
 
 # ===== 签名凭据（敏感，永不入库） =====
 keystore/*.jks
+mochi-compose-main/
 # 公开版签名证书（非敏感，随库分发，供 -PpublicBuild 构建公开 APK）
 # No signing keystore is distributed in this source export.
 

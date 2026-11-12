@@ -20,12 +20,16 @@ import ui.feice.mochi.effect.elastic.MochiGelDefaults
 import ui.feice.mochi.effect.glow.MochiGlowDefaults
 import ui.feice.mochi.effect.glow.MochiGlowPreference
 import ui.feice.mochi.effect.glow.MochiGlowSpec
+import ui.feice.mochi.ios.IosGlassStyle
+import ui.feice.mochi.ios.iosMaterials
 import ui.feice.mochi.navigation.MochiNavDefaults
 import ui.feice.mochi.navigation.MochiNavSpec
 import ui.feice.mochi.theme.MochiColorScheme
 import ui.feice.mochi.theme.MochiGraphics
 import ui.feice.mochi.theme.MochiGraphicsLevel
+import ui.feice.mochi.theme.MochiGlass
 import ui.feice.mochi.theme.MochiHdr
+import ui.feice.mochi.theme.MochiMaterials
 import ui.feice.mochi.theme.MochiTheme
 import ui.feice.mochi.theme.PaletteStyle
 import ui.feice.mochi.theme.darkColorScheme
@@ -71,6 +75,15 @@ internal data class MochiUiPrefs(
     val tabDroplet: Boolean = true,
     val tabCollapse: Boolean = false,
     val sourceHighlight: Boolean = false,
+    val glass: Boolean = true,
+    val glassBlur: Boolean = true,
+    val glassTint: Float = 0.5f,
+    val glassBlurOnly: Boolean = false,
+    val glassStyle: String = "ios26",
+    val glassLight: Float = 0f,
+    val glassDark: Float = 0f,
+    val glassThemeAccent: Boolean = true,
+    val glassTargets: Set<String> = SettingsRepository.MOCHI_GLASS_TARGETS_DEFAULT,
 )
 
 internal val MochiUiPrefs.paletteStyle: PaletteStyle
@@ -97,6 +110,17 @@ internal fun rememberMochiUiPrefs(): MochiUiPrefs {
     val tabDroplet by SettingsRepository.mochiTabDroplet.collectAsState(initial = true)
     val tabCollapse by SettingsRepository.mochiTabCollapse.collectAsState(initial = false)
     val sourceHighlight by SettingsRepository.mochiSourceHighlight.collectAsState(initial = false)
+    val glass by SettingsRepository.mochiGlass.collectAsState(initial = true)
+    val glassBlur by SettingsRepository.mochiGlassBlur.collectAsState(initial = true)
+    val glassTint by SettingsRepository.mochiGlassTint.collectAsState(initial = 0.5f)
+    val glassBlurOnly by SettingsRepository.mochiGlassBlurOnly.collectAsState(initial = false)
+    val glassStyle by SettingsRepository.mochiGlassStyle.collectAsState(initial = "ios26")
+    val glassLight by SettingsRepository.mochiGlassLight.collectAsState(initial = 0f)
+    val glassDark by SettingsRepository.mochiGlassDark.collectAsState(initial = 0f)
+    val glassThemeAccent by SettingsRepository.mochiGlassThemeAccent.collectAsState(initial = true)
+    val glassTargets by SettingsRepository.mochiGlassTargets.collectAsState(
+        initial = SettingsRepository.MOCHI_GLASS_TARGETS_DEFAULT,
+    )
     return MochiUiPrefs(
         graphicsLevel = graphicsLevel,
         hdrEnabled = hdrEnabled,
@@ -117,6 +141,74 @@ internal fun rememberMochiUiPrefs(): MochiUiPrefs {
         tabDroplet = tabDroplet,
         tabCollapse = tabCollapse,
         sourceHighlight = sourceHighlight,
+        glass = glass,
+        glassBlur = glassBlur,
+        glassTint = glassTint,
+        glassBlurOnly = glassBlurOnly,
+        glassStyle = glassStyle,
+        glassLight = glassLight,
+        glassDark = glassDark,
+        glassThemeAccent = glassThemeAccent,
+        glassTargets = glassTargets,
+    )
+}
+
+/**
+ * mochi 页面统一的外观入口：配色来自主题，液态玻璃材质由「液态玻璃」页的开关、通透度与使用范围生成。
+ * 主题只在根部接一次，页面里不写按玻璃开关的分支。
+ */
+@Composable
+internal fun MochiAppTheme(
+    colors: MochiColorScheme,
+    systemBarAppearance: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val prefs = rememberMochiUiPrefs()
+    val materials = remember(
+        prefs.glass, prefs.glassBlur, prefs.glassTint, prefs.glassBlurOnly, prefs.glassStyle,
+        prefs.glassLight, prefs.glassDark, prefs.glassThemeAccent, prefs.glassTargets, colors.isDark,
+    ) {
+        buildMochiMaterials(prefs, colors.isDark)
+    }
+    MochiTheme(
+        colors = colors,
+        systemBarAppearance = systemBarAppearance,
+        materials = materials,
+        content = content,
+    )
+}
+
+/**
+ * 按「液态玻璃」页的设置拼材质。关掉某项时该处退回纯色；菜单、警告框、面板、玻璃按钮按组件库的
+ * 回退顺序（menu → bar、alert → menu、sheet → bar、clear → control）取上一档。
+ */
+private fun buildMochiMaterials(prefs: MochiUiPrefs, isDark: Boolean): MochiMaterials {
+    if (!prefs.glass) return MochiMaterials()
+    val base = iosMaterials(
+        isDark = isDark,
+        glassTint = prefs.glassTint,
+        glassStyle = if (prefs.glassStyle == "ios27") IosGlassStyle.Ios27 else IosGlassStyle.Ios26,
+        glassLightBrightness = prefs.glassLight,
+        glassDarkBrightness = prefs.glassDark,
+        glass = true,
+        blur = prefs.glassBlur,
+        // 玻璃保持中性，选中项、开关等用主题强调色
+        themeAccent = prefs.glassThemeAccent,
+        blurOnly = prefs.glassBlurOnly,
+    )
+    val targets = prefs.glassTargets
+    val tabBarOn = "bar" in targets
+    val barButtonsOn = "control" in targets
+    fun pick(on: Boolean, glass: MochiGlass?) = if (on) glass else null
+    val barButtons = if (barButtonsOn) base.control ?: base.bar else null
+    return MochiMaterials(
+        bar = pick(tabBarOn, base.bar),
+        scrollEdge = base.scrollEdge,
+        control = barButtons,
+        menu = pick("menu" in targets, base.menu ?: base.bar),
+        alert = pick("alert" in targets, base.alert ?: base.menu ?: base.bar),
+        sheet = pick("sheet" in targets, base.sheet ?: base.bar),
+        clear = pick("clear" in targets, base.clear ?: base.control ?: base.bar),
     )
 }
 

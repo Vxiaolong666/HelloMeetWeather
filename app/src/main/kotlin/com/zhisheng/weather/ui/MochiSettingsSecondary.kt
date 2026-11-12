@@ -444,7 +444,7 @@ fun MochiAtmosphereLabScreen(initialLevel: AmbienceLevel, onBack: () -> Unit) {
         LocalWeatherContinuity provides null,
         LocalSolarSkyPreview provides if (skyMode) solar else null,
     ) {
-        MochiTheme(colors = colors, systemBarAppearance = false) {
+        MochiAppTheme(colors = colors) {
             val cs = MochiTheme.colorScheme
             // 主题色模块：分段控件和顶栏底色都取自「主题配色」页生成的配色，改主题色立即生效。
             val segmentedColors = MochiSegmentedDefaults.colors(

@@ -77,6 +77,7 @@ import com.zhisheng.weather.ui.ProvideWeatherPresentationClock
 import com.zhisheng.weather.ui.weatherPresentationTime
 import com.zhisheng.weather.ui.home.HomeScreen
 import com.zhisheng.weather.ui.MochiSettingsScreen
+import com.zhisheng.weather.ui.about.AboutPage
 import com.zhisheng.weather.ui.LocalMochiSettingsEntry
 import com.zhisheng.weather.ui.MochiAtmosphereLabScreen
 import com.zhisheng.weather.ui.MochiProviderAccessScreen
@@ -601,6 +602,7 @@ class MainActivity : ComponentActivity() {
                                     AppScreen.MOCHI_SETTINGS -> Box(Modifier.fillMaxSize()) {
                                     MochiSettingsScreen(
                                         onBack = { screen = AppScreen.HOME },
+                                        onAbout = { screen = AppScreen.ABOUT },
                                         onLocate = { vm.locateCurrentCity() },
                                         locating = uiState.locating,
                                         locateMessage = uiState.locateMessage,
@@ -621,6 +623,7 @@ class MainActivity : ComponentActivity() {
                                         onOpenWeatherSource = { screen = AppScreen.WEATHER_SOURCE },
                                     )
                                     }
+                                    AppScreen.ABOUT -> AboutPage(onBack = { screen = AppScreen.MOCHI_SETTINGS })
                                     AppScreen.ATMOSPHERE_LAB -> if (ReleaseFeatures.weatherAtmosphere) MochiAtmosphereLabScreen(
                                         initialLevel = uiState.prefs.ambience,
                                         onBack = { screen = settingsReturnTo },
