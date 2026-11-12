@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -70,6 +71,7 @@ import ui.feice.mochi.list.MochiListSection
 import ui.feice.mochi.list.MochiListSliderRow
 import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.navigation.MochiLazyCompactTitleScaffold
+import ui.feice.mochi.navigation.MochiNavigator
 import ui.feice.mochi.picker.MochiColorPickerSheet
 import ui.feice.mochi.picker.MochiSeedPalette
 import ui.feice.mochi.theme.MochiHdr
@@ -103,6 +105,10 @@ internal fun MochiHdrSettingsPage(prefs: MochiUiPrefs) {
     var intensity by rememberSaveable { mutableFloatStateOf(1f) }
     var previewSwitch by rememberSaveable { mutableStateOf(true) }
     var previewSlider by rememberSaveable { mutableFloatStateOf(0.6f) }
+    val betaAck by SettingsRepository.mochiHdrBetaAck.collectAsState(initial = false)
+    var betaDismissed by rememberSaveable { mutableStateOf(false) }
+    val navigator = MochiNavigator.current
+    MochiBetaNoticeToast(SettingsRepository.mochiHdrBetaAck)
     val supported = MochiHdr.supported
     val headroom = "×${(MochiHdr.headroom * 10f).roundToInt() / 10f}"
 
@@ -238,6 +244,14 @@ internal fun MochiHdrSettingsPage(prefs: MochiUiPrefs) {
             speed,
             intensity,
         )
+        MochiBetaNoticeDialog(
+            title = "这是一个实验性功能",
+            message = "当前处于Beta实验性功能，内容可能随时增加、修改、删除，并可能存在性能下降，耗电增加或显示异常问题，确认继续使用吗？",
+            onDismiss = { betaDismissed = true },
+            onNeverShowAgain = { scope.launch { SettingsRepository.setMochiHdrBetaAck(true) } },
+            onCancel = { navigator?.pop() },
+            visible = !betaAck && !betaDismissed,
+        )
     }
 }
 
@@ -250,6 +264,10 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
     val glassOnly = !prefs.glass
     // 液态玻璃与 HDR 高光同时开启时的确认弹窗：值为待开启的项（bar / control / hdr）
     var confirmTarget by remember { mutableStateOf<String?>(null) }
+    val betaAck by SettingsRepository.mochiGlassBetaAck.collectAsState(initial = false)
+    var betaDismissed by rememberSaveable { mutableStateOf(false) }
+    val navigator = MochiNavigator.current
+    MochiBetaNoticeToast(SettingsRepository.mochiGlassBetaAck)
 
     Box(Modifier.fillMaxSize()) {
         MochiSettingsScaffold(
@@ -441,6 +459,14 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
             onDismiss = { confirmTarget = null },
             destructive = true,
             visible = target != null,
+        )
+        MochiBetaNoticeDialog(
+            title = "这是一个实验性功能",
+            message = "当前处于并将长期处于Beta实验性功能，内容可能随时增加、修改、删除，并可能存在性能下降，耗电增加或显示异常问题，确认继续使用吗？",
+            onDismiss = { betaDismissed = true },
+            onNeverShowAgain = { scope.launch { SettingsRepository.setMochiGlassBetaAck(true) } },
+            onCancel = { navigator?.pop() },
+            visible = !betaAck && !betaDismissed,
         )
     }
 }

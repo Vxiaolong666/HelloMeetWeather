@@ -50,9 +50,15 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import ui.feice.mochi.basic.MochiBarButton
+import ui.feice.mochi.basic.MochiButton
+import ui.feice.mochi.basic.MochiButtonStyle
 import ui.feice.mochi.basic.MochiSegmentedControl
+import ui.feice.mochi.effect.content.MochiBlurText
+import ui.feice.mochi.list.MochiListDisclosure
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
+import ui.feice.mochi.list.MochiSelectableRow
+import ui.feice.mochi.list.rememberMochiListEditState
 import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.theme.MochiTheme
 
@@ -90,7 +96,6 @@ fun MochiWeatherSourceScreen(
     var modules by rememberSaveable { mutableStateOf(initialModules) }
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     var showComparison by remember { mutableStateOf(false) }
-    var addingPriority by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val visible = SourcePref.visible(developer).toSet()
@@ -198,47 +203,14 @@ fun MochiWeatherSourceScreen(
                 }
             }
             item {
-                MochiListSection(header = "缺失数据补全顺序", footer = "主源缺少某个模块时按顺序向其他来源补全。") {
-                    if (priority.isEmpty()) MochiListRow(title = "未启用补全")
-                    priority.forEachIndexed { index, source ->
-                        MochiListRow(
-                            title = "${index + 1}. ${source.cn}",
-                            leading = { PhosphorIcon(weatherSourceIcon(source), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
-                        )
-                        MochiListRow(
-                            title = "↑ 上移",
-                            enabled = !saving && index > 0,
-                            onClick = {
-                                savePriority(priority.toMutableList().also { java.util.Collections.swap(it, index, index - 1) })
-                            },
-                        )
-                        MochiListRow(
-                            title = "移除",
-                            enabled = !saving,
-                            destructive = true,
-                            onClick = { savePriority(priority - source) },
-                        )
-                    }
-                    MochiListRow(
-                        title = if (addingPriority) "收起可选来源" else "添加补全天气源",
-                        chevron = true,
-                        enabled = !saving,
-                        onClick = { addingPriority = !addingPriority },
-                    )
-                    if (addingPriority) {
-                        available.filter {
-                            it != primary && it !in priority && it != SourcePref.AUTO && it != SourcePref.ZHISHENG
-                        }.forEach { source ->
-                            MochiListRow(
-                                title = "+ ${source.cn}",
-                                subtitle = source.desc,
-                                leading = { PhosphorIcon(weatherSourceIcon(source), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
-                                enabled = !saving,
-                                onClick = { savePriority(priority + source); addingPriority = false },
-                            )
-                        }
-                    }
-                }
+                MochiSourcePriorityCard(
+                    priority = priority,
+                    candidates = available.filter {
+                        it != primary && it !in priority && it != SourcePref.AUTO && it != SourcePref.ZHISHENG
+                    },
+                    saving = saving,
+                    onSave = { savePriority(it) },
+                )
             }
         }
         item {
@@ -285,6 +257,119 @@ fun MochiWeatherSourceScreen(
     }
     if (showComparison) {
         comparisonCity?.let { WeatherSourceComparison(city = it, onDismiss = { showComparison = false }) }
+    }
+}
+
+/**
+ * 缺失数据补全顺序：照 demo「列表编辑与索引」重写。
+ * [MochiListDisclosure] 收起时只显示已启用数量，展开后是同一张卡片里的编辑区；
+ * [rememberMochiListEditState] + [MochiSelectableRow] 让已启用来源与可选来源都能多选，
+ * 点「完成」一次性移除勾选的已启用项、添加勾选的可选项。
+ */
+@Composable
+private fun MochiSourcePriorityCard(
+    priority: List<SourcePref>,
+    candidates: List<SourcePref>,
+    saving: Boolean,
+    onSave: (List<SourcePref>) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val edit = rememberMochiListEditState()
+    val onKeys = priority.map { "on:${it.key}" }
+    val addKeys = candidates.map { "add:${it.key}" }
+    val allKeys = onKeys + addKeys
+
+    fun finishEditing() {
+        if (edit.selected.isNotEmpty()) {
+            val selected = edit.selected.toSet()
+            val next = priority.filterNot { "on:${it.key}" in selected } +
+                candidates.filter { "add:${it.key}" in selected }
+            onSave(next)
+        }
+        edit.clear()
+        edit.editing = false
+    }
+
+    MochiListSection(
+        footer = "展开后点已启用来源可上移一位；进入编辑可勾选多个来源，完成时批量移除已启用、添加未启用。",
+    ) {
+        MochiListDisclosure(
+            title = "缺失数据补全顺序",
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+            subtitle = "主源缺少某个模块时按顺序向其他来源补全",
+            value = if (priority.isEmpty()) "未启用" else "${priority.size} 个来源",
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MochiBlurText(
+                    if (edit.editing) "勾选来源后点完成即可批量应用" else "已启用 ${priority.size} 个来源",
+                    style = MochiTheme.textStyles.subhead,
+                    color = MochiTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                MochiButton(
+                    onClick = { if (edit.editing) finishEditing() else edit.editing = true },
+                    enabled = !saving,
+                    style = MochiButtonStyle.Text,
+                ) {
+                    MochiBlurText(if (edit.editing) "完成" else "编辑")
+                }
+            }
+            if (priority.isEmpty()) {
+                MochiListRow(title = "未启用补全", subtitle = "从下方带 + 的来源中添加")
+            }
+            priority.forEachIndexed { index, source ->
+                MochiSelectableRow(
+                    state = edit,
+                    key = "on:${source.key}",
+                    title = source.cn,
+                    subtitle = source.desc,
+                    value = "第 ${index + 1} 顺位",
+                    leading = {
+                        PhosphorIcon(weatherSourceIcon(source), null, Modifier.size(22.dp), mochiLeadingIconTint())
+                    },
+                    onClick = {
+                        if (!saving && index > 0) {
+                            onSave(priority.toMutableList().also { java.util.Collections.swap(it, index, index - 1) })
+                        }
+                    },
+                )
+            }
+            candidates.forEach { source ->
+                MochiSelectableRow(
+                    state = edit,
+                    key = "add:${source.key}",
+                    title = "+ ${source.cn}",
+                    subtitle = source.desc,
+                    leading = {
+                        PhosphorIcon(weatherSourceIcon(source), null, Modifier.size(22.dp), mochiLeadingIconTint())
+                    },
+                    onClick = { if (!saving) onSave(priority + source) },
+                )
+            }
+            if (edit.editing) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MochiBarButton(
+                        if (edit.selected.size == allKeys.size) "全不选" else "全选",
+                        onClick = {
+                            if (edit.selected.size == allKeys.size) edit.clear() else edit.selectAll(allKeys)
+                        },
+                    )
+                    Spacer(Modifier.weight(1f))
+                    MochiBlurText(
+                        "已选 ${edit.selected.size} 项",
+                        style = MochiTheme.textStyles.subhead,
+                        color = MochiTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 

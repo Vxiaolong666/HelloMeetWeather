@@ -41,7 +41,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "ZhishengWeather"
 include(":app")
-include(":backdrop")
+// 液态玻璃统一使用 io.github.kyant0:backdrop 官方构件，本地 vendored 的 :backdrop 不再参与构建。
 // Mochi Compose 组件库源码模块（核心库、图标库与 iOS 外观模块，不引入 demo/Nothing 外观）
 include(":mochi-compose")
 include(":mochi-icons")

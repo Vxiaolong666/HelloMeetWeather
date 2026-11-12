@@ -9,7 +9,7 @@ class HomeModuleTest {
     fun unifiedAtlasPreservesOtherCustomModulePositions() {
         val saved = "aqi,hourly,daily,spacetime,precip,telemetry,indices,yesterday,typhoon"
         val order = HomeModule.orderFrom(saved)
-        assertEquals(saved, order.joinToString(",") { it.key })
+        assertEquals("$saved,outfit,features", order.joinToString(",") { it.key })
         assertEquals(1, order.count { it == HomeModule.SPACETIME })
     }
 

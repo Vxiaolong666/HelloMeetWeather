@@ -12,11 +12,11 @@ import org.junit.Test
 
 class SettingsModuleOrderPersistenceTest {
     @Test fun userCanSaveTheFormerDefaultOrder() = assertSavedOrder(
-        "hourly,precip,daily,spacetime,telemetry,aqi,indices,yesterday,typhoon",
+        "hourly,precip,daily,outfit,spacetime,telemetry,aqi,indices,yesterday,typhoon,features",
     )
 
     @Test fun userCanSaveTheEnumDeclarationOrder() = assertSavedOrder(
-        "hourly,precip,spacetime,daily,telemetry,aqi,indices,yesterday,typhoon",
+        "hourly,precip,spacetime,daily,telemetry,aqi,outfit,indices,yesterday,typhoon,features",
     )
 
     private fun assertSavedOrder(order: String) = runBlocking {

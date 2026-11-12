@@ -27,10 +27,10 @@ class CoastalPresentationTest {
         assertTrue(coastalDisplayFacts(empty.copy(waveHeightM = -1.0, wavePeriodSeconds = Double.NaN), "c").isEmpty())
     }
 
-    @Test fun dormantCoastRetainsDataButCannotAppearFromAnOldEnabledPreference() {
+    @Test fun coastAppearsOnceTheModuleIsEnabledAndSwellDataExists() {
         val coast = empty.copy(swellHeightM = 0.8, swellPeriodSeconds = 9.0)
         val pages = vistaScenePages(SceneWeatherData(coast = coast), DisplayPrefs(showCoastWeather = true))
-        assertFalse(AtlasPage.COAST in pages)
+        assertTrue(AtlasPage.COAST in pages)
         assertEquals(listOf("涌浪高度", "涌浪周期"), coastalDisplayFacts(coast, "c").map { it.first })
         assertTrue(coastalDisplayPoints(coast.points).isEmpty())
     }

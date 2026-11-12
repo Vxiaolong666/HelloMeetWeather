@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.first
 import ui.feice.mochi.effect.content.MochiBlurTransitions
@@ -98,36 +97,46 @@ internal fun labelBlur(t: Float, enabled: Boolean = true): Dp {
 }
 
 /**
- * 上下（竖向）排布时所有标签都常驻。模糊仍与横排 [labelBlur] 同源，取 [MochiBlurTransitions.Appear.blur]，
- * 但整条标签栏同一时间只允许有一个「模糊窗口」：只有选中程度 > 0.5 的那一格（选中块此刻最靠近的格子）会糊。
+ * 上下（竖向）排布时所有标签都常驻，模糊只跟着选中块走：只糊选中块最近的那一格，
+ * 其余标签全程清晰（同一时刻最多一格满足 [stackedBlurPhase] > 0）。
  *
- * [selectedness] 是 1 - |pos - i|，选中块落在相邻两格之间时这两格相加恒为 1，因此任意时刻最多一格 > 0.5；
- * 滑到两格正中间（都 = 0.5）时模糊正好收干净，窗口从旧格交接到新格，不会两格一起糊、也不会突然跳一下。
- * 落定（t = 1）与未参与切换的格子同样保持清晰。
+ * 距离以这一格的图标为中心算：选中块正对着图标时最清晰，越往两侧离开越糊，
+ * 到两格交界（选中程度 = 0.5）之前收干净，交接给下一格时也是从 0 起，
+ * 不会出现两格一起糊或换格时突然跳一下。
  */
 internal fun stackedLabelBlur(selectedness: Float, enabled: Boolean = true): Dp {
     if (!enabled) return 0.dp
     val phase = stackedBlurPhase(selectedness)
     if (phase < 0.02f) return 0.dp
-    return MochiBlurTransitions.Appear.blur * phase
+    return StackedBlurMax * phase
 }
 
 /**
- * 上下排布里模糊窗口的进度（0 = 清晰，1 = 最深），和 [stackedLabelBlur] 共用同一条曲线。
+ * 上下排布拖拽时的最大模糊。常驻的 10sp 小字只需要一点点动态模糊，
+ * 比横排「整段隐去」用的 [MochiBlurTransitions.Appear.blur]（10dp）低得多，拖到哪儿都读得清。
+ */
+internal val StackedBlurMax = 2.5.dp
+
+/**
+ * 上下排布里一格的模糊进度（0 = 清晰，1 = 最深）：只有离选中块最近的那一格会大于 0。
+ *
+ * 选中程度 t = 1 时选中块正对这一格的图标，越偏越糊，t = 0.5（两格交界）前回到 0；
+ * 起始那一段用 [smoothstep] 淡入，换格时前一格已经收干净，不会出现两格同时糊。
  */
 internal fun stackedBlurPhase(selectedness: Float): Float {
     val t = selectedness.coerceIn(0f, 1f)
-    if (t <= 0.5f) return 0f
-    // 1 - t = 选中块离这一格中心的距离（0 = 落定，0.5 = 两格正中间）；两端不糊，中间最深
-    return (1f - abs(4f * (1f - t) - 1f)).coerceIn(0f, 1f)
+    val near = smoothstep(0.5f, 0.62f, t)
+    if (near <= 0f) return 0f
+    // 1 - t：选中块离这一格图标的距离（0 = 正对，0.5 = 两格正中间），放大成 0..1
+    return near * ((1f - t) * 2f).coerceIn(0f, 1f)
 }
 
 /**
- * 横排在标签淡入时压低透明度，模糊才不会糊成一层重影。上下排布的文字常驻、没有淡入，
- * 这里按同一条模糊进度补上透明度压制（幅度更轻，文字始终读得清），两种排布看起来一致。
+ * 上下排布的文字常驻、没有淡入。模糊只在最近的一格上出现，这里按同一条进度把透明度轻轻压一点，
+ * 免得起糊时像叠了一层重影；幅度很小，文字始终以接近满浓度显示。
  */
 internal fun stackedLabelAlpha(selectedness: Float): Float =
-    1f - 0.35f * stackedBlurPhase(selectedness)
+    1f - 0.08f * stackedBlurPhase(selectedness)
 
 /** 只在选中时显示标签（竖排）时，没选中的图标往下挪多少才在整格里居中：(2dp 间距 + 12sp 行高) / 2 */
 internal val LabelShift = 7.dp

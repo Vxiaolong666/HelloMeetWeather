@@ -22,7 +22,7 @@ class AppIconTest {
         val manifest = File(projectDir, "src/main/AndroidManifest.xml").readText()
         val settings = File(
             projectDir,
-            "src/main/kotlin/com/zhisheng/weather/ui/SettingsScreen.kt",
+            "src/main/kotlin/com/zhisheng/weather/ui/MochiSettingsScreen.kt",
         ).readText()
 
         assertTrue(manifest.contains("android:name=\".IconCharacter\""))

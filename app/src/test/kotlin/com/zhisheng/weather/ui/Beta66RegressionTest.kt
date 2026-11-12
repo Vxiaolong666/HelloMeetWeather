@@ -27,7 +27,7 @@ class Beta66RegressionTest {
         val order = HomeModule.entries.reversed()
         val blocks = vistaHomeBlocks(VistaHomeBlock.entries.toSet(), order)
         assertEquals(listOf(VistaHomeBlock.METADATA, VistaHomeBlock.HERO, VistaHomeBlock.ALERTS), blocks.take(3))
-        assertEquals(VistaHomeBlock.TYPHOON, blocks[3])
+        assertEquals(VistaHomeBlock.FEATURES, blocks[3])
         assertEquals(VistaHomeBlock.HOURLY, blocks.last())
         assertEquals(blocks.size, blocks.distinct().size)
         val withoutAir = vistaHomeBlocks(VistaHomeBlock.entries.toSet() - VistaHomeBlock.AQI, order)

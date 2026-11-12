@@ -10,7 +10,7 @@ class NavigationAndCityListStructureTest {
     @Test
     fun orientationRestoresWeatherButDoesNotRestoreAnOpenCityDrawer() {
         val home = File(projectDir, "src/main/kotlin/com/zhisheng/weather/ui/home/HomeScreen.kt").readText()
-        assertTrue(home.contains("remember(drawerOrientation) { androidx.compose.material3.DrawerState(DrawerValue.Closed) }"))
+        assertTrue(home.contains("val sidebar = rememberMochiSidebarState()"))
         assertFalse(home.contains("val drawerState = rememberDrawerState("))
         val activity = File(projectDir, "src/main/kotlin/com/zhisheng/weather/MainActivity.kt").readText()
         assertTrue(activity.contains("orientationState.SaveableStateProvider"))
@@ -33,9 +33,9 @@ class NavigationAndCityListStructureTest {
         assertTrue(drawer.contains("RequestMultiplePermissions()"))
         assertTrue(drawer.contains("LocationSource.requestedPermissions(precise = preciseEnabled)"))
         assertFalse(drawer.contains("LocationSource.requestedPermissions(precise = true)"))
-        assertTrue(drawer.contains("onBack: () -> Unit"))
-        assertTrue(drawer.contains("Icons.AutoMirrored.Filled.ArrowBack"))
-        assertTrue(drawer.contains("IconButton(onClick = onBack"))
+        assertTrue(drawer.contains("onDismiss: () -> Unit"))
+        assertTrue(drawer.contains("MochiSidebarHeader("))
+        assertTrue(drawer.contains("MochiSidebarHeaderButton(onClick = { onDismiss(); onAddCity() })"))
         assertFalse(drawer.contains("uiState.cities.forEachIndexed"))
     }
 

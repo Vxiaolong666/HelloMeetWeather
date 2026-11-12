@@ -20,7 +20,7 @@ class HomeBriefingStyleTest {
         val projectDir = File(requireNotNull(System.getProperty("user.dir")))
         val settings = File(
             projectDir,
-            "src/main/kotlin/com/zhisheng/weather/ui/SettingsScreen.kt",
+            "src/main/kotlin/com/zhisheng/weather/ui/MochiSettingsScreen.kt",
         ).readText()
         val home = File(
             projectDir,

@@ -130,14 +130,14 @@ class DailyForecastScreenTest {
     fun `home exposes one five-day route and settings no longer exposes layout choices`() {
         val root = File(requireNotNull(System.getProperty("user.dir")))
         val home = File(root, "src/main/kotlin/com/zhisheng/weather/ui/home/HomeScreen.kt").readText()
-        val settings = File(root, "src/main/kotlin/com/zhisheng/weather/ui/SettingsScreen.kt").readText()
+        val settings = File(root, "src/main/kotlin/com/zhisheng/weather/ui/MochiSettingsScreen.kt").readText()
         val forecast = File(root, "src/main/kotlin/com/zhisheng/weather/ui/DailyForecastScreen.kt").readText()
 
         assertTrue(home.contains("val visibleDays = daily.take(5)"))
         assertTrue(home.contains("查看近15日天气"))
         assertTrue(home.contains(".height(38.dp)"))
         assertTrue(home.contains("d.condition?.label"))
-        assertTrue(home.contains("降水概率 \$probability"))
+        assertTrue(home.contains("DailyFact(R.drawable.ph_umbrella, \"降水概率\""))
         assertFalse(settings.contains("三天转上下"))
         assertFalse(settings.contains("完整上下"))
         assertFalse(settings.contains("经典横排"))

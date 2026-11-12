@@ -1,23 +1,40 @@
 package com.zhisheng.weather.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.zhisheng.weather.R
 import com.zhisheng.weather.ui.components.PhosphorIcon
+import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import ui.feice.mochi.basic.MochiBarButton
+import ui.feice.mochi.basic.MochiCheckbox
 import ui.feice.mochi.basic.MochiConfirmationDialog
 import ui.feice.mochi.basic.MochiDialog
 import ui.feice.mochi.basic.MochiDialogAction
@@ -25,6 +42,7 @@ import ui.feice.mochi.basic.MochiDialogActionRole
 import ui.feice.mochi.basic.MochiDialogDefaults
 import ui.feice.mochi.basic.MochiToastHost
 import ui.feice.mochi.basic.MochiToastState
+import ui.feice.mochi.utils.rememberMochiHaptics
 import ui.feice.mochi.effect.overscroll.ProvideMochiOverscroll
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
@@ -224,6 +242,87 @@ internal fun MochiConfirmDialog(
     )
 }
 
+/**
+ * Beta 功能提示：照 demo 的 DemoNotice，主按钮走 [MochiDialogAction.holdToConfirm]
+ * 长按确认（内部是 MochiHoldButton），「不再提示」用库圆形勾选圈 [MochiCheckbox]。
+ * 两个 action 交给库的 MochiButtonGroup 并排同一行（Cancel 在左、Primary 在右）；
+ * 显式给次按钮高对比底色与文字色，避免玻璃按钮太淡看不见。
+ * 取消调 [onCancel] 返回上一页；勾选后由 [onNeverShowAgain] 持久化。
+ */
+@Composable
+internal fun MochiBetaNoticeDialog(
+    title: String,
+    message: String,
+    onDismiss: () -> Unit,
+    onNeverShowAgain: () -> Unit,
+    onCancel: () -> Unit,
+    visible: Boolean = true,
+) {
+    var dontShow by rememberSaveable { mutableStateOf(false) }
+    val haptics = rememberMochiHaptics()
+    MochiDialog(
+        visible = visible,
+        onDismissRequest = {
+            if (dontShow) onNeverShowAgain()
+            onDismiss()
+        },
+        title = title,
+        message = message,
+        actions = persistentListOf(
+            MochiDialogAction("继续使用", MochiDialogActionRole.Primary, holdToConfirm = true),
+            MochiDialogAction("取消", MochiDialogActionRole.Cancel) { onCancel() },
+        ),
+        dismissOnBack = false,
+        dismissOnOutsideTap = false,
+        colors = MochiDialogDefaults.colors(
+            primary = MochiTheme.colorScheme.error,
+            onPrimary = MochiTheme.colorScheme.onError,
+            button = MochiTheme.colorScheme.surfaceContainerHighest,
+            buttonContent = MochiTheme.colorScheme.onSurface,
+        ),
+    ) {
+        // 整行都能点：勾选圈只负责显示
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .toggleable(
+                    value = dontShow,
+                    role = Role.Checkbox,
+                    interactionSource = null,
+                    indication = null,
+                ) {
+                    haptics.confirm()
+                    dontShow = it
+                },
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MochiCheckbox(dontShow, onCheckedChange = null)
+            Text("不再提示", style = MochiTheme.textStyles.body, color = MochiTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+/**
+ * 勾选「不再提示」后，再进页面不再弹对话框，只给一条带图标的轻提示。
+ * 只取进入页面时持久化的首个值：本次页面里勾选造成的变化不会立刻又弹一条。
+ */
+@Composable
+internal fun MochiBetaNoticeToast(ackFlow: Flow<Boolean>) {
+    val toast = LocalMochiToast.current
+    val ackOnEnter by produceState<Boolean?>(null, ackFlow) {
+        value = ackFlow.first()
+    }
+    LaunchedEffect(ackOnEnter) {
+        if (ackOnEnter == true) {
+            toast?.show("Beta实验性功能", icon = { tint ->
+                PhosphorIcon(R.drawable.ph_warning, null, Modifier.size(20.dp), tint)
+            })
+        }
+    }
+}
+
 /** 弹窗列表里的小标题行，避免直接用 Material Text 造成风格断层。 */
 @Composable
 internal fun MochiSectionNote(text: String) {
@@ -231,13 +330,32 @@ internal fun MochiSectionNote(text: String) {
 }
 
 /**
- * 列表行首图标的颜色：深色模式用白色，浅色模式用主题色。
- * [PhosphorIcon] 默认 tint 是 Unspecified，会跟随 LocalContentColor；浅色分组卡片里
- * 该值被解析成白色，图标与浅底同色看不见，所以这些位置必须显式指定 tint。
+ * 列表行首图标的颜色：黑暗模式白色，浅色页面主题色。
+ *
+ * Phosphor 图标资源本身是白色 path（fillColor=#FFFFFFFF），[PhosphorIcon] 默认 tint
+ * 为 Unspecified 时不会着色，浅色卡片上就是白图标，必须显式传 tint。
+ *
+ * 「主题配色」页的配色模式与应用明暗模式是两套独立设置，只用 colorScheme.isDark
+ * 判断会出现「页面是浅色、配色却是深色」的错配；因此只要任一信号表明是浅色页面，
+ * 就按浅色处理。深色版配色的 primary 是亮色，在浅底上同样看不清，这里退到浅色板
+ * 的图标信号色兜底。
  */
 @Composable
-internal fun mochiLeadingIconTint(): Color =
-    if (MochiTheme.colorScheme.isDark) Color.White else MochiTheme.colorScheme.primary
+internal fun mochiLeadingIconTint(): Color {
+    val cs = MochiTheme.colorScheme
+    val palette = LocalZhishengPalette.current
+    val lightPage = palette.isLight || !cs.isDark
+    if (!lightPage) return Color.White
+    val primary = cs.primary
+    return when {
+        primary.brightness() <= 0.55f -> primary
+        // 错配时（浅色页面却拿到深色版配色的亮 primary）退到浅色板的图标信号色
+        palette.isLight -> palette.cyan
+        else -> lerp(primary, Color.Black, 0.65f)
+    }
+}
+
+private fun Color.brightness(): Float = red * 0.299f + green * 0.587f + blue * 0.114f
 
 @Composable
 internal fun MochiToastCheckIcon(tint: Color) {

@@ -485,6 +485,9 @@ object SettingsRepository {
     private val KEY_MOCHI_PAGE_TRANSITION = stringPreferencesKey("mochi_page_transition")
     private val KEY_MOCHI_SWIPE_BACK = booleanPreferencesKey("mochi_swipe_back")
     private val KEY_MOCHI_BACK_SCALE = stringPreferencesKey("mochi_back_scale")
+    // Beta 功能提示：用户勾选「不再提示」后不再弹出进入页提醒
+    private val KEY_MOCHI_HDR_BETA_ACK = booleanPreferencesKey("mochi_hdr_beta_ack")
+    private val KEY_MOCHI_GLASS_BETA_ACK = booleanPreferencesKey("mochi_glass_beta_ack")
     // mochi UI 个性化（第二批）：主题配色 / 主题色 / 取色算法 / 果冻感 / 底部标签栏
     private val KEY_MOCHI_COLOR_MODE = stringPreferencesKey("mochi_color_mode")
     private val KEY_MOCHI_SEED = intPreferencesKey("mochi_seed")
@@ -644,6 +647,12 @@ object SettingsRepository {
     val mochiBackScale: Flow<String> by lazy {
         store.data.map { it[KEY_MOCHI_BACK_SCALE] ?: "subtle" }.distinctUntilChanged()
     }
+    val mochiHdrBetaAck: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_HDR_BETA_ACK] ?: false }.distinctUntilChanged()
+    }
+    val mochiGlassBetaAck: Flow<Boolean> by lazy {
+        store.data.map { it[KEY_MOCHI_GLASS_BETA_ACK] ?: false }.distinctUntilChanged()
+    }
 
     suspend fun setMochiGraphicsLevel(v: String) = store.edit { it[KEY_MOCHI_GRAPHICS_LEVEL] = v }
     suspend fun setMochiHdrEnabled(v: Boolean) = store.edit { it[KEY_MOCHI_HDR_ENABLED] = v }
@@ -654,6 +663,8 @@ object SettingsRepository {
     suspend fun setMochiPageTransition(v: String) = store.edit { it[KEY_MOCHI_PAGE_TRANSITION] = v }
     suspend fun setMochiSwipeBack(v: Boolean) = store.edit { it[KEY_MOCHI_SWIPE_BACK] = v }
     suspend fun setMochiBackScale(v: String) = store.edit { it[KEY_MOCHI_BACK_SCALE] = v }
+    suspend fun setMochiHdrBetaAck(v: Boolean) = store.edit { it[KEY_MOCHI_HDR_BETA_ACK] = v }
+    suspend fun setMochiGlassBetaAck(v: Boolean) = store.edit { it[KEY_MOCHI_GLASS_BETA_ACK] = v }
 
     // 主题配色：app=跟随应用主题 / system=跟随系统 / light / dark / monet=系统取色
     val mochiColorMode: Flow<String> by lazy {

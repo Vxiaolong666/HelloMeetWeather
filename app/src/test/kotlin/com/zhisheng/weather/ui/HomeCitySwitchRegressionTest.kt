@@ -41,7 +41,7 @@ class HomeCitySwitchRegressionTest {
         assertTrue(source.contains("if (up != null && !cityDeckVisible) scrollToTopRequest++"))
         assertTrue(source.contains("if (scrollToTopRequest > 0 && selected)"))
         assertTrue(source.contains("weatherListState.animateScrollToItem(0)"))
-        assertTrue(source.contains("enabled = uiState.weather != null || uiState.cities.size > 1"))
+        assertTrue(source.contains("enabled = uiState.cities.size > 1"))
     }
 
     @Test

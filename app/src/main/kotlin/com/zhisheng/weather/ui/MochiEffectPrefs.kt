@@ -12,7 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
 import com.zhisheng.weather.data.SettingsRepository
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import ui.feice.mochi.anim.MochiSprings
@@ -227,8 +227,12 @@ internal fun rememberMochiColorScheme(followSystem: Boolean = false): MochiColor
     val prefs = rememberMochiUiPrefs()
     val appLight = LocalZhishengPalette.current.isLight
     val systemDark = isSystemInDarkTheme()
-    val context = LocalContext.current
-    return remember(prefs.colorMode, prefs.seed, prefs.palette, prefs.contrast, appLight, systemDark, followSystem) {
+    // 系统主色随配置变化，用 colorResource 交给 composition 感知配置刷新；
+    // remember 的 lambda 里读 LocalContext 会被 lint 判为持有旧配置。
+    val systemAccent = if (prefs.colorMode == "monet" && Build.VERSION.SDK_INT >= 31) {
+        colorResource(android.R.color.system_accent1_500)
+    } else null
+    return remember(prefs.colorMode, prefs.seed, prefs.palette, prefs.contrast, appLight, systemDark, followSystem, systemAccent) {
         val dark = when {
             // 独立 Activity 的小组件/通知栏设置页没有 ZhishengWeatherTheme，
             // 默认分支会退化成 appLight 常量；这里强制只看系统深色开关。
@@ -238,11 +242,7 @@ internal fun rememberMochiColorScheme(followSystem: Boolean = false): MochiColor
             prefs.colorMode == "system" || prefs.colorMode == "monet" -> systemDark
             else -> !appLight
         }
-        val seed = if (prefs.colorMode == "monet" && Build.VERSION.SDK_INT >= 31) {
-            Color(context.getColor(android.R.color.system_accent1_500))
-        } else {
-            Color(prefs.seed)
-        }
+        val seed = systemAccent ?: Color(prefs.seed)
         val contrast = prefs.contrast.toDouble()
         if (dark) darkColorScheme(seed, prefs.paletteStyle, contrast)
         else lightColorScheme(seed, prefs.paletteStyle, contrast)

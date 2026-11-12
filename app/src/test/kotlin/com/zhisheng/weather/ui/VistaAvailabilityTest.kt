@@ -26,9 +26,9 @@ class VistaAvailabilityTest {
     @Test fun userDisabledModulesStayHiddenEvenWithData() {
         assertTrue(vistaScenePages(SceneWeatherData(sky = sky), DisplayPrefs(showSkyPhotography = false)).isEmpty())
     }
-    @Test fun cachedStarsStayDormantWhileGlowRemainsAvailable() {
+    @Test fun cachedStarsAppearAlongsideGlowWhenSkyPhotographyIsOn() {
         val cachedSky = sky.copy(stars = StarForecast(75, "较好", 1000, 2000, emptyList(), "参考"))
-        assertEquals(setOf(AtlasPage.GLOW), vistaScenePages(SceneWeatherData(sky = cachedSky), DisplayPrefs(showSkyPhotography = true)))
+        assertEquals(setOf(AtlasPage.GLOW, AtlasPage.STARS), vistaScenePages(SceneWeatherData(sky = cachedSky), DisplayPrefs(showSkyPhotography = true)))
         assertNotNull(cachedSky.stars)
     }
 }

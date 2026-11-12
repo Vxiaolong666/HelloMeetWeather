@@ -46,6 +46,8 @@ class ClearSkyLayoutRegressionTest {
                 VistaHomeBlock.TYPHOON,
                 VistaHomeBlock.INDICES,
                 VistaHomeBlock.YESTERDAY,
+                VistaHomeBlock.FEATURES,
+                VistaHomeBlock.OUTFIT,
             ),
             vistaHomeBlocks(VistaHomeBlock.entries.toSet()),
         )
