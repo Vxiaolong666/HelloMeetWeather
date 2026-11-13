@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.zhisheng.weather.R
 import com.zhisheng.weather.data.AccentTone
 import com.zhisheng.weather.ui.about.AboutPage
+import com.zhisheng.weather.ui.notice.NoticePage
 import com.zhisheng.weather.data.AppIconManager
 import com.zhisheng.weather.data.AppIconStyle
 import com.zhisheng.weather.data.AmbienceLevel
@@ -341,7 +342,11 @@ fun MochiSettingsScreen(
                     }
                         }
                     }
-                    "settings.about" -> AboutPage(onBack = { nav.pop() })
+                    "settings.about" -> AboutPage(
+                        onBack = { nav.pop() },
+                        onOpenNotices = { openSettingsPage("settings.notice") },
+                    )
+                    "settings.notice" -> NoticePage(onBack = { nav.pop() })
                     // 天气源、服务商、氛围实验室也从设置进，走同一套库导航转场与侧滑返回
                     "settings.weatherSource" -> MochiWeatherSourceScreen(
                         weather = activeWeather,

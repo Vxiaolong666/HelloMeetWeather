@@ -59,6 +59,9 @@ public object MochiTitleBarDefaults {
  * @param actions 右侧库顶栏按钮；与侧推对应页面共用稳定 navId 和图标 contentKey
  * @param backdrop 栏下面内容的录制（`rememberMochiBarBackdrop()`，内容加 `mochiBackdropSource`）：给了，主题的栏按钮是玻璃时
  *   按钮取样它画成玻璃；null 沿用外面提供的（没有就是纯色）
+ * @param titleColor 指定标题颜色。默认按栏后面内容的亮度自动换深浅（见 [MochiScrollEdgeTone]）；
+ *   栏后面是自绘背景（实时天空、渐变壁纸）而不是常规页面内容时亮度判定对不上，这时直接指定
+ * @param subtitleColor 指定副标题颜色，语义同 [titleColor]
  */
 @Composable
 public fun MochiTitleBar(
@@ -72,18 +75,24 @@ public fun MochiTitleBar(
     titleProgress: () -> Float = { 1f },
     backgroundProgress: () -> Float = titleProgress,
     backdrop: MochiBackdrop? = null,
+    titleColor: Color? = null,
+    subtitleColor: Color? = null,
 ) {
     if (backdrop != null) {
         CompositionLocalProvider(LocalMochiBackdrop provides backdrop) {
-            MochiTitleBar(title, modifier, subtitle, navigationIcon, actions, background, barHeight, titleProgress, backgroundProgress)
+            MochiTitleBar(
+                title, modifier, subtitle, navigationIcon, actions, background, barHeight,
+                titleProgress, backgroundProgress, backdrop = null,
+                titleColor = titleColor, subtitleColor = subtitleColor,
+            )
         }
         return
     }
     // 文字跟着栏后面的亮度换深 / 浅（iOS 栏上的文字也是按背后亮度取色）：深色主题里滚到大片亮色内容下面时，
     // 渐进模糊偏白，白字会看不清
     val tone = remember { MochiScrollEdgeTone() }
-    val textColor = MochiScrollEdgeDefaults.textColor(tone, MochiTheme.colorScheme.onSurface)
-    val subColor = MochiScrollEdgeDefaults.textColor(tone, MochiTheme.colorScheme.onSurfaceVariant, secondary = true)
+    val textColor = titleColor ?: MochiScrollEdgeDefaults.textColor(tone, MochiTheme.colorScheme.onSurface)
+    val subColor = subtitleColor ?: MochiScrollEdgeDefaults.textColor(tone, MochiTheme.colorScheme.onSurfaceVariant, secondary = true)
     // 栏里的玻璃（按钮、搜索框）取样「栏下面实际看到的样子」：背景来源（已经渐进模糊过）再叠上这一层渐隐底色。
     // 渐隐单独画在一层里录下来，不和按钮在同一层（玻璃不能取样到自己）
     val under = LocalMochiBackdrop.current?.takeIf { glassOn(GlassRole.Control) }?.source

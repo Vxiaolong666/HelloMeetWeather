@@ -77,6 +77,7 @@ internal fun MochiAppToastHost(state: MochiToastState) {
 /** 供 MochiBackButton(history=…) 用的返回历史标题。 */
 internal fun mochiSettingsRouteTitle(route: String): String = when (route) {
     "settings.about" -> "关于"
+    "settings.notice" -> "公告"
     "settings.hdr" -> "HDR 高光"
     "settings.pressGlow" -> "按压高光"
     "settings.transition" -> "应用转场与侧推"

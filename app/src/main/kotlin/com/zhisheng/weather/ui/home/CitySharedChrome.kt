@@ -157,40 +157,7 @@ internal fun CitySharedChromeHost(
                     enabled = scrollEnabled, reverseDirection = reverseDrag,
                     flingBehavior = PagerDefaults.flingBehavior(pager,
                         snapAnimationSpec = spring(dampingRatio = 1f, stiffness = 500f))),
-                { CityPageIndicator(cities, selected, pager) },
-                heading = { SharedCityHeading(cities, pager, segment, selected.locationKey) })
-        }
-    }
-}
-
-@Composable
-private fun SharedCityHeading(cities: List<City>, pager: PagerState, segment: CityPageSegment, selectedKey: String) {
-    val vista = isPhosphorVista
-    val distance = with(LocalDensity.current) { 16.dp.toPx() }
-    val titleCities = listOfNotNull(cities.firstOrNull { it.locationKey == selectedKey }) +
-        setOf(segment.from, segment.to).mapNotNull { cities.getOrNull(it) }.filter { it.locationKey != selectedKey }
-    // Only the persisted city's title determines height. A transparent neighbour must
-    // never change every city's list padding before it is actually selected.
-    Layout(modifier = Modifier.fillMaxWidth().clipToBounds(), content = {
-        for (city in titleCities) {
-            val index = cities.indexOf(city)
-            Column(Modifier.graphicsLayer {
-                val delta = index - (pager.currentPage + pager.currentPageOffsetFraction)
-                alpha = (1f - abs(delta)).coerceIn(0f, 1f)
-                translationX = delta.coerceIn(-1f, 1f) * distance
-            }.then(if (city.locationKey == selectedKey) Modifier else Modifier.clearAndSetSemantics {})) {
-                val (title, address) = if (vista) vistaLocationHeading(city.displayName) else city.displayName to ""
-                Text(title, style = MaterialTheme.typography.titleMedium,
-                    color = if (vista) ZhishengText else ZhishengOrange, fontWeight = FontWeight.Bold)
-                if (address.isNotEmpty()) Text(address, style = MaterialTheme.typography.bodySmall,
-                    color = ZhishengTextSecondary, modifier = Modifier.padding(top = 4.dp))
-            }
-        }
-    }) { measurables, constraints ->
-        val measured = measurables.map { it.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)) }
-        val first = measured.firstOrNull()
-        layout(constraints.constrainWidth(first?.width ?: 0), constraints.constrainHeight(first?.height ?: 0)) {
-            measured.forEach { it.placeRelative(0, 0) }
+                indicator = { CityPageIndicator(cities, selected, pager) })
         }
     }
 }

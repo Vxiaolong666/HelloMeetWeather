@@ -77,7 +77,7 @@ private const val ChargeMillis = 800
  * 长按蓄满进入彩蛋（[RibbonEggOverlay]：玻璃飘带、折射和色散）；交流群只写入群步骤，群号由爱发电在赞助后私信发出。
  */
 @Composable
-internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
+internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit, onOpenNotices: () -> Unit = {}) {
     val cs = MochiTheme.colorScheme
     val ts = MochiTheme.textStyles
     val context = LocalContext.current
@@ -200,6 +200,25 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit) {
                     LinkRow("GitHub", "feice11", Icons.GITHUB, IconColors(Color(0xFF24292F), Color.White)) { open(GitHub) }
                     LinkRow("哔哩哔哩", "UID 626797481", Icons.BILIBILI, IconColors(Color(0xFFFB7299), Color.White)) { open(Bilibili) }
                     LinkRow("爱发电", "feice", Icons.HEART, IconColors(Color(0xFF946CE6), Color.White)) { open(Afdian) }
+                }
+            }
+            // —— 公告：云端通知与版本提醒，独立页面 ——
+            demoItem {
+                MochiListSection(header = "公告") {
+                    MochiListRow(
+                        "软件公告",
+                        subtitle = "版本通知与使用提醒",
+                        onClick = onOpenNotices,
+                        chevron = true,
+                        leading = {
+                            AppIcon(
+                                Icons.BELL,
+                                Tone.Primary.tile(),
+                                MochiListDefaults.LeadingSize,
+                                corner = MochiListDefaults.LeadingCorner,
+                            )
+                        },
+                    )
                 }
             }
             // —— 交流群：只写步骤，群号在赞助后由爱发电私信发出 ——

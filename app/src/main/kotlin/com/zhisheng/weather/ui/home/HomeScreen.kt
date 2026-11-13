@@ -136,6 +136,7 @@ import ui.feice.mochi.basic.MochiDialogActionRole
 import ui.feice.mochi.navigation.MochiSidebarLayout
 import ui.feice.mochi.navigation.MochiSidebarSectionHeader
 import ui.feice.mochi.navigation.MochiSidebarStyle
+import ui.feice.mochi.navigation.MochiTitleBar
 import ui.feice.mochi.navigation.rememberMochiSidebarState
 import ui.feice.mochi.theme.MochiTheme
 import androidx.compose.ui.Alignment
@@ -1205,6 +1206,13 @@ internal fun Scanlines() {
     })
 }
 
+/**
+ * 首页顶栏：外层结构换成组件库的 [MochiTitleBar]（栏高、状态栏内边距、居中标题 / 副标题、
+ * 标题模糊替换、滚动边缘渐隐都由库给）。
+ *
+ * 栏里的图标按钮仍是首页原来那几个（图标、颜色、刷新转圈不变），分页圆点也照旧贴在栏下沿，
+ * 背后的液态玻璃带由外层的 glassScrollHeader 绘制，所以观感与改造前一致，换的只是骨架。
+ */
 @Composable
 internal fun TopBar(
     cityName: String,
@@ -1213,87 +1221,58 @@ internal fun TopBar(
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
-    indicator: @Composable () -> Unit = {},
-    heading: (@Composable () -> Unit)? = null,
+    indicator: (@Composable () -> Unit)? = null,
 ) {
-    Row(
-        modifier = modifier
-            .statusBarsPadding()
-            .heightIn(min = if (isPhosphorVista) 64.dp else 56.dp)
-            .padding(horizontal = if (isPhosphorVista) 8.dp else 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(
-            onClick = onMenu,
-            modifier = Modifier.size(48.dp),
-        ) {
-            if (isPhosphorVista) PhosphorIcon(R.drawable.ph_list, "城市列表", Modifier.size(22.dp), ZhishengTextSecondary)
-            else Icon(Icons.Filled.Menu, contentDescription = "城市列表", tint = ZhishengTextSecondary, modifier = Modifier.size(22.dp))
-        }
-        Column(Modifier.weight(1f).clickable(onClick = onMenu).heightIn(min = 48.dp).padding(start = 4.dp)
-            .then(if (isPhosphorVista) Modifier.padding(vertical = 8.dp) else Modifier)) {
-            val (title, address) = if (isPhosphorVista) vistaLocationHeading(cityName) else cityName to ""
-            if (heading != null) heading() else {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (isPhosphorVista) ZhishengText else ZhishengOrange,
-                fontWeight = FontWeight.Bold,
-                maxLines = Int.MAX_VALUE,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (address.isNotEmpty()) Text(
-                address,
-                style = MaterialTheme.typography.bodySmall,
-                color = ZhishengTextSecondary,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            }
-            if (!isPhosphorVista) Text(
-                text = "ZHISHENG WEATHER TERMINAL",
-                style = MaterialTheme.typography.labelSmall,
-                color = ZhishengTextTertiary,
-                letterSpacing = 1.5.sp,
-            )
-            indicator()
-        }
-        // 刷新中持续旋转：原来是静态 360f，视觉上等于没转（v0.0.2）
-        val angle = if (loading && LocalCityPageMotionRunning.current) {
-            val spin = rememberInfiniteTransition(label = "spin")
-            val animatedAngle by spin.animateFloat(
-                initialValue = 0f,
-                targetValue = 360f,
-                animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
-                label = "angle",
-            )
-            animatedAngle
-        } else {
-            0f
-        }
-        IconButton(
-            onClick = onRefresh,
-            modifier = Modifier.size(48.dp),
-        ) {
-            if (isPhosphorVista) PhosphorIcon(
-                R.drawable.ph_arrow_clockwise, if (loading) "正在刷新" else "刷新",
-                Modifier.size(20.dp).rotate(if (loading) angle else 0f),
-                if (loading) ZhishengMint else ZhishengTextSecondary,
-            ) else Icon(
-                Icons.Filled.Refresh,
-                contentDescription = if (loading) "正在刷新" else "刷新",
-                tint = if (loading) ZhishengMint else ZhishengOrange,
-                modifier = Modifier.size(20.dp).rotate(if (loading) angle else 0f),
-            )
-        }
-        // 唯一的设置入口：新版设置页，齿轮图标。
-        LocalMochiSettingsEntry.current?.let { onMochiSettings ->
-            IconButton(
-                onClick = onMochiSettings,
-                modifier = Modifier.size(48.dp),
-            ) {
-                if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, "设置", Modifier.size(20.dp), ZhishengMint)
-                else Icon(Icons.Filled.Settings, contentDescription = "设置", tint = ZhishengMint, modifier = Modifier.size(20.dp))
-            }
+    val (title, address) = if (isPhosphorVista) vistaLocationHeading(cityName) else cityName to ""
+    Column(modifier) {
+        MochiTitleBar(
+            title = title,
+            subtitle = address.takeIf(String::isNotEmpty),
+            navigationIcon = {
+                IconButton(onClick = onMenu, modifier = Modifier.size(44.dp)) {
+                    if (isPhosphorVista) PhosphorIcon(R.drawable.ph_list, "城市列表", Modifier.size(22.dp), ZhishengTextSecondary)
+                    else Icon(Icons.Filled.Menu, contentDescription = "城市列表", tint = ZhishengTextSecondary, modifier = Modifier.size(22.dp))
+                }
+            },
+            actions = {
+                // 刷新中持续旋转：原来是静态 360f，视觉上等于没转（v0.0.2）
+                val angle = if (loading && LocalCityPageMotionRunning.current) {
+                    val spin = rememberInfiniteTransition(label = "spin")
+                    val animatedAngle by spin.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 360f,
+                        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+                        label = "angle",
+                    )
+                    animatedAngle
+                } else {
+                    0f
+                }
+                IconButton(onClick = onRefresh, modifier = Modifier.size(44.dp)) {
+                    if (isPhosphorVista) PhosphorIcon(
+                        R.drawable.ph_arrow_clockwise, if (loading) "正在刷新" else "刷新",
+                        Modifier.size(20.dp).rotate(if (loading) angle else 0f),
+                        if (loading) ZhishengMint else ZhishengTextSecondary,
+                    ) else Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = if (loading) "正在刷新" else "刷新",
+                        tint = if (loading) ZhishengMint else ZhishengOrange,
+                        modifier = Modifier.size(20.dp).rotate(if (loading) angle else 0f),
+                    )
+                }
+                // 唯一的设置入口：新版设置页，齿轮图标。
+                LocalMochiSettingsEntry.current?.let { onMochiSettings ->
+                    IconButton(onClick = onMochiSettings, modifier = Modifier.size(44.dp)) {
+                        if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, "设置", Modifier.size(20.dp), ZhishengMint)
+                        else Icon(Icons.Filled.Settings, contentDescription = "设置", tint = ZhishengMint, modifier = Modifier.size(20.dp))
+                    }
+                }
+            },
+            // 天空由底层动画画，栏自己不铺底色，只叠库的滚动边缘渐隐。
+            background = Color.Transparent,
+        )
+        if (indicator != null) {
+            Box(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.Center) { indicator() }
         }
     }
 }
