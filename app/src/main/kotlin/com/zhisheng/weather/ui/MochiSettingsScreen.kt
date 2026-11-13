@@ -38,6 +38,7 @@ import com.zhisheng.weather.ui.notice.NoticePage
 import com.zhisheng.weather.data.AppIconManager
 import com.zhisheng.weather.data.AppIconStyle
 import com.zhisheng.weather.data.AmbienceLevel
+import com.zhisheng.weather.data.CityManagerStyle
 import com.zhisheng.weather.data.HomeBriefingStyle
 import com.zhisheng.weather.data.HomeModule
 import com.zhisheng.weather.data.InterfaceStyle
@@ -148,6 +149,9 @@ fun MochiSettingsScreen(
     val landscapeStandby by SettingsRepository.landscapeStandby.collectAsState(initial = true)
     val landscapeStandbyStyle by SettingsRepository.landscapeStandbyStyle.collectAsState(
         initial = LandscapeStandbyStyle.WEATHER_CORE,
+    )
+    val cityManagerStyle by SettingsRepository.cityManagerStyle.collectAsState(
+        initial = CityManagerStyle.SIDEBAR,
     )
     val telemetryMetrics by SettingsRepository.telemetryMetrics.collectAsState(initial = TelemetryMetric.defaultSelection)
     val lifeIndexMetrics by SettingsRepository.lifeIndexMetrics.collectAsState(initial = LifeIndexMetric.defaultSelection)
@@ -324,6 +328,7 @@ fun MochiSettingsScreen(
                                 landscapeStandby = landscapeStandby,
                                 standbyBurnInProtection = standbyBurnInProtection,
                                 landscapeStandbyStyle = landscapeStandbyStyle,
+                                cityManagerStyle = cityManagerStyle,
                                 appIconStyle = appIconStyle, keepScreenOn = keepScreenOn,
                                 developerMode = developerMode,
                                 graphicsLevel = uiPrefs.graphicsLevel,
@@ -337,6 +342,7 @@ fun MochiSettingsScreen(
                                 onLandscapeStandby = { scope.launch { SettingsRepository.setLandscapeStandby(it) } },
                                 onBurnIn = { scope.launch { SettingsRepository.setStandbyBurnInProtection(it) } },
                                 onLandscapeStyle = { scope.launch { SettingsRepository.setLandscapeStandbyStyle(LandscapeStandbyStyle.from(it)) } },
+                                onCityManagerStyle = { scope.launch { SettingsRepository.setCityManagerStyle(CityManagerStyle.from(it)) } },
                                 onKeepScreenOn = { scope.launch { SettingsRepository.setKeepScreenOn(it) } },
                                 onAtmosphereLab = { openSettingsPage("settings.atmosphere") },
                                 onGraphicsLevel = { scope.launch { SettingsRepository.setMochiGraphicsLevel(it) } },
@@ -820,13 +826,15 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
     accentTone: AccentTone, softGlow: Boolean, softGlowLevel: SoftGlowLevel,
     ambience: AmbienceLevel, livingSky: Boolean, scanlines: Boolean,
     landscapeStandby: Boolean, standbyBurnInProtection: Boolean,
-    landscapeStandbyStyle: LandscapeStandbyStyle, appIconStyle: AppIconStyle, keepScreenOn: Boolean,
+    landscapeStandbyStyle: LandscapeStandbyStyle, cityManagerStyle: CityManagerStyle,
+    appIconStyle: AppIconStyle, keepScreenOn: Boolean,
     developerMode: Boolean, graphicsLevel: String, gel: Float,
     onInterfaceStyle: (String) -> Unit,
     onAccentTone: (String) -> Unit, onSoftGlow: (Boolean) -> Unit,
     onSoftGlowLevel: (String) -> Unit, onAmbience: (String) -> Unit, onLivingSky: (Boolean) -> Unit,
     onScanlines: (Boolean) -> Unit, onLandscapeStandby: (Boolean) -> Unit, onBurnIn: (Boolean) -> Unit,
-    onLandscapeStyle: (String) -> Unit, onKeepScreenOn: (Boolean) -> Unit,
+    onLandscapeStyle: (String) -> Unit, onCityManagerStyle: (String) -> Unit,
+    onKeepScreenOn: (Boolean) -> Unit,
     onAtmosphereLab: () -> Unit, onGraphicsLevel: (String) -> Unit,
     onGel: (Float) -> Unit, onAppIcon: () -> Unit, onPush: (String) -> Unit,
     glassOn: Boolean,
@@ -934,6 +942,18 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
                 title = "应用转场与侧推",
                 subtitle = "页面切换动画、打开应用式转场、预测性返回与下层页缩放",
                 onPush = onPush,
+            )
+        }
+    }
+    item {
+        MochiListSection(header = "城市管理页面") {
+            MochiChoiceRow(
+                "页面样式",
+                listOf("侧边栏" to "sidebar", "独立页面" to "page"),
+                cityManagerStyle.key,
+                if (cityManagerStyle == CityManagerStyle.SIDEBAR) "从首页边缘滑出城市列表，不离开当前天气页"
+                else "整屏打开城市列表，选中城市后回到天气页",
+                onCityManagerStyle,
             )
         }
     }

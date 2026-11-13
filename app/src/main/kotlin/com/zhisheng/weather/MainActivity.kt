@@ -85,6 +85,7 @@ import com.zhisheng.weather.ui.WeatherViewModel
 import com.zhisheng.weather.ui.ProvideWeatherPresentationClock
 import com.zhisheng.weather.ui.weatherPresentationTime
 import com.zhisheng.weather.ui.home.HomeScreen
+import com.zhisheng.weather.ui.home.CityManagerScreen
 import com.zhisheng.weather.ui.MochiSettingsScreen
 import com.zhisheng.weather.ui.LocalMochiSettingsEntry
 import com.zhisheng.weather.ui.MochiPrecipitationDetailScreen
@@ -617,6 +618,7 @@ class MainActivity : ComponentActivity() {
                                     onAirQualityClick = { screen = AppScreen.AIR_QUALITY },
                                     onYesterdayClick = { screen = AppScreen.YESTERDAY_DETAIL },
                                     onFeatureHubClick = { screen = AppScreen.FEATURES },
+                                    onCityManagerClick = { screen = AppScreen.CITY_MANAGER },
                                 )
                             }
                                     AppScreen.MOCHI_SETTINGS -> Box(Modifier.fillMaxSize()) {
@@ -712,6 +714,26 @@ class MainActivity : ComponentActivity() {
                                         latitude = uiState.selectedCity?.latitude ?: 0.0,
                                         longitude = uiState.selectedCity?.longitude ?: 0.0,
                                         onBack = { returnHome() },
+                                    )
+                                    AppScreen.CITY_MANAGER -> CityManagerScreen(
+                                        uiState = uiState,
+                                        onBack = { returnHome() },
+                                        onSelect = { key ->
+                                            vm.selectCity(key)
+                                            returnHome()
+                                        },
+                                        onToggleFavorite = { key -> vm.toggleCityFavorite(key) },
+                                        onRemove = { key -> vm.removeCity(key) },
+                                        onLocate = { vm.locateCurrentCity() },
+                                        onClearLocateMessage = { vm.clearLocateMessage() },
+                                        onAddCity = {
+                                            if (initialLocationSetupRequired == true) {
+                                                choosingInitialCity = true
+                                                locationSetupDismissedForSession = true
+                                                markInitialLocationHandled()
+                                            }
+                                            screen = AppScreen.SEARCH
+                                        },
                                     )
                                     AppScreen.YESTERDAY_DETAIL -> com.zhisheng.weather.ui.YesterdayDetailScreen(
                                         yesterday = uiState.weather?.yesterday,

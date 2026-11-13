@@ -10,18 +10,14 @@ import com.zhisheng.weather.ui.hasDrySkyWindow
 import com.zhisheng.weather.ui.game.SkyBirdBadge
 import com.zhisheng.weather.ui.game.SkyBirdGameDialog
 import com.zhisheng.weather.data.HomeSurfaceStyle
+import com.zhisheng.weather.data.CityManagerStyle
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.lifecycle.repeatOnLifecycle
 
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -48,9 +44,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.foundation.layout.FlowRow
 import com.zhisheng.weather.ui.components.cityScopedSharedBounds
@@ -171,12 +172,9 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -213,7 +211,6 @@ import com.zhisheng.weather.R
 import com.zhisheng.weather.data.HomeModule
 import com.zhisheng.weather.data.HomeBriefingStyle
 import com.zhisheng.weather.data.LifeIndexMetric
-import com.zhisheng.weather.data.LocationSource
 import com.zhisheng.weather.data.SettingsRepository
 import com.zhisheng.weather.data.TelemetryMetric
 import com.zhisheng.weather.ui.Fmt
@@ -265,6 +262,10 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.compose.runtime.compositionLocalOf
 import ui.feice.mochi.basic.MochiSheetDetent
+import ui.feice.mochi.basic.MochiCarousel
+import ui.feice.mochi.basic.MochiPageControl
+import ui.feice.mochi.basic.MochiPageControlColors
+import ui.feice.mochi.basic.MochiPageControlDefaults
 import ui.feice.mochi.basic.MochiSheetState
 import ui.feice.mochi.basic.MochiSkeleton
 import ui.feice.mochi.basic.mochiSheetBackdrop
@@ -349,10 +350,18 @@ fun HomeScreen(
     onAirQualityClick: () -> Unit = {},
     onYesterdayClick: () -> Unit = {},
     onFeatureHubClick: () -> Unit = {},
+    onCityManagerClick: () -> Unit = {},
     dismissCitiesRequest: Int = 0,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val sidebar = rememberMochiSidebarState()
+    // 城市管理入口可切换为独立页面；侧边栏模式下沿用手势与抽屉。
+    val cityManagerStyle by SettingsRepository.cityManagerStyle.collectAsState(
+        initial = CityManagerStyle.SIDEBAR,
+    )
+    val openCityManager: () -> Unit = {
+        if (cityManagerStyle == CityManagerStyle.PAGE) onCityManagerClick() else sidebar.open()
+    }
     LaunchedEffect(dismissCitiesRequest) {
         if (dismissCitiesRequest > 0) sidebar.close()
     }
@@ -361,9 +370,6 @@ fun HomeScreen(
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     var cityDeckVisible by remember { mutableStateOf(false) }
-    var cityDeckStart by remember { mutableIntStateOf(0) }
-    var cityDeckPosition by remember { mutableFloatStateOf(0f) }
-    var cityDeckDrag by remember { mutableFloatStateOf(0f) }
     var cityDeckVerticalDrag by remember { mutableFloatStateOf(0f) }
     var cityDeckPinned by remember { mutableStateOf(false) }
     var cityDeckExpansion by remember { mutableFloatStateOf(0f) }
@@ -376,6 +382,13 @@ fun HomeScreen(
     val selectedCityIndex = uiState.cities.indexOfFirst {
         it.locationKey == uiState.selectedCity?.locationKey
     }.coerceAtLeast(0)
+    // 卡组轮播与底部指示器共享同一份分页状态；展开或城市列表变化时同步到当前选中城市。
+    val deckPagerState = rememberPagerState(initialPage = selectedCityIndex) { uiState.cities.size }
+    LaunchedEffect(cityDeckVisible, uiState.cities.size) {
+        if (cityDeckVisible) {
+            deckPagerState.scrollToPage(selectedCityIndex.coerceIn(0, (uiState.cities.size - 1).coerceAtLeast(0)))
+        }
+    }
 
     LaunchedEffect(uiState.selectedCity?.locationKey) {
         weatherContentScrolling = false
@@ -450,7 +463,7 @@ fun HomeScreen(
     MochiSidebarLayout(
         state = sidebar,
         style = MochiSidebarStyle.Push,
-        swipeToOpen = true,
+        swipeToOpen = cityManagerStyle == CityManagerStyle.SIDEBAR,
         sidebar = {
             CityDrawer(
                 uiState = uiState,
@@ -487,7 +500,7 @@ fun HomeScreen(
             Box(Modifier.fillMaxSize()) {
                 if (uiState.cities.isEmpty()) {
                     Column(Modifier.fillMaxSize()) {
-                        TopBar("枳生天气", uiState.loading, { sidebar.open() },
+                        TopBar("枳生天气", uiState.loading, openCityManager,
                             viewModel::refreshFromUser, onSettingsClick)
                         if (uiState.citiesLoaded) EmptyState(onSearchClick, onLocationSetupClick) else BootState()
                     }
@@ -499,7 +512,7 @@ fun HomeScreen(
                     onPaging = { cityPaging = it },
                     onPagerReady = { cityPager = it },
                     overlay = { pager -> CitySharedChromeHost(sharedChrome, uiState.cities, pager, uiState,
-                        { sidebar.open() }, viewModel::refreshFromUser, onSettingsClick,
+                        { openCityManager() }, viewModel::refreshFromUser, onSettingsClick,
                         scrollEnabled = ambienceActive && !cityDeckVisible && !sidebar.isOpen) },
                     modifier = Modifier.fillMaxSize(),
                 ) { city, pager ->
@@ -527,7 +540,7 @@ fun HomeScreen(
                             scrollToTopRequest = scrollToTopRequest,
                             onScrolling = { weatherContentScrolling = it },
                             onParallax = { ambienceParallax.floatValue = it },
-                            onMenu = { sidebar.open() },
+                            onMenu = { openCityManager() },
                             onRefresh = { if (selected && !pager.isScrollInProgress) viewModel.refreshFromUser() },
                             onSettings = onSettingsClick,
                             indicator = { CityPageIndicator(uiState.cities, city, pager) },
@@ -548,19 +561,9 @@ fun HomeScreen(
                 visible = cityDeckVisible,
                 pinned = cityDeckPinned,
                 cities = uiState.cities,
-                position = cityDeckPosition,
                 expansion = cityDeckExpansion,
-                onPinnedDrag = { dragX ->
-                    // 卡组展开后降低位移阻力；卡片自身仍用弹簧追随，保留一点硬件惯性。
-                    val stepPx = with(density) { 72.dp.toPx() }
-                    cityDeckPosition = clampCityDeckPosition(
-                        cityDeckPosition - dragX / stepPx,
-                        uiState.cities.size,
-                    )
-                },
-                onPinnedDragEnd = {
-                    cityDeckPosition = cityDeckPosition.roundToInt().toFloat()
-                },
+                pagerState = deckPagerState,
+                chrome = sharedChrome,
                 onSelect = { key ->
                     cityDeckVisible = false
                     cityDeckPinned = false
@@ -579,8 +582,12 @@ fun HomeScreen(
                 scrolling = weatherContentScrolling && !cityDeckVisible,
                 // 只有一个城市时没有可切换目标，隐藏底部「长按」胶囊。
                 enabled = uiState.cities.size > 1,
+                deckVisible = cityDeckVisible,
+                pagerState = deckPagerState,
+                pageCount = uiState.cities.size,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .zIndex(30f)
                     .navigationBarsPadding()
                     .padding(bottom = 14.dp)
                     .pointerInput(uiState.selectedCity?.locationKey) {
@@ -600,15 +607,13 @@ fun HomeScreen(
                     }
                     .pointerInput(uiState.cities, uiState.selectedCity?.locationKey, uiState.cities.size > 1) {
                         if (uiState.cities.size <= 1) return@pointerInput
-                        val stepPx = with(density) { 78.dp.toPx() }
                         val pinThresholdPx = with(density) { 156.dp.toPx() }
                         var pinnedThisGesture = false
+                        var horizontalAccum = 0f
                         detectDragGesturesAfterLongPress(
                             onDragStart = {
-                                cityDeckStart = selectedCityIndex
-                                cityDeckPosition = selectedCityIndex.toFloat()
-                                cityDeckDrag = 0f
                                 cityDeckVerticalDrag = 0f
+                                horizontalAccum = 0f
                                 cityDeckPinned = false
                                 cityDeckExpansion = 0f
                                 pinnedThisGesture = false
@@ -619,16 +624,15 @@ fun HomeScreen(
                             },
                             onDrag = { change, dragAmount ->
                                 change.consume()
-                                cityDeckDrag += dragAmount.x
                                 cityDeckVerticalDrag += dragAmount.y
-                                cityDeckPosition = clampCityDeckPosition(
-                                    cityDeckStart - cityDeckDrag / stepPx,
-                                    uiState.cities.size,
-                                )
+                                horizontalAccum += dragAmount.x
                                 if (!pinnedThisGesture) {
+                                    // 手指不松开期间的横向拖动实时桥接给轮播状态：
+                                    // 上方卡片与下方指示点同步滚动。
+                                    scope.launch { deckPagerState.dispatchRawDelta(-dragAmount.x) }
                                     cityDeckExpansion = (-cityDeckVerticalDrag / pinThresholdPx)
                                         .coerceIn(0f, 0.76f)
-                                    val upwardIntent = -cityDeckVerticalDrag >= abs(cityDeckDrag) * 1.10f
+                                    val upwardIntent = -cityDeckVerticalDrag >= abs(horizontalAccum) * 1.10f
                                     if (cityDeckVerticalDrag <= -pinThresholdPx && upwardIntent) {
                                         pinnedThisGesture = true
                                         cityDeckVisible = true
@@ -639,11 +643,10 @@ fun HomeScreen(
                                 }
                             },
                             onDragEnd = {
-                                cityDeckPosition = cityDeckPosition.roundToInt().toFloat()
                                 if (!pinnedThisGesture) {
-                                    val targetKey = uiState.cities
-                                        .getOrNull(cityDeckPosition.roundToInt())
-                                        ?.locationKey
+                                    val target = (deckPagerState.currentPage + deckPagerState.currentPageOffsetFraction)
+                                        .roundToInt().coerceIn(0, (uiState.cities.size - 1).coerceAtLeast(0))
+                                    val targetKey = uiState.cities.getOrNull(target)?.locationKey
                                     cityDeckVisible = false
                                     cityDeckPinned = false
                                     cityDeckExpansion = 0f
@@ -874,6 +877,9 @@ internal fun CityTouchSensor(
     active: Boolean,
     scrolling: Boolean,
     enabled: Boolean,
+    deckVisible: Boolean = false,
+    pagerState: PagerState? = null,
+    pageCount: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalZhishengPalette.current
@@ -887,11 +893,16 @@ internal fun CityTouchSensor(
     }
     val depth by animateFloatAsState(if (active) 1.08f else 1f,
         spring(dampingRatio = 0.72f, stiffness = 420f), label = "city-hold-depth")
+    // 卡组展开时，长按胶囊原地变成页面指示器；收起后恢复胶囊。
+    val showPageControl = deckVisible && pagerState != null
+    val anchorWidth = if (showPageControl) {
+        MochiPageControlDefaults.Pitch * minOf(pageCount, MochiPageControlDefaults.MaxVisible) + 16.dp
+    } else 92.dp
     Box(
-        modifier.zIndex(30f).width(92.dp).height(48.dp)
+        modifier.width(anchorWidth).height(48.dp)
             .graphicsLayer {
                 scaleX = depth; scaleY = 1f / depth
-                alpha = if (enabled) visibility.value else 0f
+                alpha = if (enabled) (if (deckVisible) 1f else visibility.value) else 0f
                 translationY = (1f - visibility.value) * 5.dp.toPx()
             }
             .semantics {
@@ -900,25 +911,51 @@ internal fun CityTouchSensor(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier.height(30.dp).width(68.dp).clip(RoundedCornerShape(50))
-                .background(Brush.verticalGradient(listOf(
-                    palette.surface.copy(alpha = 0.94f), palette.surface.copy(alpha = 0.76f))))
-                .vistaSoftGlow(panel = true)
-                .border(0.75.dp, Brush.verticalGradient(listOf(
-                    Color.White.copy(alpha = if (palette.isLight) 0.96f else 0.32f),
-                    palette.mint.copy(alpha = 0.20f),
-                    palette.cardBorder.copy(alpha = 0.42f))), RoundedCornerShape(50))
-                .drawBehind {
-                    drawLine(palette.mint.copy(alpha = if (active) 0.7f else 0.28f),
-                        Offset(size.width * 0.40f, size.height - 4.dp.toPx()),
-                        Offset(size.width * 0.60f, size.height - 4.dp.toPx()),
-                        1.dp.toPx(), StrokeCap.Round)
-                }.padding(bottom = 2.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("长按", color = palette.textSecondary, fontSize = 11.sp,
-                fontWeight = FontWeight.Medium, letterSpacing = 1.sp, maxLines = 1)
+        AnimatedContent(
+            targetState = showPageControl,
+            transitionSpec = {
+                androidx.compose.animation.fadeIn(tween(160)) +
+                    androidx.compose.animation.scaleIn(
+                        androidx.compose.animation.core.tween(160), initialScale = 0.82f,
+                    ) togetherWith
+                    androidx.compose.animation.fadeOut(tween(120)) +
+                    androidx.compose.animation.scaleOut(
+                        androidx.compose.animation.core.tween(120), targetScale = 0.82f,
+                    )
+            },
+            label = "city-deck-anchor",
+        ) { pageControl ->
+            if (pageControl && pagerState != null) {
+                MochiPageControl(
+                    state = pagerState,
+                    colors = MochiPageControlColors(
+                        active = palette.text,
+                        inactive = palette.text.copy(alpha = 0.25f),
+                        track = palette.surface.copy(alpha = 0.92f),
+                    ),
+                )
+            } else {
+                Box(
+                    Modifier.height(30.dp).width(68.dp).clip(RoundedCornerShape(50))
+                        .background(Brush.verticalGradient(listOf(
+                            palette.surface.copy(alpha = 0.94f), palette.surface.copy(alpha = 0.76f))))
+                        .vistaSoftGlow(panel = true)
+                        .border(0.75.dp, Brush.verticalGradient(listOf(
+                            Color.White.copy(alpha = if (palette.isLight) 0.96f else 0.32f),
+                            palette.mint.copy(alpha = 0.20f),
+                            palette.cardBorder.copy(alpha = 0.42f))), RoundedCornerShape(50))
+                        .drawBehind {
+                            drawLine(palette.mint.copy(alpha = if (active) 0.7f else 0.28f),
+                                Offset(size.width * 0.40f, size.height - 4.dp.toPx()),
+                                Offset(size.width * 0.60f, size.height - 4.dp.toPx()),
+                                1.dp.toPx(), StrokeCap.Round)
+                        }.padding(bottom = 2.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("长按", color = palette.textSecondary, fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium, letterSpacing = 1.sp, maxLines = 1)
+                }
+            }
         }
     }
 }
@@ -928,10 +965,9 @@ internal fun CityDeckOverlay(
     visible: Boolean,
     pinned: Boolean,
     cities: List<com.zhisheng.weather.model.City>,
-    position: Float,
     expansion: Float,
-    onPinnedDrag: (Float) -> Unit,
-    onPinnedDragEnd: () -> Unit,
+    pagerState: PagerState,
+    chrome: CitySharedChromeState? = null,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
     outline: @Composable (com.zhisheng.weather.model.City, Modifier) -> Unit = { city, modifier ->
@@ -939,49 +975,20 @@ internal fun CityDeckOverlay(
     },
 ) {
     val vista = isPhosphorVista
-    val expanded by animateFloatAsState(
-        targetValue = if (pinned) 1f else expansion,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
-        label = "city-deck-expansion",
-    )
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.96f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.5f, 1f), animationSpec = tween(220)),
         exit = fadeOut(tween(140)) + scaleOut(targetScale = 0.96f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.5f, 1f), animationSpec = tween(180)),
         modifier = Modifier.fillMaxSize().zIndex(20f),
     ) {
-        val preview = androidx.compose.ui.platform.LocalInspectionMode.current
-        var dealt by remember { mutableStateOf(preview) }
-        val edgeGlowTransition = rememberInfiniteTransition(label = "city-card-edge-glow")
-        val edgeGlowPulse by edgeGlowTransition.animateFloat(
-            initialValue = 0.72f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1_250, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "city-card-edge-pulse",
-        )
-        LaunchedEffect(Unit) {
-            delay(18)
-            dealt = true
-        }
-        val selected = position.roundToInt().coerceIn(0, cities.lastIndex.coerceAtLeast(0))
+        val selected = pagerState.currentPage
         Column(
             modifier = Modifier.fillMaxSize()
                 .background(ZhishengBg.copy(alpha = if (vista) 1f else 0.94f))
                 .vistaSoftGlow()
-                .pointerInput(pinned, cities.size) {
-                    if (pinned) {
-                        detectDragGestures(
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                onPinnedDrag(dragAmount.x)
-                            },
-                            onDragEnd = onPinnedDragEnd,
-                            onDragCancel = onPinnedDragEnd,
-                        )
-                    }
+                .pointerInput(pinned) {
+                    // 固定态点空白遮罩关闭；卡片自身的 clickable 优先消费点按。
+                    if (pinned) detectTapGestures(onTap = { onDismiss() })
                 }
                 .statusBarsPadding()
                 .navigationBarsPadding()
@@ -1014,178 +1021,113 @@ internal fun CityDeckOverlay(
             }
             Spacer(Modifier.height(18.dp))
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                val spacing = with(LocalDensity.current) { (82f + 42f * expanded).dp.toPx() }
-                cities.forEachIndexed { index, city ->
-                    val relative = index - position
-                    val distance = abs(relative)
-                    if (distance <= 4.2f) {
-                        val targetX = if (dealt) relative * spacing else 0f
-                        val fanRotation = if (vista) 2.4f - 2f * expanded else 6.2f - 5f * expanded
-                        val distanceScale = 0.075f - 0.025f * expanded
-                        val targetRotation = if (dealt) relative.coerceIn(-3f, 3f) * -fanRotation else 0f
-                        val targetScale = if (dealt) (1f - distance * distanceScale).coerceAtLeast(0.78f) else 0.88f
-                        val x by animateFloatAsState(
-                            targetX,
-                            spring(
-                                dampingRatio = if (pinned) 0.78f else 0.82f,
-                                stiffness = if (pinned) Spring.StiffnessMedium else Spring.StiffnessMediumLow,
-                            ),
-                            label = "city-card-x-$index",
-                        )
-                        val rotation by animateFloatAsState(
-                            targetRotation,
-                            spring(
-                                dampingRatio = if (pinned) 0.76f else 0.78f,
-                                stiffness = if (pinned) Spring.StiffnessMedium else Spring.StiffnessMediumLow,
-                            ),
-                            label = "city-card-r-$index",
-                        )
-                        val scale by animateFloatAsState(
-                            targetScale,
-                            spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium),
-                            label = "city-card-s-$index",
-                        )
-                        val focused = index == selected
-                        val cardShape = RoundedCornerShape(if (vista) 22.dp else 18.dp)
-                        val cardGlow = if (focused) ZhishengCyan else ZhishengMint
-                        val cardAlpha = (1f - distance * 0.14f).coerceAtLeast(0.38f)
-                        val tiltY = relative.coerceIn(-2f, 2f) * (-4f + 3f * expanded)
-                        val borderWidth = if (focused && !vista) 2.dp else 1.dp
-                        val borderColor = if (vista) {
-                            if (focused) ZhishengCyan.copy(alpha = 0.35f) else ZhishengCardBorder.copy(alpha = 0.45f)
-                        } else if (focused) ZhishengCyan else ZhishengCardBorder
-                        val innerShape = RoundedCornerShape((if (vista) 22.dp else 18.dp) - borderWidth)
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .zIndex(10f - distance)
-                                .width(236.dp)
-                                .height(if (vista) 350.dp else 306.dp),
-                        ) {
-                            if (focused && !vista) {
-                                // 放大后的实心圆角层当光晕：旋转时跟卡片同一套 outline clip，避免细线边框阶梯锯齿。
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer {
-                                            cityCardLayer(
-                                                x = x,
-                                                rotation = rotation,
-                                                scaleXValue = scale * 1.045f,
-                                                scaleYValue = scale * 1.034f,
-                                                alphaValue = edgeGlowPulse * cardAlpha,
-                                                tiltY = tiltY,
-                                                shape = cardShape,
-                                            )
-                                        }
-                                        .background(ZhishengCyan.copy(alpha = 0.09f), cardShape),
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer {
-                                            cityCardLayer(
-                                                x = x,
-                                                rotation = rotation,
-                                                scaleXValue = scale * 1.022f,
-                                                scaleYValue = scale * 1.017f,
-                                                alphaValue = edgeGlowPulse * cardAlpha,
-                                                tiltY = tiltY,
-                                                shape = cardShape,
-                                            )
-                                        }
-                                        .background(ZhishengCyan.copy(alpha = 0.16f), cardShape),
-                                )
-                            }
-                            Column(
-                                modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    cityCardLayer(
-                                        x = x,
-                                        rotation = rotation,
-                                        scaleXValue = scale,
-                                        scaleYValue = scale,
-                                        alphaValue = cardAlpha,
-                                        tiltY = tiltY,
-                                        shape = cardShape,
-                                    )
-                                    shadowElevation = (if (vista) { if (focused) 8.dp else 2.dp } else if (focused) 24.dp else 8.dp).toPx()
-                                    ambientShadowColor = cardGlow.copy(alpha = if (vista) 0.08f else if (focused) 0.30f else 0.08f)
-                                    spotShadowColor = cardGlow.copy(alpha = if (vista) 0.06f else if (focused) 0.22f else 0.05f)
-                                }
-                                .background(borderColor)
-                                .padding(borderWidth)
-                                .clip(innerShape)
-                                .background(ZhishengSurface)
-                                .vistaSoftGlow(panel = true)
-                                .clickable(
-                                    enabled = pinned,
-                                    role = Role.Button,
-                                    onClickLabel = "切换到${city.displayName}",
-                                ) { onSelect(city.locationKey) }
-                                .padding(18.dp),
-                            ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    if (vista) "城市 %02d".format(index + 1) else "CARD %02d".format(index + 1),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (focused) ZhishengCyan else ZhishengTextTertiary,
-                                    letterSpacing = 1.sp,
-                                )
-                                Spacer(Modifier.weight(1f))
-                                Box(
-                                    Modifier.size(8.dp)
-                                        .background(if (focused) ZhishengMint else ZhishengCardBorder, RoundedCornerShape(4.dp)),
-                                )
-                            }
-                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                outline(city, Modifier.fillMaxSize().padding(4.dp))
-                            }
+                // 卡片几何、缩放与透明度过渡统一交给 MochiCarousel；关闭其自带指示器，
+                // 指示器由底部锚点处的 MochiPageControl 承担。
+                MochiCarousel(
+                    pageCount = cities.size,
+                    height = if (vista) 350.dp else 306.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                    state = pagerState,
+                    cornerRadius = if (vista) 22.dp else 18.dp,
+                    showPageControl = false,
+                ) { page ->
+                    val city = cities[page]
+                    val focused = page == selected
+                    Column(
+                        Modifier.fillMaxSize()
+                            .background(ZhishengSurface)
+                            .vistaSoftGlow(panel = true)
+                            .clickable(
+                                enabled = pinned,
+                                role = Role.Button,
+                                onClickLabel = "切换到${city.displayName}",
+                            ) { onSelect(city.locationKey) }
+                            .padding(18.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                city.name,
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = if (vista) ZhishengText else if (focused) ZhishengMint else ZhishengText,
-                                fontWeight = FontWeight.Bold,
+                                if (vista) "城市 %02d".format(page + 1) else "CARD %02d".format(page + 1),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (focused) ZhishengCyan else ZhishengTextTertiary,
+                                letterSpacing = 1.sp,
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Box(
+                                Modifier.size(8.dp)
+                                    .background(if (focused) ZhishengMint else ZhishengCardBorder, RoundedCornerShape(4.dp)),
+                            )
+                        }
+                        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            outline(city, Modifier.fillMaxSize().padding(4.dp))
+                        }
+                        Text(
+                            city.name,
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = if (vista) ZhishengText else if (focused) ZhishengMint else ZhishengText,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (city.contextLabel.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                city.contextLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ZhishengTextSecondary,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            if (city.contextLabel.isNotBlank()) {
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    city.contextLabel,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = ZhishengTextSecondary,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Spacer(Modifier.height(18.dp))
-                            HorizontalDivider(color = if (focused) ZhishengCyan.copy(alpha = 0.45f) else ZhishengCardBorder)
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                Fmt.coordinates(city.latitude, city.longitude),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ZhishengTextTertiary,
-                                letterSpacing = 1.sp,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                when {
-                                    vista && pinned && focused -> "点按切换"
-                                    vista && pinned -> "可选择"
-                                    vista && focused -> "松手切换"
-                                    vista -> "待选"
-                                    pinned && focused -> "// TAP TO SWITCH"
-                                    pinned -> "// SELECTABLE"
-                                    focused -> "// RELEASE TO SWITCH"
-                                    else -> "// STANDBY"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (focused) ZhishengOrange else ZhishengTextTertiary,
-                            )
-                            }
                         }
+                        Spacer(Modifier.height(10.dp))
+                        // 温度与天气图标：取共享 chrome 层里该城市的最新快照，无数据时不阻塞卡组。
+                        val current = chrome?.entries?.get(city.locationKey)?.data?.current
+                        if (current != null && current.temperature != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val iconRes = com.zhisheng.weather.model.conditionIconRes(current.condition)
+                                if (iconRes != null) {
+                                    Image(
+                                        painter = painterResource(iconRes),
+                                        contentDescription = current.weatherText,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(
+                                    "${current.temperature.roundToInt()}°",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = ZhishengText,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                current.weatherText?.let {
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(it, style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary, maxLines = 1)
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        HorizontalDivider(color = if (focused) ZhishengCyan.copy(alpha = 0.45f) else ZhishengCardBorder)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            Fmt.coordinates(city.latitude, city.longitude),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ZhishengTextTertiary,
+                            letterSpacing = 1.sp,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            when {
+                                vista && pinned && focused -> "点按切换"
+                                vista && pinned -> "可选择"
+                                vista && focused -> "松手切换"
+                                vista -> "待选"
+                                pinned && focused -> "// TAP TO SWITCH"
+                                pinned -> "// SELECTABLE"
+                                focused -> "// RELEASE TO SWITCH"
+                                else -> "// STANDBY"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (focused) ZhishengOrange else ZhishengTextTertiary,
+                        )
                     }
                 }
             }
@@ -5102,42 +5044,6 @@ private fun CityDrawer(
     onClearLocateMessage: () -> Unit,
     onAddCity: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val preciseEnabled by SettingsRepository.preciseLocationEnabled.collectAsState(initial = true)
-    val precisePermissionAsked by SettingsRepository.preciseLocationPermissionAsked.collectAsState(initial = false)
-    var permissionDenied by rememberSaveable { mutableStateOf(false) }
-    var locationServicesOff by rememberSaveable { mutableStateOf(false) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        if (permissionDenied && LocationSource.hasPermission(context)) permissionDenied = false
-        if (locationServicesOff && LocationSource.locationEnabledOnDevice(context)) locationServicesOff = false
-    }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) {
-        scope.launch {
-            SettingsRepository.setPreciseLocationPermissionAsked()
-            if (LocationSource.hasPermission(context)) {
-                permissionDenied = false
-                onLocate()
-            } else {
-                permissionDenied = true
-            }
-        }
-    }
-    val requestPreciseLocation = {
-        onClearLocateMessage()
-        permissionDenied = false
-        locationServicesOff = !LocationSource.locationEnabledOnDevice(context)
-        if (!locationServicesOff) {
-            scope.launch {
-                val canLocate = LocationSource.hasPermission(context) &&
-                    (!preciseEnabled || LocationSource.hasPrecisePermission(context) || precisePermissionAsked)
-                if (canLocate) onLocate()
-                else permissionLauncher.launch(LocationSource.requestedPermissions(precise = preciseEnabled))
-            }
-        }
-    }
     var query by rememberSaveable { mutableStateOf("") }
     val filtered = remember(uiState, query) {
         val keyword = query.trim()
@@ -5244,100 +5150,13 @@ private fun CityDrawer(
         }
         }
         // 操作区独立吃掉系统导航栏和额外底部余量；列表再长、屏幕再矮也只压缩中间列表。
-        Column(
+        CityLocateActions(
+            uiState = uiState,
+            onLocate = onLocate,
+            onClearLocateMessage = onClearLocateMessage,
+            onAddCity = onAddCity,
             modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(top = 8.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val feedback = when {
-                permissionDenied -> "已拒绝位置权限，请在系统设置中选择“使用应用时允许”"
-                locationServicesOff -> "系统定位服务未开启"
-                else -> uiState.locateMessage
-            }
-            val approximateOnly = feedback?.contains("系统仅授予大致位置") == true
-            feedback?.let { message ->
-                Column(
-                    modifier = Modifier.fillMaxWidth().background(ZhishengCard).padding(horizontal = 12.dp, vertical = 9.dp),
-                ) {
-                    Text(
-                        if (isPhosphorVista) message else "> $message",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (message.startsWith("已精确") || message.startsWith("已定位")) ZhishengMint else ZhishengOrange,
-                    )
-                    if (permissionDenied || locationServicesOff || approximateOnly) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            when {
-                                locationServicesOff -> "[ 开启手机定位服务 ]"
-                                approximateOnly -> "[ 提升为精确位置 ]"
-                                else -> "[ 去应用权限设置 ]"
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = ZhishengCyan,
-                            modifier = Modifier.clickable(role = Role.Button) {
-                                val intent = if (!locationServicesOff) {
-                                    Intent(
-                                        AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                        Uri.parse("package:${context.packageName}"),
-                                    )
-                                } else {
-                                    Intent(AndroidSettings.ACTION_LOCATION_SOURCE_SETTINGS)
-                                }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                runCatching { context.startActivity(intent) }
-                            }.padding(vertical = 3.dp),
-                        )
-                    }
-                }
-            }
-            if (isPhosphorVista) {
-                androidx.compose.material3.TextButton(onClick = requestPreciseLocation, enabled = !uiState.locating,
-                    modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
-                    PhosphorIcon(R.drawable.ph_crosshair, null, Modifier.size(17.dp), ZhishengTextSecondary)
-                    Spacer(Modifier.width(7.dp))
-                    Text(if (uiState.locating) "定位中…" else "定位当前位置", style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
-                }
-            } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .zhishengCompactPanel(
-                        containerColor = ZhishengCard,
-                        borderColor = ZhishengCyan.copy(alpha = 0.55f),
-                    )
-                    .clickable(enabled = !uiState.locating, onClickLabel = "精确定位当前位置") {
-                        requestPreciseLocation()
-                    }
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PhosphorIcon(R.drawable.ph_crosshair, null, Modifier.size(21.dp), ZhishengCyan)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (uiState.locating) "定位中 ..." else "定位当前位置",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = if (uiState.locating) ZhishengTextTertiary else ZhishengCyan,
-                    letterSpacing = 1.sp,
-                )
-            }
-            }
-            if (!isPhosphorVista) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .zhishengCompactPanel(
-                        containerColor = ZhishengCard,
-                        borderColor = ZhishengMint.copy(alpha = 0.5f),
-                    )
-                    .clickable(onClickLabel = "添加城市") { onAddCity() }
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (isPhosphorVista) PhosphorIcon(R.drawable.ph_plus, null, Modifier.size(19.dp), ZhishengMint)
-                else Icon(Icons.Filled.Add, contentDescription = null, tint = ZhishengMint, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("添加城市", style = MaterialTheme.typography.titleSmall, color = ZhishengMint, letterSpacing = 1.sp)
-            }
-            }
-        }
+        )
     }
 }
 

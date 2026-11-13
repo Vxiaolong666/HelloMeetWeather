@@ -327,6 +327,17 @@ enum class LandscapeStandbyStyle(val key: String, val cn: String) {
     }
 }
 
+/** 城市管理入口：沿用首页侧边栏，或改为独立的整屏城市管理页。 */
+enum class CityManagerStyle(val key: String, val cn: String) {
+    SIDEBAR("sidebar", "侧边栏"),
+    PAGE("page", "独立页面");
+
+    companion object {
+        fun from(v: String?): CityManagerStyle =
+            entries.firstOrNull { it.key == v } ?: SIDEBAR
+    }
+}
+
 enum class HomeModule(val key: String, val cn: String, val en: String) {
     HOURLY("hourly", "逐时预报", "HOURLY"),
     PRECIP("precip", "短时降水", "NOWCAST"),
@@ -473,6 +484,7 @@ object SettingsRepository {
     private val KEY_DEVELOPER = booleanPreferencesKey("developer_mode")
     private val KEY_LANDSCAPE_STANDBY = booleanPreferencesKey("landscape_standby")
     private val KEY_LANDSCAPE_STANDBY_STYLE = stringPreferencesKey("landscape_standby_style")
+    private val KEY_CITY_MANAGER_STYLE = stringPreferencesKey("city_manager_style")
     private val KEY_TELEMETRY_METRICS = stringPreferencesKey("telemetry_metrics")
     private val KEY_LIFE_INDEX_METRICS = stringPreferencesKey("life_index_metrics")
     // mochi UI 个性化：画面效果档位 / HDR / 按压高光 / 转场与侧推
@@ -572,6 +584,9 @@ object SettingsRepository {
     }
     val landscapeStandbyStyle: Flow<LandscapeStandbyStyle> by lazy {
         store.data.map { if (ReleaseFeatures.classicTheme) LandscapeStandbyStyle.from(it[KEY_LANDSCAPE_STANDBY_STYLE]) else LandscapeStandbyStyle.WEATHER_CORE }.distinctUntilChanged()
+    }
+    val cityManagerStyle: Flow<CityManagerStyle> by lazy {
+        store.data.map { CityManagerStyle.from(it[KEY_CITY_MANAGER_STYLE]) }.distinctUntilChanged()
     }
     val telemetryMetrics: Flow<Set<TelemetryMetric>> by lazy {
         store.data.map { TelemetryMetric.selectionFrom(it[KEY_TELEMETRY_METRICS]) }.distinctUntilChanged()
@@ -823,6 +838,9 @@ object SettingsRepository {
     suspend fun setLandscapeStandby(v: Boolean) = store.edit { it[KEY_LANDSCAPE_STANDBY] = v }
     suspend fun setLandscapeStandbyStyle(style: LandscapeStandbyStyle) = store.edit {
         it[KEY_LANDSCAPE_STANDBY_STYLE] = style.key
+    }
+    suspend fun setCityManagerStyle(style: CityManagerStyle) = store.edit {
+        it[KEY_CITY_MANAGER_STYLE] = style.key
     }
     suspend fun setTelemetryMetrics(selection: Set<TelemetryMetric>) = store.edit {
         it[KEY_TELEMETRY_METRICS] = TelemetryMetric.selectionKey(selection)

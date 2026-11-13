@@ -163,7 +163,7 @@ class WebsiteCampusCaptureTest {
         screen("campus-city-management") {
             CityDeckOverlay(true, true, listOf(tsinghua.copy(name = "海淀区", street = "清华大学"),
                 peking.copy(name = "海淀区", street = "北京大学", isFavorite = true),
-                chengdu.copy(name = "龙泉驿区", street = "成都大学")), 1f, 1f, {}, {}, {}, {}, outline = { selected, modifier ->
+                chengdu.copy(name = "龙泉驿区", street = "成都大学")), 1f, androidx.compose.foundation.pager.rememberPagerState(initialPage = 1) { 3 }, null, {}, {}, outline = { selected, modifier ->
                 val palette = com.zhisheng.weather.ui.theme.LocalZhishengPalette.current
                 val bitmap = androidx.compose.runtime.remember(selected) { kotlinx.coroutines.runBlocking {
                     com.zhisheng.weather.data.BoundaryRepository.ensureLoaded(paparazzi.context)

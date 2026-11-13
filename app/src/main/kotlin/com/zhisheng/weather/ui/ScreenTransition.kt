@@ -32,7 +32,7 @@ import kotlin.math.abs
 
 internal enum class AppScreen {
     HOME, SEARCH, DAILY_FORECAST, DAILY_DAY_DETAIL, HISTORY, RADAR, TYPHOON, PRECIPITATION,
-    HOURLY_DETAIL, AIR_QUALITY, YESTERDAY_DETAIL, FEATURES,
+    HOURLY_DETAIL, AIR_QUALITY, YESTERDAY_DETAIL, FEATURES, CITY_MANAGER,
     MOCHI_SETTINGS;
 
     /** 库导航用的路由名（rememberMochiNavigator / MochiNavHost 的 route）。 */
@@ -49,6 +49,7 @@ internal enum class AppScreen {
         AIR_QUALITY -> "air_quality"
         YESTERDAY_DETAIL -> "yesterday"
         FEATURES -> "features"
+        CITY_MANAGER -> "city_manager"
         MOCHI_SETTINGS -> "settings"
     }
 
@@ -60,13 +61,14 @@ internal enum class AppScreen {
      * 「打开应用式」转场的来源元素 key（首页卡片 `mochiNavSource` 的登记名）：
      * push 时交给库，页面从那张卡片长成整页，返回时缩回卡片。
      * 首页多城市分页里每个城市各有一套卡片，登记 key 带 ":locationKey" 后缀防止跨城串位；
-     * 没有来源元素的页面（首页、搜索）返回 null，走库的侧推。
+     * 没有来源元素的页面（首页、搜索、城市管理）返回 null，走库的侧推。
      */
     fun navSourceKey(cityKey: String?): String? {
         val suffix = cityKey?.let { ":$it" } ?: ""
         return when (this) {
             HOME -> null
             SEARCH -> null
+            CITY_MANAGER -> null
             MOCHI_SETTINGS -> "settings"
             HISTORY -> "history$suffix"
             RADAR -> "radar$suffix"

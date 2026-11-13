@@ -198,7 +198,7 @@ class VistaTakeoverSnapshotTest(private val light: Boolean, private val width: I
     }
     @androidx.compose.runtime.Composable private fun cityDeckFixture() {
         CityDeckOverlay(true, true, listOf(city.copy(name = "北京市", locationKey = "beijing", latitude = 39.9, longitude = 116.4), city,
-            city.copy(name = "杭州市", locationKey = "hangzhou", latitude = 30.27, longitude = 120.15)), 1f, 1f, {}, {}, {}, {},
+            city.copy(name = "杭州市", locationKey = "hangzhou", latitude = 30.27, longitude = 120.15)), 1f, androidx.compose.foundation.pager.rememberPagerState(initialPage = 1) { 3 }, null, {}, {},
             outline = { selected, modifier ->
                 val palette = LocalZhishengPalette.current
                 val marker = if (isPhosphorVista) palette.mint else palette.red

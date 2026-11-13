@@ -1,6 +1,8 @@
 # 行尾与二进制约定 // LINE ENDINGS & BINARY
 gradlew text eol=lf
 *.bat text eol=crlf
+# 地名数据带 SHA-256 清单校验，行尾转换会破坏校验
+app/src/main/assets/geo/*.json text eol=lf
 *.png binary
 *.jar binary
 *.jks binary

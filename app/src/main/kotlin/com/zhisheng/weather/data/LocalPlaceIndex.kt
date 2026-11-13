@@ -90,11 +90,40 @@ internal class LocalPlaceIndex private constructor(records: List<LocalPlaceRecor
 
         fun parseVerified(bytes: ByteArray, manifestText: String): LocalPlaceIndex {
             val manifest = json.decodeFromString<LocalPlaceManifest>(manifestText)
-            val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            // 清单里的哈希按 LF 行尾生成；Windows 检出（core.autocrlf）会把结尾换行改成 CRLF，
+            // 直接校验原始字节会让整份本地地名数据在真机上不可用，这里先归一行尾。
+            val content = normalizedLineEndings(bytes)
+            val hash = MessageDigest.getInstance("SHA-256").digest(content).joinToString("") { "%02x".format(it) }
             require(manifest.schema == 1 && manifest.sha256 == hash) { "Local dataset checksum mismatch" }
-            val index = parse(bytes)
+            val index = parse(content)
             require(index.entries.size == manifest.count) { "Local dataset count mismatch" }
             return index
+        }
+
+        private fun normalizedLineEndings(bytes: ByteArray): ByteArray {
+            if (bytes.size < 2) return bytes
+            var hasCrLf = false
+            for (i in 0 until bytes.size - 1) {
+                if (bytes[i] == '\r'.code.toByte() && bytes[i + 1] == '\n'.code.toByte()) {
+                    hasCrLf = true
+                    break
+                }
+            }
+            if (!hasCrLf) return bytes
+            val out = ByteArray(bytes.size)
+            var write = 0
+            var read = 0
+            while (read < bytes.size) {
+                val b = bytes[read]
+                if (b == '\r'.code.toByte() && read + 1 < bytes.size && bytes[read + 1] == '\n'.code.toByte()) {
+                    out[write++] = '\n'.code.toByte()
+                    read += 2
+                } else {
+                    out[write++] = b
+                    read++
+                }
+            }
+            return out.copyOf(write)
         }
     }
 }
