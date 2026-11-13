@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.zhisheng.weather.R
 import com.zhisheng.weather.data.AccentTone
 import com.zhisheng.weather.ui.about.AboutPage
+import com.zhisheng.weather.ui.notice.NoticeDetailPage
 import com.zhisheng.weather.ui.notice.NoticePage
 import com.zhisheng.weather.data.AppIconManager
 import com.zhisheng.weather.data.AppIconStyle
@@ -44,6 +45,7 @@ import com.zhisheng.weather.data.LifeIndexMetric
 import com.zhisheng.weather.data.LocationSource
 import com.zhisheng.weather.data.QWeatherApi
 import com.zhisheng.weather.data.CaiyunApi
+import com.zhisheng.weather.data.CloudNotice
 import com.zhisheng.weather.data.ReleaseFeatures
 import com.zhisheng.weather.data.SecretStore
 import com.zhisheng.weather.data.SettingsRepository
@@ -186,6 +188,8 @@ fun MochiSettingsScreen(
     }
 
     val nav = rememberMochiNavigator("settings.main")
+    // 公告列表 → 详情复用同一个导航器，选中的公告跟着路由一起传。
+    var openedNotice by remember { mutableStateOf<CloudNotice?>(null) }
     val uiPrefs = rememberMochiUiPrefs()
     // 「打开应用式」：push 时把来源行登记的 key 交给库，页面从那一行长成整屏，返回缩回去。
     // 其余样式走库的侧推。偏好变化会让这个 lambda 重新组合，下一次 push 立即采用新配置。
@@ -346,7 +350,17 @@ fun MochiSettingsScreen(
                         onBack = { nav.pop() },
                         onOpenNotices = { openSettingsPage("settings.notice") },
                     )
-                    "settings.notice" -> NoticePage(onBack = { nav.pop() })
+                    "settings.notice" -> NoticePage(
+                        onBack = { nav.pop() },
+                        onOpen = { notice ->
+                            openedNotice = notice
+                            openSettingsPage("settings.noticeDetail")
+                        },
+                    )
+                    "settings.noticeDetail" -> NoticeDetailPage(
+                        notice = openedNotice,
+                        onBack = { nav.pop() },
+                    )
                     // 天气源、服务商、氛围实验室也从设置进，走同一套库导航转场与侧滑返回
                     "settings.weatherSource" -> MochiWeatherSourceScreen(
                         weather = activeWeather,

@@ -1,13 +1,13 @@
 package com.zhisheng.weather.ui.notice
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhisheng.weather.data.CloudNotice
@@ -37,10 +38,10 @@ private sealed interface NoticeUiState {
 
 /**
  * 独立公告页：从「关于」进入，走设置页同一套库导航与转场。
- * 每次进页面先读进程内快照，失败时给一行重试，不阻塞返回。
+ * 正文外壳由 [MochiPageFrame] 统一给出左右 16dp，卡片不再自行加边距。
  */
 @Composable
-internal fun NoticePage(onBack: () -> Unit) {
+internal fun NoticePage(onBack: () -> Unit, onOpen: (CloudNotice) -> Unit) {
     val context = LocalContext.current
     var state by remember { mutableStateOf<NoticeUiState>(NoticeUiState.Loading) }
     var attempt by remember { mutableIntStateOf(0) }
@@ -57,22 +58,15 @@ internal fun NoticePage(onBack: () -> Unit) {
     MochiPageFrame(title = "公告", onBack = onBack) {
         when (val current = state) {
             NoticeUiState.Loading -> item {
-                MochiFadeNote("正在获取公告…", modifier = Modifier.padding(horizontal = 16.dp))
+                MochiFadeNote("正在获取公告…")
             }
 
             is NoticeUiState.Failed -> {
                 item {
-                    MochiFadeNote(
-                        current.message,
-                        title = "没能取到公告",
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
+                    MochiFadeNote(current.message, title = "没能取到公告")
                 }
                 item {
-                    MochiPageCard(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        contentPadding = PaddingValues(0.dp),
-                    ) {
+                    MochiPageCard(contentPadding = PaddingValues(0.dp)) {
                         MochiListRow("重新获取", onClick = { attempt++ }, chevron = true)
                     }
                 }
@@ -80,56 +74,122 @@ internal fun NoticePage(onBack: () -> Unit) {
 
             is NoticeUiState.Ready -> if (current.items.isEmpty()) {
                 item {
-                    MochiFadeNote("暂时没有公告。", modifier = Modifier.padding(horizontal = 16.dp))
+                    MochiFadeNote("暂时没有公告。")
                 }
             } else {
                 items(current.items.size) { index ->
-                    NoticeCard(current.items[index], Modifier.padding(horizontal = 16.dp))
+                    val notice = current.items[index]
+                    NoticeCard(notice, onClick = { onOpen(notice) })
                 }
             }
         }
     }
 }
 
+/** 公告详情：标题进顶栏，正文按 Markdown 渲染。 */
 @Composable
-private fun NoticeCard(notice: CloudNotice, modifier: Modifier = Modifier) {
+internal fun NoticeDetailPage(notice: CloudNotice?, onBack: () -> Unit) {
+    MochiPageFrame(title = "公告详情", onBack = onBack) {
+        if (notice == null) {
+            item { MochiFadeNote("这条公告已不可用。") }
+            return@MochiPageFrame
+        }
+        item { NoticeHeader(notice) }
+        item {
+            MochiPageCard(animateHeight = false) {
+                MarkdownView(notice.body)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoticeHeader(notice: CloudNotice) {
     val cs = MochiTheme.colorScheme
     val ts = MochiTheme.textStyles
-    MochiPageCard(modifier = modifier) {
+    MochiPageCard {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                notice.title,
-                style = ts.titleMedium,
-                color = cs.onSurface,
+            BasicText(
+                text = notice.title,
+                style = ts.titleMedium.copy(color = cs.onSurface),
                 modifier = Modifier.weight(1f),
             )
             if (notice.pinned) {
-                Spacer(Modifier.padding(start = 8.dp))
                 Text(
                     "置顶",
                     style = ts.footnote,
                     color = cs.onPrimary,
                     modifier = Modifier
+                        .padding(start = 8.dp)
                         .background(cs.primary, RoundedCornerShape(6.dp))
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
         }
         if (notice.publishedAt.isNotBlank()) {
-            Text(
-                notice.publishedAt,
-                style = ts.footnote,
-                color = cs.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-        if (notice.body.isNotBlank()) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                notice.body,
-                style = ts.body.copy(fontSize = 15.sp, lineHeight = 23.sp),
-                color = cs.onSurface,
+            BasicText(
+                text = notice.publishedAt,
+                style = ts.footnote.copy(color = cs.onSurfaceVariant),
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }
+}
+
+@Composable
+private fun NoticeCard(notice: CloudNotice, onClick: () -> Unit) {
+    val cs = MochiTheme.colorScheme
+    val ts = MochiTheme.textStyles
+    MochiPageCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            BasicText(
+                text = notice.title,
+                style = ts.titleMedium.copy(color = cs.onSurface),
+                modifier = Modifier.weight(1f),
+            )
+            if (notice.pinned) {
+                Text(
+                    "置顶",
+                    style = ts.footnote,
+                    color = cs.onPrimary,
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .background(cs.primary, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+        }
+        if (notice.publishedAt.isNotBlank()) {
+            BasicText(
+                text = notice.publishedAt,
+                style = ts.footnote.copy(color = cs.onSurfaceVariant),
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+        val preview = noticePreview(notice.body)
+        if (preview.isNotBlank()) {
+            BasicText(
+                text = preview,
+                style = ts.body.copy(fontSize = 14.sp, lineHeight = 21.sp, color = cs.onSurfaceVariant),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+private val previewTokens = Regex(
+    """```[\s\S]*?```|\$\$[\s\S]*?\$\$|!\[[^\]]*]\(\S*?\)|\[([^\]]+)]\(\S*?\)|[*_~`>$#]""",
+)
+
+/** 列表预览：去掉语法符号，压成一行，最多三行显示。 */
+private fun noticePreview(markdown: String): String {
+    val stripped = previewTokens.replace(markdown) { match ->
+        match.groupValues[1].ifBlank { " " }
+    }
+    return stripped.lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .joinToString(" ")
 }

@@ -76,6 +76,9 @@ import com.zhisheng.weather.ui.isStartupIconEntry
 import com.zhisheng.weather.data.ThemeMode
 import com.zhisheng.weather.model.City
 import com.zhisheng.weather.ui.AppScreen
+import com.zhisheng.weather.ui.MochiAppTheme
+import com.zhisheng.weather.ui.rememberMochiColorScheme
+import com.zhisheng.weather.ui.mochiNavSpecFor
 import com.zhisheng.weather.ui.SearchScreen
 import com.zhisheng.weather.ui.WeatherViewModel
 import com.zhisheng.weather.ui.ProvideWeatherPresentationClock
@@ -86,12 +89,6 @@ import com.zhisheng.weather.ui.LocalMochiSettingsEntry
 import com.zhisheng.weather.ui.MochiPrecipitationDetailScreen
 import com.zhisheng.weather.ui.MochiSearchScreen
 import com.zhisheng.weather.ui.AtmosphereLabScreen
-import com.zhisheng.weather.ui.OVERLAY_SCRIM_ALPHA
-import com.zhisheng.weather.ui.overlayMotionSpec
-import com.zhisheng.weather.ui.overlayStartScale
-import com.zhisheng.weather.ui.overlayStartShiftFraction
-import com.zhisheng.weather.ui.overlayUnderScale
-import com.zhisheng.weather.ui.appSwipeBack
 import com.zhisheng.weather.ui.LocalMochiToast
 import com.zhisheng.weather.ui.MochiAppToastHost
 import com.zhisheng.weather.ui.PageTransitionStyle
@@ -112,6 +109,10 @@ import com.zhisheng.weather.ui.UpdateOpeningPreferenceFile
 import com.zhisheng.weather.ui.UpdateOpeningSpec
 import com.zhisheng.weather.ui.WhatsNewDialog
 import com.zhisheng.weather.ui.shouldAutoPlayUpdateOpening
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
+import ui.feice.mochi.navigation.MochiNavHost
+import ui.feice.mochi.navigation.rememberMochiNavigator
 import com.zhisheng.weather.ui.systemAnimationsEnabled
 import com.zhisheng.weather.ui.updateOpeningSpec
 import com.zhisheng.weather.ui.WhatsNewPreferenceFile
@@ -126,9 +127,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 private data class ShortcutCommand(val action: String? = null, val sequence: Long = 0L)
-
-/** 触点只写普通对象而非 State，避免每次按下都触发整棵首页重组。 */
-private class NavigationOrigin(var value: TransformOrigin = TransformOrigin.Center)
 
 class MainActivity : ComponentActivity() {
     private var hostResumed by mutableStateOf(false)
@@ -466,42 +464,57 @@ class MainActivity : ComponentActivity() {
                 // UI 个性化偏好：同步到库全局效果状态，并驱动全站页面转场。
                 val uiPrefs = rememberMochiUiPrefs()
                 ApplyMochiUiPrefs(uiPrefs, motionEnabled)
-                val transitionStyle = PageTransitionStyle.from(uiPrefs.pageTransition)
-                // 转场偏好在设置页里随时会变：让 transitionSpec 读 State 而非捕获旧值，
-                // 否则 AnimatedContent / AnimatedVisibility 复用旧的动画规格，看起来像「设置没生效」。
-                val currentStyle by rememberUpdatedState(transitionStyle)
-                val currentSwipeBack by rememberUpdatedState(uiPrefs.swipeBack)
-                val currentMotionEnabled by rememberUpdatedState(motionEnabled)
-                // 覆盖层显隐由一条 0..1 的进度驱动，而不是 AnimatedVisibility 的隐式进出场：
-                // 进度归零后才卸载内容，返回因此一定能看到完整的退场动画。
-                val overlayVisible = screen != AppScreen.HOME
-                val overlayProgress = remember { Animatable(if (overlayVisible) 1f else 0f) }
-                var overlayMounted by remember { mutableStateOf(overlayVisible) }
-                LaunchedEffect(overlayVisible, motionEnabled, transitionStyle) {
-                    when {
-                        !motionEnabled || transitionStyle == PageTransitionStyle.NONE -> {
-                            overlayProgress.snapTo(if (overlayVisible) 1f else 0f)
-                            overlayMounted = overlayVisible
-                        }
-                        overlayVisible -> {
-                            overlayMounted = true
-                            overlayProgress.animateTo(1f, overlayMotionSpec)
-                        }
-                        overlayMounted -> {
-                            overlayProgress.animateTo(0f, overlayMotionSpec)
-                            overlayMounted = false
+                // 应用级导航走库的 MochiNavHost（与设置页内部同一条转场）：
+                // 弹簧、下层页缩放、压暗、侧推与预测性返回都由库给，MainActivity 不再自拼覆盖层动画。
+                val nav = rememberMochiNavigator(AppScreen.HOME.route)
+                // screen 仍是应用导航的唯一事实（意图、小组件、页面回调都写它）；
+                // 这里把它单向同步进库导航，库导航自己退回根（返回键 / 侧推手势）时再写回 screen。
+                LaunchedEffect(Unit) {
+                    snapshotFlow { screen }.collect { dest ->
+                        val target = dest.route
+                        if (nav.current != target) {
+                            if (target == AppScreen.HOME.route) nav.popTo(0)
+                            else {
+                                // 应用是「单层覆盖」语义：换覆盖页先回根再推，
+                                // 旧页滑走、新页推进来由库同时进行，不瞬切。
+                                if (nav.backStack.size > 1) nav.popTo(0)
+                                // 转场样式为「打开应用式」时，把首页来源元素（卡片 / 齿轮）的 key
+                                // 交给库：页面从那张卡长成整页、返回缩回卡片；其余样式走库的侧推。
+                                // 来源 key 与首页 mochiNavSource 的登记一一对应（含城市后缀），
+                                // 没登记的元素库会退回原地缩放淡入，不会出错。
+                                val from = if (
+                                    PageTransitionStyle.from(uiPrefs.pageTransition) == PageTransitionStyle.APP
+                                ) {
+                                    dest.navSourceKey(uiState.selectedCity?.locationKey)
+                                } else {
+                                    null
+                                }
+                                nav.push(target, from = from)
+                            }
                         }
                     }
                 }
-                // 首页的氛围动效、共享元素与光晕只在覆盖层完全退出后恢复：
+                LaunchedEffect(Unit) {
+                    snapshotFlow { nav.current }.collect { route ->
+                        if (route == AppScreen.HOME.route && screen != AppScreen.HOME) {
+                            if (screen == AppScreen.SEARCH) choosingInitialCity = false
+                            screen = AppScreen.HOME
+                        }
+                    }
+                }
+                // 首页的氛围动效、共享元素与光晕在库导航转场期间冻结：
                 // 否则返回首页的那一刻首页整体重排，会把退场动画挤成看不见的一帧。
-                val homeSettled = !overlayMounted
+                val homeSettled by remember { derivedStateOf { !nav.isTransitioning } }
                 SharedTransitionLayout(Modifier.fillMaxSize()) {
                     AnimatedContent(
                         targetState = standbyVisible,
                         transitionSpec = {
-                            if (currentMotionEnabled) {
-                                screenTransition(currentMotionEnabled, currentStyle, currentSwipeBack)
+                            if (motionEnabled) {
+                                screenTransition(
+                                    motionEnabled,
+                                    PageTransitionStyle.from(uiPrefs.pageTransition),
+                                    uiPrefs.swipeBack,
+                                )
                             } else {
                                 androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
                             }
@@ -521,134 +534,74 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 } else {
-                    // 主屏始终留在下层。进出设置/搜索只盖一层，避免拆掉 WeatherContent
-                    // 后温度、图标再播一遍交错入场。
-                    // 触点写入普通对象，不触发首页重组；只在真正打开二级页时读取一次。
-                    val navigationOrigin = remember { NavigationOrigin() }
-                    val overlayState = rememberSaveableStateHolder()
-                    Box(Modifier.fillMaxSize().pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                event.changes.firstOrNull { it.pressed && !it.previousPressed }?.let { down ->
-                                    navigationOrigin.value = TransformOrigin(
-                                        (down.position.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f),
-                                        (down.position.y / size.height.coerceAtLeast(1)).coerceIn(0f, 1f))
-                                }
+                    // 主屏与二级页全部是库导航的页面：返回首页 / 打开二级页的转场
+                    // （弹簧、下层页缩放、压暗、侧推与预测性返回）由 MochiNavHost 统一处理，
+                    // 与设置页内部二级页是同一套组件。主屏始终留在下层，避免拆掉
+                    // WeatherContent 后温度、图标再播一遍交错入场。
+                    val liveGlow = com.zhisheng.weather.ui.theme.LocalVistaGlowPhase.current
+                    val frozenGlow = remember { mutableStateOf(0.0) }
+                    MochiAppTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
+                    CompositionLocalProvider(
+                        com.zhisheng.weather.ui.theme.LocalVistaGlowPhase provides
+                            if (homeSettled) liveGlow else frozenGlow,
+                        LocalMochiSettingsEntry provides {
+                            screen = AppScreen.MOCHI_SETTINGS
+                        },
+                    ) {
+                    MochiNavHost(
+                        nav,
+                        spec = mochiNavSpecFor(uiPrefs),
+                        predictiveBack = uiPrefs.predictiveBack && uiPrefs.swipeBack,
+                        swipeBackEnabled = uiPrefs.swipeBack && motionEnabled,
+                        // 首页天空是不间断动画、雷达页是原生地图视图：整页录进离屏图层给浮层玻璃
+                        // 取样会每帧重录（原生视图甚至可能取样崩溃）。浮层玻璃退回各页自己的
+                        // 正文来源，与迁移前的行为一致。
+                        windowGlass = false,
+                    ) { route ->
+                        val dest = AppScreen.fromRoute(route)
+                        // 提示状态包住每个页面（迁移前同样包在页面外层），页面里才能拿到
+                        // LocalMochiToast，保存成功之类的提示不被吞掉。
+                        CompositionLocalProvider(LocalMochiToast provides toastState) {
+                        when (dest) {
+                            AppScreen.HOME -> Box(Modifier.fillMaxSize().background(ZhishengBg)) {
+                                HomeScreen(
+                                    viewModel = vm,
+                                    ambienceActive = homeSettled,
+                                    dismissCitiesRequest = cityPickedRequest,
+                                    onSearchClick = {
+                                        if (initialLocationSetupRequired == true) {
+                                            choosingInitialCity = true
+                                            locationSetupDismissedForSession = true
+                                            markInitialLocationHandled()
+                                        }
+                                        screen = AppScreen.SEARCH
+                                    },
+                                    onLocationSetupClick = {
+                                        locateImmediately = true
+                                        showLocationSetupAgain = true
+                                        startupPromptsSuppressed = false
+                                    },
+                                    onSettingsClick = {
+                                        screen = AppScreen.MOCHI_SETTINGS
+                                    },
+                                    onHistoryClick = { screen = AppScreen.HISTORY },
+                                    onRadarClick = { if (ReleaseFeatures.radar) screen = AppScreen.RADAR },
+                                    onDailyForecastClick = {
+                                        forecastDate = null
+                                        screen = AppScreen.DAILY_FORECAST
+                                    },
+                                    onOpenDailyDay = { millis ->
+                                        forecastDate = millis
+                                        screen = AppScreen.DAILY_DAY_DETAIL
+                                    },
+                                    onPrecipitationClick = { screen = AppScreen.PRECIPITATION },
+                                    onHourlyClick = { screen = AppScreen.HOURLY_DETAIL },
+                                    onTyphoonClick = { if (ReleaseFeatures.typhoon) screen = AppScreen.TYPHOON },
+                                    onAirQualityClick = { screen = AppScreen.AIR_QUALITY },
+                                    onYesterdayClick = { screen = AppScreen.YESTERDAY_DETAIL },
+                                    onFeatureHubClick = { screen = AppScreen.FEATURES },
+                                )
                             }
-                        }
-                    }) {
-                        val liveGlow = com.zhisheng.weather.ui.theme.LocalVistaGlowPhase.current
-                        val frozenGlow = remember { mutableStateOf(0.0) }
-                        CompositionLocalProvider(
-                            com.zhisheng.weather.ui.theme.LocalVistaGlowPhase provides
-                                if (homeSettled) liveGlow else frozenGlow,
-                            LocalMochiSettingsEntry provides {
-                                screen = AppScreen.MOCHI_SETTINGS
-                            },
-                        ) {
-                        // 首页作为下层页一起参与动画：覆盖层进出时按「下层页缩放」后退并被压暗，
-                        // 参数与设置页内部 MochiNavHost 的 underScale / scrim 完全一致，
-                        // 这样天气页和设置页返回首页时看到的是同一套转场。
-                        val homeUnderScale = remember(uiPrefs.backScale) { overlayUnderScale(uiPrefs.backScale) }
-                        Box(
-                            Modifier.fillMaxSize().background(ZhishengBg)
-                                .graphicsLayer {
-                                    val p = overlayProgress.value
-                                    val s = 1f - (1f - homeUnderScale) * p
-                                    scaleX = s
-                                    scaleY = s
-                                }
-                                .drawWithContent {
-                                    drawContent()
-                                    val p = overlayProgress.value
-                                    if (p > 0f) drawRect(Color.Black.copy(alpha = OVERLAY_SCRIM_ALPHA * p))
-                                },
-                        ) {
-                        HomeScreen(
-                            viewModel = vm,
-                            ambienceActive = homeSettled,
-                            dismissCitiesRequest = cityPickedRequest,
-                            onSearchClick = {
-                                if (initialLocationSetupRequired == true) {
-                                    choosingInitialCity = true
-                                    locationSetupDismissedForSession = true
-                                    markInitialLocationHandled()
-                                }
-                                screen = AppScreen.SEARCH
-                            },
-                            onLocationSetupClick = {
-                                locateImmediately = true
-                                showLocationSetupAgain = true
-                                startupPromptsSuppressed = false
-                            },
-                            onSettingsClick = {
-                                screen = AppScreen.MOCHI_SETTINGS
-                            },
-                            onHistoryClick = { screen = AppScreen.HISTORY },
-                            onRadarClick = { if (ReleaseFeatures.radar) screen = AppScreen.RADAR },
-                            onDailyForecastClick = {
-                                forecastDate = null
-                                screen = AppScreen.DAILY_FORECAST
-                            },
-                            onOpenDailyDay = { millis ->
-                                forecastDate = millis
-                                screen = AppScreen.DAILY_DAY_DETAIL
-                            },
-                            onPrecipitationClick = { screen = AppScreen.PRECIPITATION },
-                            onHourlyClick = { screen = AppScreen.HOURLY_DETAIL },
-                            onTyphoonClick = { if (ReleaseFeatures.typhoon) screen = AppScreen.TYPHOON },
-                            onAirQualityClick = { screen = AppScreen.AIR_QUALITY },
-                            onYesterdayClick = { screen = AppScreen.YESTERDAY_DETAIL },
-                            onFeatureHubClick = { screen = AppScreen.FEATURES },
-                        )
-                        }
-                        }
-                        var overlayScreen by remember { mutableStateOf(AppScreen.MOCHI_SETTINGS) }
-                        var overlayWasVisible by remember { mutableStateOf(false) }
-                        var overlayOrigin by remember { mutableStateOf(TransformOrigin.Center) }
-                        if (overlayVisible != overlayWasVisible) {
-                            if (overlayVisible) overlayOrigin = navigationOrigin.value
-                            overlayWasVisible = overlayVisible
-                        }
-                        // 组合期回写需带相等性护栏：状态已一致就不再写，杜绝潜在的无限重组；
-                        // 不能改成 LaunchedEffect——那会让转场首帧读到旧目标，转场方向错一帧
-                        // 二级页之间切换时也刷新触点，让景深 / 打开应用式从刚点下的那张卡片展开。
-                        if (overlayVisible && overlayScreen != screen) {
-                            overlayOrigin = navigationOrigin.value
-                            overlayScreen = screen
-                        }
-                        // 覆盖层由一条 0..1 的进度直接驱动（见上面 overlayProgress）：
-                        // 进度在绘制阶段读取，每帧只重绘整层，不重组页面内容。
-                        if (overlayMounted) {
-                            val startScale = remember(transitionStyle) { overlayStartScale(transitionStyle) }
-                            val startShift = remember(transitionStyle, uiPrefs.swipeBack) {
-                                overlayStartShiftFraction(transitionStyle, uiPrefs.swipeBack)
-                            }
-                            Box(
-                                Modifier.fillMaxSize()
-                                    .graphicsLayer {
-                                        val p = overlayProgress.value
-                                        alpha = p
-                                        val scale = startScale + (1f - startScale) * p
-                                        scaleX = scale
-                                        scaleY = scale
-                                        translationX = startShift * (1f - p) * size.width
-                                        transformOrigin = overlayOrigin
-                                    }
-                                    .appSwipeBack(currentSwipeBack && currentMotionEnabled) { navigateBack() },
-                            ) {
-                            AnimatedContent(
-                                targetState = overlayScreen,
-                                transitionSpec = { screenTransition(currentMotionEnabled, currentStyle, currentSwipeBack) },
-                                label = "overlay-stack",
-                            ) { dest ->
-                                // 提示状态只有在真正包住页面时才拿得到：之前只包了 Host 本身，
-                                // 页面里 LocalMochiToast 一直是 null，保存成功等提示全被吞掉。
-                                CompositionLocalProvider(LocalMochiToast provides toastState) {
-                                    overlayState.SaveableStateProvider(dest.name) {
-                                        when (dest) {
-                                    AppScreen.HOME -> Box(Modifier.fillMaxSize())
                                     AppScreen.MOCHI_SETTINGS -> Box(Modifier.fillMaxSize()) {
                                     MochiSettingsScreen(
                                         onBack = { navigateBack() },
@@ -764,13 +717,11 @@ class MainActivity : ComponentActivity() {
                                             screen = AppScreen.HOME
                                         },
                                     )
-                                        }
-                                    }
-                                }
-                            }
-                                }
-                            }
+                        }
+                        }
                     }
+                    }
+                }
                 }
                             }
                         }

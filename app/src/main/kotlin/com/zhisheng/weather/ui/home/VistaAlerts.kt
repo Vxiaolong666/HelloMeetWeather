@@ -1,6 +1,13 @@
 package com.zhisheng.weather.ui.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,7 +66,13 @@ internal fun VistaAlerts(alerts: List<AlertInfo>, modifier: Modifier = Modifier)
                     color = ZhishengText, fontWeight = FontWeight.Medium)
                 VistaDisclosureCaret(expanded)
             }
-            if (expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(animationSpec = tween(240, easing = FastOutSlowInEasing)) +
+                    fadeIn(animationSpec = tween(160)),
+                exit = shrinkVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) +
+                    fadeOut(animationSpec = tween(120)),
+            ) {
                 Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (heading != alert.title) Text(alert.title, style = MaterialTheme.typography.bodyMedium,

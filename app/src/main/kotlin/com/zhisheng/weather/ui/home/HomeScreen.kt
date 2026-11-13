@@ -184,8 +184,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ui.feice.mochi.basic.MochiBarIconButton
+import ui.feice.mochi.basic.MochiButtonDefaults
+import ui.feice.mochi.effect.mask.mochiScrollEdgeBlur
+import ui.feice.mochi.list.MochiListDefaults
+import ui.feice.mochi.navigation.mochiNavSource
+import ui.feice.mochi.theme.MochiDefaults
 import androidx.compose.ui.zIndex
 import com.zhisheng.weather.model.AlertInfo
 import com.zhisheng.weather.model.AqiInfo
@@ -272,6 +279,9 @@ internal data class HomeSheetStates(
 )
 
 internal val LocalHomeSheetStates = compositionLocalOf<HomeSheetStates?> { null }
+
+/** 「打开应用式」转场来源 key 的城市后缀：多城市分页里每城各有一套卡片，登记时拼上它防止跨城串位。 */
+internal val LocalNavSourceSuffix = compositionLocalOf { "" }
 
 // ═══════════════════════════════════════════════════════════
 // 枳生天气 · 磷光数据终端主屏
@@ -682,8 +692,12 @@ internal fun HomeCityPage(
     var headerHeight by remember { mutableIntStateOf(0) }
     val measuredHeader = sharedChrome?.headerHeight ?: headerHeight
     val topInset = if (measuredHeader > 0) with(density) { measuredHeader.toDp() }
-        else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 80.dp
-    val bodyInset = if (floatingGlassHeader) topInset else 0.dp
+        else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + HomeTitleBarHeight + 12.dp
+    // 内容从屏幕顶开始、用列表自身的 contentPadding 让出顶栏：
+    // 内容才会真正滚到顶栏下面，库的滚动边缘模糊才有东西可糊。
+    val bodyInset = topInset
+    // 顶栏下沿离屏幕顶的距离：内容滚进栏下面时按这条线做组件库的滚动边缘渐进模糊。
+    val barBottom = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + HomeTitleBarHeight
     val weatherListState = rememberLazyListState()
     val cardNow = weatherPresentationTime()
     val cardMinutes = data?.utcOffsetSeconds?.let {
@@ -711,15 +725,26 @@ internal fun HomeCityPage(
     LaunchedEffect(selected, weatherListState) {
         if (selected) com.zhisheng.weather.ui.components.observeNaturalScroll(weatherListState, onParallax)
     }
-    CompositionLocalProvider(LocalCityChromeEntry provides chromeEntry.takeIf { sharedChrome != null }) {
+    CompositionLocalProvider(
+        LocalCityChromeEntry provides chromeEntry.takeIf { sharedChrome != null },
+        // 本城卡片的转场来源 key 都带城市后缀：同名卡片在别的分页里也登记着，后缀防串位。
+        LocalNavSourceSuffix provides ":${city.locationKey}",
+    ) {
     com.zhisheng.weather.ui.components.WeatherGlassOwner(weather = data, night = cardNight) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         PullToRefreshBox(
             isRefreshing = selected && (uiState.loading || uiState.locating), onRefresh = onRefresh,
             modifier = Modifier.widthIn(max = chrome.contentMaxWidth).fillMaxSize()
-                .then(if (floatingGlassHeader) Modifier else Modifier.padding(top = topInset))
                 .navigationBarsPadding()
                 .then(retainedColumn)
+                // 滚动边缘渐进模糊：内容滚进顶栏下面那一段按主题的 scrollEdge 材质渐糊，
+                // 与顶栏自己的渐隐底色是同一条边（库的 MochiLargeTitleScaffold 也是这么接的）。
+                // 首页所有表面样式都接：正文整页从屏幕顶开始，顶栏下始终有内容滚过。
+                .mochiScrollEdgeBlur(top = barBottom) {
+                    if (weatherListState.firstVisibleItemIndex > 0) 1f else
+                        (weatherListState.firstVisibleItemScrollOffset / with(density) { 48.dp.toPx() })
+                            .coerceIn(0f, 1f)
+                }
                 .then(if (floatingGlassHeader) Modifier.onGloballyPositioned {
                     origin = pageCoordinates?.positionOf(it) ?: it.positionInRoot()
                     chromeEntry.bodyOrigin = origin
@@ -1266,8 +1291,18 @@ internal fun TopBar(
                     )
                 }
                 // 唯一的设置入口：新版设置页，齿轮图标。
+                // 「打开应用式」的来源登记（顶栏是共享 chrome，不带城市后缀）：
+                // 设置页从这颗按钮长成整页，返回缩回按钮。
                 LocalMochiSettingsEntry.current?.let { onMochiSettings ->
-                    MochiBarIconButton(onClick = onMochiSettings, contentKey = "home-settings") {
+                    MochiBarIconButton(
+                        onClick = onMochiSettings,
+                        modifier = Modifier.mochiNavSource(
+                            "settings",
+                            MochiButtonDefaults.BarItemSize / 2,
+                            MochiDefaults.groupedContainer(),
+                        ),
+                        contentKey = "home-settings",
+                    ) {
                         if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, "设置", Modifier.size(20.dp), barIcon)
                         else Icon(Icons.Filled.Settings, contentDescription = "设置", tint = barIcon, modifier = Modifier.size(20.dp))
                     }
@@ -2079,14 +2114,22 @@ private fun AlertSection(alerts: List<AlertInfo>, modifier: Modifier) {
                         color = c,
                     )
                 }
-                if (expanded && !alert.detail.isNullOrBlank()) {
-                    HorizontalDivider(color = c.copy(alpha = 0.3f), thickness = 1.dp)
-                    Text(
-                        alert.detail,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ZhishengTextSecondary,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    )
+                AnimatedVisibility(
+                    visible = expanded && !alert.detail.isNullOrBlank(),
+                    enter = expandVertically(animationSpec = tween(240, easing = FastOutSlowInEasing)) +
+                        fadeIn(animationSpec = tween(160)),
+                    exit = shrinkVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) +
+                        fadeOut(animationSpec = tween(120)),
+                ) {
+                    Column {
+                        HorizontalDivider(color = c.copy(alpha = 0.3f), thickness = 1.dp)
+                        Text(
+                            alert.detail.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ZhishengTextSecondary,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
                 }
             }
         }
@@ -2151,6 +2194,7 @@ private fun SpacetimeObservatory(
             index = "01",
             title = "天气回看",
             subtitle = "过去7天 · 往年同日",
+            navSourceKey = "history",
             modifier = Modifier.weight(1f),
             onClick = onHistoryClick,
         )
@@ -2158,6 +2202,7 @@ private fun SpacetimeObservatory(
             index = "02",
             title = "雷达回波",
             subtitle = "近 2 小时",
+            navSourceKey = "radar",
             modifier = Modifier.weight(1f),
             onClick = onRadarClick,
         )
@@ -2169,11 +2214,24 @@ private fun WeatherToolEntry(
     index: String,
     title: String,
     subtitle: String,
+    navSourceKey: String? = null,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     Row(
         modifier = modifier
+            .then(
+                // 打开应用式转场的来源登记：点它进入的二级页从这块面板长成整页（带城市后缀防跨城串位）。
+                if (navSourceKey != null) {
+                    Modifier.mochiNavSource(
+                        navSourceKey + LocalNavSourceSuffix.current,
+                        if (isPhosphorVista) MochiListDefaults.SectionCorner else 0.dp,
+                        MochiDefaults.groupedContainer(),
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .zhishengPanel()
             .clickable(role = Role.Button, onClickLabel = "打开$title", onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 13.dp),
@@ -2261,6 +2319,7 @@ internal fun SectionTitle(index: Int, title: String, en: String, prominent: Bool
 private fun HudCard(
     modifier: Modifier = Modifier,
     edgeContent: Boolean = false,
+    navSourceKey: String? = null,
     content: @Composable () -> Unit,
 ) {
     // 走组件库的内容卡片（和设置、天气详情等二级页同一个 MochiPageCard）：
@@ -2268,7 +2327,21 @@ private fun HudCard(
     // 内容仍放在 Box 里，保留原来「多层叠放」的排版语义；高度不做库的动画，
     // 首页图表、卡片展开本来就是自己逐帧变高的。
     MochiPageCard(
-        modifier = modifier.padding(horizontal = 16.dp),
+        modifier = modifier
+            .padding(horizontal = 16.dp)
+            .then(
+                // 打开应用式转场：把卡片登记为容器变形的源，点它进入的二级页
+                // 从卡片矩形长成整页（key 与 AppScreen.navSourceKey 一致，城市后缀防跨城串位）。
+                if (navSourceKey != null) {
+                    Modifier.mochiNavSource(
+                        navSourceKey + LocalNavSourceSuffix.current,
+                        MochiListDefaults.SectionCorner,
+                        MochiDefaults.groupedContainer(),
+                    )
+                } else {
+                    Modifier
+                }
+            ),
         contentPadding = PaddingValues(
             horizontal = if (edgeContent) 0.dp else 14.dp,
             vertical = 12.dp,
@@ -2352,7 +2425,7 @@ internal fun HourlySection(
         .map { it.weather }
         .ifEmpty { data.hourly }
     val outlookText = hourlyTrendText(trendHours, nowMs, unit)
-    HudCard(modifier = modifier.fillMaxWidth(), edgeContent = isPhosphorVista) {
+    HudCard(modifier = modifier.fillMaxWidth(), edgeContent = isPhosphorVista, navSourceKey = "hourly") {
         // 点卡进逐时详情：温度/空气质量/紫外线/风力四张图表（横滑与点击互不干扰）
         Column(Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
             role = Role.Button, onClickLabel = "查看逐时详情", onClick = onOpenDetail)) {
@@ -2694,7 +2767,7 @@ internal fun PrecipCard(data: WeatherData, modifier: Modifier, onClick: () -> Un
         }
         return
     }
-    HudCard(modifier = modifier.fillMaxWidth()) {
+    HudCard(modifier = modifier.fillMaxWidth(), navSourceKey = "precipitation") {
         Column(
             Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "查看降水详情", onClick = onClick)
                 .padding(vertical = 4.dp),
@@ -2749,7 +2822,7 @@ private fun DailyClassicForecast(
     var expandedMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     val canExpand = daily.size > 5
 
-    HudCard(modifier = modifier.fillMaxWidth()) {
+    HudCard(modifier = modifier.fillMaxWidth(), navSourceKey = "daily_forecast") {
         Column {
             DailyCompactPreview(
                 daily = daily,
@@ -3169,7 +3242,7 @@ internal fun DailySection(
     val detailDayCount = daily.take(15).size
     val detailLabel = if (detailDayCount >= 15) "查看近15日天气" else "查看未来${detailDayCount}日天气"
 
-    HudCard(modifier = modifier.fillMaxWidth()) {
+    HudCard(modifier = modifier.fillMaxWidth(), navSourceKey = "daily_forecast") {
         Column {
             visibleDays.forEachIndexed { index, d ->
                 val expanded = expandedMillis == d.dateMillis
@@ -3380,7 +3453,7 @@ internal fun VistaDailyOverview(
     val enlarged = LocalDensity.current.fontScale > 1.2f ||
         androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 360 || unit == "f"
     var expanded by rememberSaveable { mutableStateOf<Long?>(null) }
-    HudCard(modifier) {
+    HudCard(modifier, navSourceKey = "daily_forecast") {
         Column {
 
             days.forEachIndexed { index, day ->
@@ -3955,7 +4028,7 @@ internal fun AqiCard(aqi: AqiInfo, modifier: Modifier, onClick: () -> Unit = {})
         // 与五天天气温差条同语言（20260919）：细圆角轨道 + 当前等级色单色填充 + 档界细线；
         // 污染物两行平铺；提示语保持下线。整页只出现当前档一个强调色。
         val fillColor = aqiColor(aqi.value)
-        HudCard(modifier.fillMaxWidth().clickable { onClick() }) {
+        HudCard(modifier.fillMaxWidth().clickable { onClick() }, navSourceKey = "air_quality") {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(aqi.value?.toString() ?: "—", style = MaterialTheme.typography.displaySmall,
@@ -4012,7 +4085,7 @@ internal fun AqiCard(aqi: AqiInfo, modifier: Modifier, onClick: () -> Unit = {})
         }
         return
     }
-    HudCard(modifier = modifier.fillMaxWidth().clickable { onClick() }) {
+    HudCard(modifier = modifier.fillMaxWidth().clickable { onClick() }, navSourceKey = "air_quality") {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -4418,6 +4491,7 @@ private fun YesterdayCard(
         HudCard(
             modifier.fillMaxWidth()
                 .clickable(role = Role.Button, onClickLabel = "查看昨日天气详情", onClick = onClick),
+            navSourceKey = "yesterday",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -4444,6 +4518,7 @@ private fun YesterdayCard(
     HudCard(
         modifier = modifier.fillMaxWidth()
             .clickable(role = Role.Button, onClickLabel = "查看昨日天气详情", onClick = onClick),
+        navSourceKey = "yesterday",
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4494,6 +4569,7 @@ private fun TyphoonCard(typhoons: List<TyphoonInfo>, modifier: Modifier, onClick
     HudCard(
         modifier = modifier.fillMaxWidth()
             .clickable(role = Role.Button, onClickLabel = "打开台风路径", onClick = onClick),
+        navSourceKey = "typhoon",
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4577,6 +4653,7 @@ private fun FeatureCard(modifier: Modifier, onClick: () -> Unit = {}) {
     HudCard(
         modifier = modifier.fillMaxWidth()
             .clickable(role = Role.Button, onClickLabel = "查看特色功能", onClick = onClick),
+        navSourceKey = "features",
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

@@ -120,7 +120,11 @@ internal fun CityPageIndicator(cities: List<City>, city: City, pager: PagerState
     val tint = ZhishengTextSecondary
     val vista = isPhosphorVista
     val active = if (vista) ZhishengMint else ZhishengText
-    Canvas(modifier.height(14.dp).widthIn(max = 100.dp).fillMaxWidth().semantics {
+    // 画布宽度按实际圆点数量收紧：固定 100dp 再靠外层居中时，圆点都挤在画布左边，
+    // 视觉上整体偏左（顶栏居中摆放时尤其明显）。
+    val dotCount = minOf(cities.size, 7)
+    val canvasWidth = ((dotCount - 1) * 11).dp + 7.dp
+    Canvas(modifier.height(14.dp).width(canvasWidth).semantics {
         contentDescription = "城市，第${index + 1}页，共${cities.size}页"
         customActions = buildList {
             if (index > 0) add(CustomAccessibilityAction("上一个城市") {

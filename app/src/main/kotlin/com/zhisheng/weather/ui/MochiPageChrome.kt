@@ -78,6 +78,7 @@ internal fun MochiAppToastHost(state: MochiToastState) {
 internal fun mochiSettingsRouteTitle(route: String): String = when (route) {
     "settings.about" -> "关于"
     "settings.notice" -> "公告"
+    "settings.noticeDetail" -> "公告详情"
     "settings.hdr" -> "HDR 高光"
     "settings.pressGlow" -> "按压高光"
     "settings.transition" -> "应用转场与侧推"
