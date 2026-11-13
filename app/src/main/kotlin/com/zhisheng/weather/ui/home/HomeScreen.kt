@@ -1206,12 +1206,16 @@ internal fun Scanlines() {
     })
 }
 
+/** 首页顶栏总高：库顶栏 56dp + 分页圆点那一条 14dp，正文的 topInset 与滚动边缘模糊都按它算。 */
+internal val HomeTitleBarHeight: Dp = 68.dp
+
 /**
- * 首页顶栏：外层结构换成组件库的 [MochiTitleBar]（栏高、状态栏内边距、居中标题 / 副标题、
- * 标题模糊替换、滚动边缘渐隐都由库给）。
+ * 首页顶栏：结构是组件库的 [MochiTitleBar]（状态栏内边距、居中标题 / 副标题、标题模糊替换、
+ * 滚动边缘渐隐都由库给）。
  *
- * 栏里的图标按钮仍是首页原来那几个（图标、颜色、刷新转圈不变），分页圆点也照旧贴在栏下沿，
- * 背后的液态玻璃带由外层的 glassScrollHeader 绘制，所以观感与改造前一致，换的只是骨架。
+ * - 文字颜色显式传首页调色板：栏后面是实时天空而不是常规页面内容，库自动按背景亮度取色会判错（深色下取成白字）。
+ * - 刷新、设置用库的栏按钮（主题开了液态玻璃时它们就是玻璃）；左侧城市列表按钮保持原样。
+ * - 分页圆点收进栏内下沿，跟标题同一块玻璃带，不再单独占一条。
  */
 @Composable
 internal fun TopBar(
@@ -1224,7 +1228,8 @@ internal fun TopBar(
     indicator: (@Composable () -> Unit)? = null,
 ) {
     val (title, address) = if (isPhosphorVista) vistaLocationHeading(cityName) else cityName to ""
-    Column(modifier) {
+    val barIcon = if (isPhosphorVista) ZhishengText else ZhishengOrange
+    Box(modifier) {
         MochiTitleBar(
             title = title,
             subtitle = address.takeIf(String::isNotEmpty),
@@ -1248,31 +1253,34 @@ internal fun TopBar(
                 } else {
                     0f
                 }
-                IconButton(onClick = onRefresh, modifier = Modifier.size(44.dp)) {
+                MochiBarIconButton(onClick = onRefresh, contentKey = "home-refresh") {
                     if (isPhosphorVista) PhosphorIcon(
                         R.drawable.ph_arrow_clockwise, if (loading) "正在刷新" else "刷新",
                         Modifier.size(20.dp).rotate(if (loading) angle else 0f),
-                        if (loading) ZhishengMint else ZhishengTextSecondary,
+                        if (loading) ZhishengMint else barIcon,
                     ) else Icon(
                         Icons.Filled.Refresh,
                         contentDescription = if (loading) "正在刷新" else "刷新",
-                        tint = if (loading) ZhishengMint else ZhishengOrange,
+                        tint = if (loading) ZhishengMint else barIcon,
                         modifier = Modifier.size(20.dp).rotate(if (loading) angle else 0f),
                     )
                 }
                 // 唯一的设置入口：新版设置页，齿轮图标。
                 LocalMochiSettingsEntry.current?.let { onMochiSettings ->
-                    IconButton(onClick = onMochiSettings, modifier = Modifier.size(44.dp)) {
-                        if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, "设置", Modifier.size(20.dp), ZhishengMint)
-                        else Icon(Icons.Filled.Settings, contentDescription = "设置", tint = ZhishengMint, modifier = Modifier.size(20.dp))
+                    MochiBarIconButton(onClick = onMochiSettings, contentKey = "home-settings") {
+                        if (isPhosphorVista) PhosphorIcon(R.drawable.ph_gear, "设置", Modifier.size(20.dp), barIcon)
+                        else Icon(Icons.Filled.Settings, contentDescription = "设置", tint = barIcon, modifier = Modifier.size(20.dp))
                     }
                 }
             },
             // 天空由底层动画画，栏自己不铺底色，只叠库的滚动边缘渐隐。
             background = Color.Transparent,
+            barHeight = HomeTitleBarHeight,
+            titleColor = ZhishengText,
+            subtitleColor = ZhishengTextSecondary,
         )
         if (indicator != null) {
-            Box(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.Center) { indicator() }
+            Box(Modifier.align(Alignment.BottomCenter).height(14.dp), contentAlignment = Alignment.Center) { indicator() }
         }
     }
 }
