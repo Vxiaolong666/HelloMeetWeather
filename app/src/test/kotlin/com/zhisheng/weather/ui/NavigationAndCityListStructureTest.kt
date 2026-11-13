@@ -19,24 +19,27 @@ class NavigationAndCityListStructureTest {
     @Test
     fun cityDrawerKeepsActionsVisibleAndCitiesScrollable() {
         val home = File(projectDir, "src/main/kotlin/com/zhisheng/weather/ui/home/HomeScreen.kt").readText()
-        val drawer = home.substringAfter("private fun CityDrawer(").substringBefore("private fun formatAlertTime")
+        val drawer = home.substringAfter("private fun CityDrawer(").substringBefore("internal fun formatAlertTime")
 
         assertTrue(drawer.contains("LazyColumn("))
         assertTrue(drawer.contains("Modifier.weight(1f).fillMaxWidth()"))
         assertTrue(drawer.contains("itemsIndexed("))
-        assertTrue(drawer.contains("Text(\"添加城市\""))
-        assertTrue(drawer.contains("R.drawable.ph_crosshair"))
+        assertTrue(drawer.contains("contentDescription = \"添加城市\""))
         assertTrue(drawer.contains("R.drawable.ph_star"))
         assertTrue(drawer.contains("R.drawable.ph_trash"))
-        assertTrue(drawer.contains("\"定位当前位置\""))
         assertTrue(drawer.contains("navigationBarsPadding().padding(top = 8.dp, bottom = 12.dp)"))
-        assertTrue(drawer.contains("RequestMultiplePermissions()"))
-        assertTrue(drawer.contains("LocationSource.requestedPermissions(precise = preciseEnabled)"))
-        assertFalse(drawer.contains("LocationSource.requestedPermissions(precise = true)"))
         assertTrue(drawer.contains("onDismiss: () -> Unit"))
         assertTrue(drawer.contains("MochiSidebarHeader("))
         assertTrue(drawer.contains("MochiSidebarHeaderButton(onClick = { onDismiss(); onAddCity() })"))
         assertFalse(drawer.contains("uiState.cities.forEachIndexed"))
+        // 定位与权限逻辑已抽到 CityLocateActions，侧边栏与独立城市管理页共用同一实现。
+        assertTrue(drawer.contains("CityLocateActions("))
+
+        val locate = File(projectDir, "src/main/kotlin/com/zhisheng/weather/ui/home/CityManagerPage.kt").readText()
+        assertTrue(locate.contains("RequestMultiplePermissions()"))
+        assertTrue(locate.contains("LocationSource.requestedPermissions(precise = preciseEnabled)"))
+        assertFalse(locate.contains("LocationSource.requestedPermissions(precise = true)"))
+        assertTrue(locate.contains("定位当前位置"))
     }
 
     @Test

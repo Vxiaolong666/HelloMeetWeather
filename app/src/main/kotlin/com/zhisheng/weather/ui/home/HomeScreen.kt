@@ -258,6 +258,7 @@ import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.compose.runtime.compositionLocalOf
@@ -370,14 +371,13 @@ fun HomeScreen(
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     var cityDeckVisible by remember { mutableStateOf(false) }
-    var cityDeckVerticalDrag by remember { mutableFloatStateOf(0f) }
-    var cityDeckPinned by remember { mutableStateOf(false) }
-    var cityDeckExpansion by remember { mutableFloatStateOf(0f) }
     var weatherContentScrolling by remember { mutableStateOf(false) }
     var cityPaging by remember { mutableStateOf(false) }
     var cityPager by remember { mutableStateOf<androidx.compose.foundation.pager.PagerState?>(null) }
     val sharedChrome = remember { CitySharedChromeState() }
     var scrollToTopRequest by remember { mutableIntStateOf(0) }
+    // 侧边栏完全停稳（progress 归零）才恢复天空渲染，避免与 Push 退场动画同帧抢 GPU 预算。
+    val sidebarFullyClosed by remember(sidebar) { derivedStateOf { sidebar.progress == 0f } }
     val previewRevision by viewModel.previewRevision.collectAsState()
     val selectedCityIndex = uiState.cities.indexOfFirst {
         it.locationKey == uiState.selectedCity?.locationKey
@@ -393,15 +393,11 @@ fun HomeScreen(
     LaunchedEffect(uiState.selectedCity?.locationKey) {
         weatherContentScrolling = false
         cityDeckVisible = false
-        cityDeckPinned = false
-        cityDeckExpansion = 0f
         if (sidebar.isOpen) sidebar.close()
     }
 
     BackHandler(enabled = cityDeckVisible) {
         cityDeckVisible = false
-        cityDeckPinned = false
-        cityDeckExpansion = 0f
     }
 
     // 氛围层要知道现在是不是夜里：国标现象码（小米 weathercn）没有昼夜变体，
@@ -491,7 +487,7 @@ fun HomeScreen(
         NaturalWeatherSurface(atmosphereWeather, uiState.prefs.ambience, night,
             modifier = Modifier.fillMaxSize()
                 .mochiSheetBackdrop(outfitSheet).mochiSheetBackdrop(adviceSheet),
-            active = ambienceActive && !sidebar.isOpen,
+            active = ambienceActive && sidebarFullyClosed,
             parallax = { ambienceParallax.floatValue }, city = atmosphereCity,
             pagingTransition = skyTransition,
             pagingFraction = { cityPager?.let { p ->
@@ -559,26 +555,13 @@ fun HomeScreen(
             }
             CityDeckOverlay(
                 visible = cityDeckVisible,
-                pinned = cityDeckPinned,
                 cities = uiState.cities,
-                expansion = cityDeckExpansion,
                 pagerState = deckPagerState,
                 chrome = sharedChrome,
-                onSelect = { key ->
-                    cityDeckVisible = false
-                    cityDeckPinned = false
-                    cityDeckExpansion = 0f
-                    if (key != uiState.selectedCity?.locationKey) viewModel.selectCity(key)
-                },
-                onDismiss = {
-                    cityDeckVisible = false
-                    cityDeckPinned = false
-                    cityDeckExpansion = 0f
-                },
             )
             CityTouchSensor(
-                // 长按成立后立即显现；左右滑动并松手即可切换，向上推则锁定卡组。
-                active = cityDeckVisible && !cityDeckPinned,
+                // 长按成立后立即显现为页面指示器；左右滑动整卡切换，松手即选中并退出。
+                active = cityDeckVisible,
                 scrolling = weatherContentScrolling && !cityDeckVisible,
                 // 只有一个城市时没有可切换目标，隐藏底部「长按」胶囊。
                 enabled = uiState.cities.size > 1,
@@ -607,61 +590,47 @@ fun HomeScreen(
                     }
                     .pointerInput(uiState.cities, uiState.selectedCity?.locationKey, uiState.cities.size > 1) {
                         if (uiState.cities.size <= 1) return@pointerInput
-                        val pinThresholdPx = with(density) { 156.dp.toPx() }
-                        var pinnedThisGesture = false
+                        // 加速步进：首卡需拖过 56dp，之后每跨一张所需距离 ×0.8 递减（下限 20dp）。
+                        // 每次跨页用 animateScrollToPage 走整卡过渡动画并震动，绝不跟随手指、
+                        // 也不会停在两卡中间；一次手势可连续跨多张。
+                        val basePitchPx = with(density) { 56.dp.toPx() }
+                        val minPitchPx = with(density) { 20.dp.toPx() }
                         var horizontalAccum = 0f
+                        var crossingsThisGesture = 0
                         detectDragGesturesAfterLongPress(
                             onDragStart = {
-                                cityDeckVerticalDrag = 0f
                                 horizontalAccum = 0f
-                                cityDeckPinned = false
-                                cityDeckExpansion = 0f
-                                pinnedThisGesture = false
-                                // detectDragGesturesAfterLongPress 已经确认长按成立；此时才亮出
-                                // 卡组；主页普通横滑由天气内容层按方向判定处理。
+                                crossingsThisGesture = 0
+                                // detectDragGesturesAfterLongPress 已确认长按成立；此时才亮出卡组；
+                                // 主页普通横滑由天气内容层按方向判定处理。
                                 cityDeckVisible = true
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             },
                             onDrag = { change, dragAmount ->
                                 change.consume()
-                                cityDeckVerticalDrag += dragAmount.y
                                 horizontalAccum += dragAmount.x
-                                if (!pinnedThisGesture) {
-                                    // 手指不松开期间的横向拖动实时桥接给轮播状态：
-                                    // 上方卡片与下方指示点同步滚动。
-                                    scope.launch { deckPagerState.dispatchRawDelta(-dragAmount.x) }
-                                    cityDeckExpansion = (-cityDeckVerticalDrag / pinThresholdPx)
-                                        .coerceIn(0f, 0.76f)
-                                    val upwardIntent = -cityDeckVerticalDrag >= abs(horizontalAccum) * 1.10f
-                                    if (cityDeckVerticalDrag <= -pinThresholdPx && upwardIntent) {
-                                        pinnedThisGesture = true
-                                        cityDeckVisible = true
-                                        cityDeckPinned = true
-                                        cityDeckExpansion = 1f
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    }
+                                var pitchPx = (basePitchPx * 0.8f.pow(crossingsThisGesture.toFloat()))
+                                    .coerceAtLeast(minPitchPx)
+                                while (abs(horizontalAccum) >= pitchPx) {
+                                    val dir = if (horizontalAccum < 0) 1 else -1
+                                    horizontalAccum += if (dir > 0) pitchPx else -pitchPx
+                                    val target = (deckPagerState.currentPage + dir)
+                                        .coerceIn(0, (uiState.cities.size - 1).coerceAtLeast(0))
+                                    scope.launch { deckPagerState.animateScrollToPage(target) }
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    crossingsThisGesture++
+                                    pitchPx = (basePitchPx * 0.8f.pow(crossingsThisGesture.toFloat()))
+                                        .coerceAtLeast(minPitchPx)
                                 }
                             },
                             onDragEnd = {
-                                if (!pinnedThisGesture) {
-                                    val target = (deckPagerState.currentPage + deckPagerState.currentPageOffsetFraction)
-                                        .roundToInt().coerceIn(0, (uiState.cities.size - 1).coerceAtLeast(0))
-                                    val targetKey = uiState.cities.getOrNull(target)?.locationKey
-                                    cityDeckVisible = false
-                                    cityDeckPinned = false
-                                    cityDeckExpansion = 0f
-                                    if (targetKey != null && targetKey != uiState.selectedCity?.locationKey) {
-                                        viewModel.selectCity(targetKey)
-                                    }
+                                val targetKey = uiState.cities.getOrNull(deckPagerState.currentPage)?.locationKey
+                                cityDeckVisible = false
+                                if (targetKey != null && targetKey != uiState.selectedCity?.locationKey) {
+                                    viewModel.selectCity(targetKey)
                                 }
                             },
-                            onDragCancel = {
-                                if (!pinnedThisGesture) {
-                                    cityDeckVisible = false
-                                    cityDeckPinned = false
-                                    cityDeckExpansion = 0f
-                                }
-                            },
+                            onDragCancel = { cityDeckVisible = false },
                         )
                     },
             )
@@ -963,13 +932,9 @@ internal fun CityTouchSensor(
 @Composable
 internal fun CityDeckOverlay(
     visible: Boolean,
-    pinned: Boolean,
     cities: List<com.zhisheng.weather.model.City>,
-    expansion: Float,
     pagerState: PagerState,
     chrome: CitySharedChromeState? = null,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit,
     outline: @Composable (com.zhisheng.weather.model.City, Modifier) -> Unit = { city, modifier ->
         CityOutlineMap(city.name, city.affiliation, city.latitude, city.longitude, modifier)
     },
@@ -986,10 +951,6 @@ internal fun CityDeckOverlay(
             modifier = Modifier.fillMaxSize()
                 .background(ZhishengBg.copy(alpha = if (vista) 1f else 0.94f))
                 .vistaSoftGlow()
-                .pointerInput(pinned) {
-                    // 固定态点空白遮罩关闭；卡片自身的 clickable 优先消费点按。
-                    if (pinned) detectTapGestures(onTap = { onDismiss() })
-                }
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(top = 24.dp, bottom = 44.dp),
@@ -1004,21 +965,10 @@ internal fun CityDeckOverlay(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                if (pinned) "已展开 · 左右滑动或点选卡片" else "保持按住 · 左右选择 · 向上推可松手",
+                "左右滑动切换卡片",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (pinned) ZhishengMint else ZhishengTextTertiary,
+                color = ZhishengTextTertiary,
             )
-                if (pinned) {
-                Text(
-                    if (vista) "关闭" else "[ 关闭卡组 ]",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ZhishengCyan,
-                    modifier = Modifier
-                        .clickable(role = Role.Button, onClickLabel = "关闭城市卡组", onClick = onDismiss)
-                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
             Spacer(Modifier.height(18.dp))
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 // 卡片几何、缩放与透明度过渡统一交给 MochiCarousel；关闭其自带指示器，
@@ -1037,11 +987,6 @@ internal fun CityDeckOverlay(
                         Modifier.fillMaxSize()
                             .background(ZhishengSurface)
                             .vistaSoftGlow(panel = true)
-                            .clickable(
-                                enabled = pinned,
-                                role = Role.Button,
-                                onClickLabel = "切换到${city.displayName}",
-                            ) { onSelect(city.locationKey) }
                             .padding(18.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1116,12 +1061,8 @@ internal fun CityDeckOverlay(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             when {
-                                vista && pinned && focused -> "点按切换"
-                                vista && pinned -> "可选择"
                                 vista && focused -> "松手切换"
                                 vista -> "待选"
-                                pinned && focused -> "// TAP TO SWITCH"
-                                pinned -> "// SELECTABLE"
                                 focused -> "// RELEASE TO SWITCH"
                                 else -> "// STANDBY"
                             },
@@ -1142,9 +1083,8 @@ internal fun CityDeckOverlay(
                 style = MaterialTheme.typography.labelMedium,
                 color = ZhishengCyan,
                 letterSpacing = 2.sp,
-                // 按住状态下底部还有独立的玻璃感应器；给计数器留出完整避让区，
-                // 卡组锁定后感应器退场，计数器再回到正常底位。
-                modifier = Modifier.padding(bottom = if (pinned) 0.dp else 64.dp),
+                // 底部避让区留给玻璃感应器（胶囊 / 页面指示器），计数器不与其重叠。
+                modifier = Modifier.padding(bottom = 64.dp),
             )
         }
     }

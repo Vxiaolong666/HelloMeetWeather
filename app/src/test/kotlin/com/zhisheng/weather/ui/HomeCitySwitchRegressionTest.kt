@@ -12,15 +12,17 @@ class HomeCitySwitchRegressionTest {
     ).first { it.isFile }.readText()
 
     @Test
-    fun upwardPushPinsAnInterruptibleDeck() {
+    fun deckDragUsesAcceleratedStepSwitching() {
         val source = homeSource()
-        assertTrue(source.contains("156.dp.toPx()"))
-        assertTrue(source.contains("upwardIntent"))
-        assertTrue(source.contains("cityDeckVerticalDrag <= -pinThresholdPx"))
-        assertTrue(source.contains("cityDeckPinned = true"))
+        // 加速步进：首卡 56dp，之后每跨一张 ×0.8 递减、下限 20dp；整卡动画切换并震动。
+        assertTrue(source.contains("56.dp.toPx()"))
+        assertTrue(source.contains("20.dp.toPx()"))
+        assertTrue(source.contains("0.8f.pow(crossingsThisGesture.toFloat())"))
+        assertTrue(source.contains("deckPagerState.animateScrollToPage(target)"))
         assertTrue(source.contains("haptic.performHapticFeedback(HapticFeedbackType.LongPress)"))
-        assertTrue(source.contains("enabled = pinned"))
-        assertTrue(source.contains("onPinnedDrag(dragAmount.x)"))
+        // 不再实时跟随手指，也没有上推锁定态。
+        assertFalse(source.contains("deckPagerState.dispatchRawDelta"))
+        assertFalse(source.contains("cityDeckPinned"))
     }
 
     @Test
@@ -47,28 +49,26 @@ class HomeCitySwitchRegressionTest {
     @Test
     fun heldDeckCounterClearsTheBottomSensor() {
         val source = homeSource()
-        assertTrue(source.contains("modifier = Modifier.padding(bottom = if (pinned) 0.dp else 64.dp)"))
+        assertTrue(source.contains("modifier = Modifier.padding(bottom = 64.dp)"))
     }
 
     @Test
-    fun focusedCardUsesExplicitVendorIndependentGlowLayers() {
+    fun deckCardsRenderThroughMochiCarousel() {
         val source = homeSource()
-        assertTrue(source.contains("scaleXValue = scale * 1.045f"))
-        assertTrue(source.contains("ZhishengCyan.copy(alpha = 0.09f)"))
-        assertTrue(source.contains("label = \"city-card-edge-pulse\""))
+        // 卡片几何、缩放与透明度过渡统一交给 MochiCarousel；自带指示器关闭，
+        // 由底部锚点处的 MochiPageControl 承担。
+        assertTrue(source.contains("MochiCarousel("))
+        assertTrue(source.contains("showPageControl = false"))
+        assertTrue(source.contains("state = pagerState"))
+        assertTrue(source.contains("MochiPageControl("))
+        assertFalse(source.contains("scaleXValue = scale * 1.045f"))
     }
 
     @Test
-    fun cityDeckCardsKeepRoundedOutlineWhileSliding() {
+    fun cityDeckCardCornersAreDelegatedToCarousel() {
         val source = homeSource()
-        assertTrue(source.contains("clip = true"))
-        assertTrue(source.contains("compositingStrategy = CompositingStrategy.Offscreen"))
-        assertTrue(source.contains(".clip(innerShape)"))
-        assertTrue(source.contains(".background(borderColor)"))
-        assertFalse(source.contains("border(7.dp, ZhishengCyan.copy(alpha = 0.09f)"))
-        assertFalse(
-            "Hairline Modifier.border on a rotated layer stair-steps; use a filled inset ring instead",
-            source.contains("width = if (focused) 2.dp else 1.dp"),
-        )
+        // 圆角由 MochiCarousel 的 cornerRadius 统一处理，卡片自身不再双层裁切。
+        assertTrue(source.contains("cornerRadius = if (vista) 22.dp else 18.dp"))
+        assertFalse(source.contains(".clip(innerShape)"))
     }
 }
