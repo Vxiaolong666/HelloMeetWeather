@@ -352,7 +352,9 @@ internal class NavGeometry(val nav: MochiNavigator) {
         // 打开、关闭、掉头都是同一个映射：矩形只由进度决定，所以任何时候换方向画面都连续
         val base = if (src != null) {
             // 大小跟 progress（smooth），中心跟 move（带一点回弹）：两根弹簧，位移到位时轻轻冲过再落回
-            val m = e.move.value
+            // 全开静止的页若刚被 setTopSource 从「侧推」切成「来源变形」，move 还停在 0：
+            // 中心按已到位算，页面不会突然平移到来源元素那里。
+            val m = if (p >= 1f && e.move.value < 1f && !e.move.isRunning) 1f else e.move.value
             val w = lerp(src.rect.width, full.width, p)
             val h = lerp(src.rect.height, full.height, p)
             val c = Offset(lerp(src.rect.center.x, full.center.x, m), lerp(src.rect.center.y, full.center.y, m))

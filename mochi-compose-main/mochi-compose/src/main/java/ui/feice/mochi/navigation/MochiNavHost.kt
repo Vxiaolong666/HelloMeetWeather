@@ -259,6 +259,14 @@ public fun MochiNavHost(
                                 CompositionLocalProvider(LocalMochiNavEntry provides e) { content(e.route) }
                             }
                         }
+                        // 页面打开后形态被 setTopSource 从「侧推」改成「来源变形」时，位置进度
+                        // 还停在 0：静止全开的页把它补到 1，既不重播打开动画，也不会被
+                        // 误判成「转场中」多画一层遮挡。首次打开（进度 0）不触发。
+                        LaunchedEffect(e.source) {
+                            if (!e.closing && e.source != null && e.progress.value >= 1f && e.move.value < 1f) {
+                                e.move.snapTo(1f)
+                            }
+                        }
                         LaunchedEffect(e, e.closing) {
                             val slide = e.source == null
                             if (!e.closing) {
@@ -287,6 +295,10 @@ public fun MochiNavHost(
                                 navigator.onClosed()
                                 return@LaunchedEffect
                             }
+                            // 页面打开后可能被 setTopSource 从「侧推」改成「来源变形」：侧推页的
+                            // move 停在 0，变形关闭却要求位置进度从 1 起，否则第一帧中心会跳到
+                            // 来源元素。snapTo 不产生可见动画，关闭仍从当前整屏画面连续缩回。
+                            if (e.move.value < 1f) e.move.snapTo(1f)
                             // 有来源：同一条弹簧从当前位置往 0 走（不重新起算，所以能随时掉头）；
                             // 返回手势的缩小量一起弹回 0，落地时正好是来源的矩形
                             coroutineScope {

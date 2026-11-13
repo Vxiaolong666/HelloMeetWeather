@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -191,15 +192,19 @@ fun MochiSettingsScreen(
     // 公告列表 → 详情复用同一个导航器，选中的公告跟着路由一起传。
     var openedNotice by remember { mutableStateOf<CloudNotice?>(null) }
     val uiPrefs = rememberMochiUiPrefs()
+    val style = PageTransitionStyle.from(uiPrefs.pageTransition)
+    val transitionsEnabled = appTransitionsEnabled(style)
     // 「打开应用式」：push 时把来源行登记的 key 交给库，页面从那一行长成整屏，返回缩回去。
     // 其余样式走库的侧推。偏好变化会让这个 lambda 重新组合，下一次 push 立即采用新配置。
     val openSettingsPage: (String) -> Unit = { route ->
-        val from = if (PageTransitionStyle.from(uiPrefs.pageTransition) == PageTransitionStyle.APP) {
-            mochiSettingsSourceKey(route)
-        } else {
-            null
+        nav.push(route, from = if (style == PageTransitionStyle.APP) mochiSettingsSourceKey(route) else null)
+    }
+    // 在「应用转场」页改完设置后，已打开的二级页返回形态也立刻跟随：
+    // 返回按钮、系统返回手势、右滑返回都按新设置执行，不会沿用进入时的旧样式。
+    LaunchedEffect(style) {
+        if (nav.canPop) {
+            nav.setTopSource(if (style == PageTransitionStyle.APP) mochiSettingsSourceKey(nav.current) else null)
         }
-        nav.push(route, from = from)
     }
     val tabBehavior = mochiTabBehaviorFor(uiPrefs)
     // 外观在根部接一次：iOS 外观开关只影响这里的材质与配色，页面内不写分支。
@@ -209,8 +214,9 @@ fun MochiSettingsScreen(
             MochiNavHost(
                 nav,
                 spec = mochiNavSpecFor(uiPrefs),
-                predictiveBack = uiPrefs.predictiveBack && uiPrefs.swipeBack,
-                swipeBackEnabled = uiPrefs.swipeBack && MochiTransitionConfig.motionEnabled,
+                // 「无动画」时预测性返回与右滑一起关掉，避免手指跟手拖出动画。
+                predictiveBack = transitionsEnabled && uiPrefs.predictiveBack && uiPrefs.swipeBack,
+                swipeBackEnabled = transitionsEnabled && uiPrefs.swipeBack,
             ) { route ->
                 when (route) {
                     "settings.main" -> {

@@ -79,6 +79,7 @@ import com.zhisheng.weather.ui.AppScreen
 import com.zhisheng.weather.ui.MochiAppTheme
 import com.zhisheng.weather.ui.rememberMochiColorScheme
 import com.zhisheng.weather.ui.mochiNavSpecFor
+import com.zhisheng.weather.ui.appTransitionsEnabled
 import com.zhisheng.weather.ui.SearchScreen
 import com.zhisheng.weather.ui.WeatherViewModel
 import com.zhisheng.weather.ui.ProvideWeatherPresentationClock
@@ -218,6 +219,13 @@ class MainActivity : ComponentActivity() {
                 var locationProviderWizard by rememberSaveable { mutableStateOf<com.zhisheng.weather.ui.ProviderWizardKind?>(null) }
                 var locationSetupDismissedForSession by rememberSaveable { mutableStateOf(false) }
                 var choosingInitialCity by rememberSaveable { mutableStateOf(false) }
+                // 返回首页的唯一入口：左上角返回按钮、系统返回键 / 手势、应用内右滑、
+                // 搜索页选城 / 返回、快捷方式，以及库导航自己退回根，都写回同一个 screen。
+                // 关闭动画不在各入口单独处理，统一由 MochiNavHost 按当前「应用转场」设置执行。
+                fun returnHome() {
+                    if (screen == AppScreen.SEARCH) choosingInitialCity = false
+                    screen = AppScreen.HOME
+                }
                 fun markInitialLocationHandled() {
                     scope.launch {
                         try {
@@ -376,22 +384,22 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(command.sequence) {
                     when (command.action) {
                         Intent.ACTION_MAIN -> {
-                            screen = AppScreen.HOME
+                            returnHome()
                             // onNewIntent can reuse an already resumed Activity, so
                             // a launcher re-entry must not rely solely on ON_RESUME.
                             vm.autoLocateIfEnabled()
                         }
                         ACTION_WIDGET_WEATHER -> {
-                            screen = AppScreen.HOME
+                            returnHome()
                             vm.preserveWidgetCityOnEntry()
                         }
                         ACTION_SEARCH -> screen = AppScreen.SEARCH
                         ACTION_SETTINGS -> {
                             screen = AppScreen.MOCHI_SETTINGS
                         }
-                        ACTION_TYPHOON -> screen = if (ReleaseFeatures.typhoon) AppScreen.TYPHOON else AppScreen.HOME
+                        ACTION_TYPHOON -> if (ReleaseFeatures.typhoon) screen = AppScreen.TYPHOON else returnHome()
                         ACTION_REFRESH -> {
-                            screen = AppScreen.HOME
+                            returnHome()
                             vm.refreshFromUser()
                         }
                     }
@@ -426,11 +434,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // 系统返回键、侧推手势、左上角返回按钮三处共用同一套返回语义。
-                fun navigateBack() {
-                    if (screen == AppScreen.SEARCH) choosingInitialCity = false
-                    screen = AppScreen.HOME
-                }
-                BackHandler(enabled = screen != AppScreen.HOME) { navigateBack() }
+                BackHandler(enabled = screen != AppScreen.HOME) { returnHome() }
 
                 val automation by com.zhisheng.weather.data.AutomationSettingsRepository.settings.collectAsState()
                 LaunchedEffect(automation.remindersEnabled, automation.morningMinute, automation.eveningMinute) {
@@ -464,6 +468,10 @@ class MainActivity : ComponentActivity() {
                 // UI 个性化偏好：同步到库全局效果状态，并驱动全站页面转场。
                 val uiPrefs = rememberMochiUiPrefs()
                 ApplyMochiUiPrefs(uiPrefs, motionEnabled)
+                val appStyle = PageTransitionStyle.from(uiPrefs.pageTransition)
+                // 「无动画」或系统关掉动画时，页面弹簧 / 压暗与所有返回手势一起关掉。
+                // 偏好一变就重组，下一次打开或返回立即采用新设置。
+                val transitionsEnabled = appTransitionsEnabled(appStyle, motionEnabled)
                 // 应用级导航走库的 MochiNavHost（与设置页内部同一条转场）：
                 // 弹簧、下层页缩放、压暗、侧推与预测性返回都由库给，MainActivity 不再自拼覆盖层动画。
                 val nav = rememberMochiNavigator(AppScreen.HOME.route)
@@ -482,9 +490,7 @@ class MainActivity : ComponentActivity() {
                                 // 交给库：页面从那张卡长成整页、返回缩回卡片；其余样式走库的侧推。
                                 // 来源 key 与首页 mochiNavSource 的登记一一对应（含城市后缀），
                                 // 没登记的元素库会退回原地缩放淡入，不会出错。
-                                val from = if (
-                                    PageTransitionStyle.from(uiPrefs.pageTransition) == PageTransitionStyle.APP
-                                ) {
+                                val from = if (appStyle == PageTransitionStyle.APP) {
                                     dest.navSourceKey(uiState.selectedCity?.locationKey)
                                 } else {
                                     null
@@ -496,10 +502,23 @@ class MainActivity : ComponentActivity() {
                 }
                 LaunchedEffect(Unit) {
                     snapshotFlow { nav.current }.collect { route ->
-                        if (route == AppScreen.HOME.route && screen != AppScreen.HOME) {
-                            if (screen == AppScreen.SEARCH) choosingInitialCity = false
-                            screen = AppScreen.HOME
-                        }
+                        // 库导航自己退回根（系统返回手势 / 应用内右滑 / 返回按钮触发的 pop）
+                        // 也写回统一状态，保证 screen 与导航栈始终一致。
+                        if (route == AppScreen.HOME.route && screen != AppScreen.HOME) returnHome()
+                    }
+                }
+                // 「应用转场」设置一变，已打开页面的关闭形态立刻跟着变：之后无论从哪个
+                // 入口返回首页（返回按钮、系统返回手势、应用内右滑、快捷方式），关闭动画
+                // 都按当前设置执行，不会沿用进入页面时的旧样式。
+                LaunchedEffect(appStyle) {
+                    if (screen != AppScreen.HOME) {
+                        nav.setTopSource(
+                            if (appStyle == PageTransitionStyle.APP) {
+                                screen.navSourceKey(uiState.selectedCity?.locationKey)
+                            } else {
+                                null
+                            }
+                        )
                     }
                 }
                 // 首页的氛围动效、共享元素与光晕在库导航转场期间冻结：
@@ -509,12 +528,8 @@ class MainActivity : ComponentActivity() {
                     AnimatedContent(
                         targetState = standbyVisible,
                         transitionSpec = {
-                            if (motionEnabled) {
-                                screenTransition(
-                                    motionEnabled,
-                                    PageTransitionStyle.from(uiPrefs.pageTransition),
-                                    uiPrefs.swipeBack,
-                                )
+                            if (transitionsEnabled) {
+                                screenTransition(motionEnabled, appStyle, uiPrefs.swipeBack)
                             } else {
                                 androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
                             }
@@ -550,9 +565,11 @@ class MainActivity : ComponentActivity() {
                     ) {
                     MochiNavHost(
                         nav,
-                        spec = mochiNavSpecFor(uiPrefs),
-                        predictiveBack = uiPrefs.predictiveBack && uiPrefs.swipeBack,
-                        swipeBackEnabled = uiPrefs.swipeBack && motionEnabled,
+                        spec = mochiNavSpecFor(uiPrefs, motionEnabled),
+                        // 「无动画」时系统预测性返回与应用内右滑一起关掉：
+                        // 否则手指仍会跟手拖出一段返回动画。
+                        predictiveBack = transitionsEnabled && uiPrefs.predictiveBack && uiPrefs.swipeBack,
+                        swipeBackEnabled = transitionsEnabled && uiPrefs.swipeBack,
                         // 首页天空是不间断动画、雷达页是原生地图视图：整页录进离屏图层给浮层玻璃
                         // 取样会每帧重录（原生视图甚至可能取样崩溃）。浮层玻璃退回各页自己的
                         // 正文来源，与迁移前的行为一致。
@@ -604,7 +621,7 @@ class MainActivity : ComponentActivity() {
                             }
                                     AppScreen.MOCHI_SETTINGS -> Box(Modifier.fillMaxSize()) {
                                     MochiSettingsScreen(
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                         onLocate = { vm.locateCurrentCity() },
                                         locating = uiState.locating,
                                         locateMessage = uiState.locateMessage,
@@ -629,7 +646,7 @@ class MainActivity : ComponentActivity() {
                                         tempUnit = uiState.tempUnit,
                                         windUnit = uiState.prefs.windUnit,
                                         utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                         hourly = uiState.weather?.hourly.orEmpty(),
                                         initialDateMillis = forecastDate,
                                     )
@@ -644,19 +661,19 @@ class MainActivity : ComponentActivity() {
                                         windUnit = uiState.prefs.windUnit,
                                         utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
                                         hourly = uiState.weather?.hourly.orEmpty(),
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                     )
                                     AppScreen.PRECIPITATION -> MochiPrecipitationDetailScreen(
                                         data = uiState.weather ?: com.zhisheng.weather.model.WeatherData(),
                                         cityName = uiState.selectedCity?.displayName,
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                     )
                                     AppScreen.HOURLY_DETAIL -> com.zhisheng.weather.ui.HourlyDetailScreen(
                                         data = uiState.weather ?: com.zhisheng.weather.model.WeatherData(),
                                         cityName = uiState.selectedCity?.displayName,
                                         tempUnit = uiState.tempUnit,
                                         windUnit = uiState.prefs.windUnit,
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                     )
                                     AppScreen.HISTORY -> HistoryScreen(
                                         city = uiState.selectedCity,
@@ -664,16 +681,16 @@ class MainActivity : ComponentActivity() {
                                         tempUnit = uiState.tempUnit,
                                         windUnit = uiState.prefs.windUnit,
                                         utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                     )
                                     AppScreen.RADAR -> if (ReleaseFeatures.radar) RadarScreen(
                                         weather = uiState.weather,
                                         city = uiState.selectedCity,
                                         utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                     )
                                     AppScreen.TYPHOON -> if (ReleaseFeatures.typhoon) TyphoonScreen(
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                     )
                                     AppScreen.AIR_QUALITY -> AirQualityScreen(
                                         weather = uiState.weather,
@@ -688,13 +705,13 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         }.take(5),
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                     )
                                     AppScreen.FEATURES -> FeatureHubScreen(
                                         cityName = uiState.selectedCity?.displayName,
                                         latitude = uiState.selectedCity?.latitude ?: 0.0,
                                         longitude = uiState.selectedCity?.longitude ?: 0.0,
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                     )
                                     AppScreen.YESTERDAY_DETAIL -> com.zhisheng.weather.ui.YesterdayDetailScreen(
                                         yesterday = uiState.weather?.yesterday,
@@ -703,19 +720,15 @@ class MainActivity : ComponentActivity() {
                                         tempUnit = uiState.tempUnit,
                                         windUnit = uiState.prefs.windUnit,
                                         utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
-                                        onBack = { navigateBack() },
+                                        onBack = { returnHome() },
                                     )
                                     AppScreen.SEARCH -> MochiSearchScreen(
                                         onCityPicked = { city: City ->
                                             vm.addCityAndSelect(city)
                                             cityPickedRequest++
-                                            choosingInitialCity = false
-                                            screen = AppScreen.HOME
+                                            returnHome()
                                         },
-                                        onBack = {
-                                            choosingInitialCity = false
-                                            screen = AppScreen.HOME
-                                        },
+                                        onBack = { returnHome() },
                                     )
                         }
                         }

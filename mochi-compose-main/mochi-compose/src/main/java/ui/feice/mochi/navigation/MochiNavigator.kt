@@ -141,6 +141,19 @@ public class MochiNavigator internal constructor(root: String, restored: List<Mo
         return true
     }
 
+    /**
+     * 让已经打开、静止的栈顶页按当前「应用转场」设置决定关闭形态：
+     * `source` 非空 = 从来源元素缩回去（打开应用式），空 = 侧推。
+     * 用于页面打开期间用户改了转场设置：下一次返回（按钮、系统返回手势、侧滑、意图都算）
+     * 都按新设置执行。只改形态标记，不动打开进度；位置进度由 [MochiNavHost] 在关闭启动时校正。
+     * 根页和转场中的页不处理。
+     */
+    public fun setTopSource(source: String?) {
+        val e = entries.lastOrNull { !it.closing } ?: return
+        if (under(e) == null || e.inTransition || e.source == source) return
+        e.source = source
+    }
+
     internal fun remove(entry: MochiNavEntry) {
         entries.remove(entry)
     }
@@ -345,7 +358,10 @@ internal val LocalMochiNavEntry = staticCompositionLocalOf<MochiNavEntry?> { nul
 
 /** 栈里的一页和它的转场状态 */
 @Stable
-internal class MochiNavEntry(val id: Int, val route: String, val source: String?, opened: Boolean) {
+internal class MochiNavEntry(val id: Int, val route: String, source: String?, opened: Boolean) {
+    /** 页面静止时可被 [MochiNavigator.setTopSource] 按当前转场设置改形态；可观察，改动后相关绘制会重算。 */
+    var source by mutableStateOf(source)
+
     /** 打开进度：0 = 缩在来源处，1 = 整屏（弹簧，可能略微过冲）。打开和关闭是同一条弹簧，随时掉头 */
     val progress = Animatable(if (opened) 1f else 0f)
 

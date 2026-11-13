@@ -1,12 +1,14 @@
 package com.zhisheng.weather.ui.home
 
 import android.os.Build
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
@@ -27,6 +29,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +47,7 @@ import com.zhisheng.weather.ui.components.WeatherIcon
 import com.zhisheng.weather.ui.theme.LocalHomeSurfaceStyle
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -74,6 +78,7 @@ internal fun VistaHourlyForecast(
     val iconToTemperatureGap = if (hasTrend) 6.dp else 8.dp
     val showRain = vistaHourlyShowsPrecip(items.map { it.weather })
     val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val visibleColumns = floor(maxWidth.value / (56f * fontScale)).toInt()
             .coerceIn(if (fontScale <= 1.5f) 3 else 2, 8)
@@ -127,7 +132,30 @@ internal fun VistaHourlyForecast(
                 )
             }
         }) {
-        Row(Modifier.cityChartGestures().horizontalScroll(scrollState).drawWithCache {
+        // 逐时卡片自己接管左右滑动：整张卡片可点，外面还叠着城市分页、侧栏与侧推返回手势，
+        // horizontalScroll 自带的拖动会被抢走。关掉它的手势（仍负责按 scrollState 裁剪、
+        // 平移内容），由卡片消费横向拖动推进 scrollState；没拖动时不消费，点卡片照常进详情。
+        Row(Modifier.cityChartGestures()
+            .horizontalScroll(scrollState, enabled = false)
+            .pointerInput(scrollState, cellPx) {
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, dragAmount ->
+                        val before = (scrollState.value / cellPx).roundToInt()
+                        change.consume()
+                        scrollState.dispatchRawDelta(-dragAmount)
+                        val after = (scrollState.value / cellPx).roundToInt()
+                        if (after != before) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    },
+                    onDragEnd = {
+                        val target = ((scrollState.value / cellPx).roundToInt() * cellPx)
+                            .roundToInt().coerceIn(0, scrollState.maxValue)
+                        if (abs(target - scrollState.value) > 1) {
+                            scope.launch { scrollState.animateScrollTo(target) }
+                        }
+                    },
+                )
+            }
+            .drawWithCache {
             // Match the actual rounded Column/Spacer measurements, including large type.
             val columnWidth = cellWidth.roundToPx().toFloat()
             val top = (22.dp * fontScale).roundToPx() + 8.dp.roundToPx() +
