@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,14 +26,16 @@ import com.zhisheng.weather.model.HourlyWeather
 import com.zhisheng.weather.model.YesterdayInfo
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.components.WeatherIcon
+import ui.feice.mochi.list.MochiListLeadingStyle
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
 import ui.feice.mochi.theme.MochiTheme
 
 /**
  * 单日详细天气页：由首页五天卡片的详情块进入，[dateMillis] 决定打开哪一天。
- * 页面外壳与设置 / 特色功能等二级页统一使用库组件；自定义天气图形（概览、逐时曲线、详情网格）
- * 不适合用列表行表达，保留在库分组卡片内承载。
+ * 页面外壳与设置 / 特色功能等二级页统一使用库组件；自定义天气图形（概览、逐时曲线）
+ * 用库的内容卡片 [MochiPageCard] 承载，逐条信息直接排成库列表行，卡内边距、行高、
+ * 分隔线与字阶都由组件库给，不再自己摆。
  */
 @Composable
 internal fun DailyDayDetailScreen(
@@ -71,18 +71,24 @@ internal fun DailyDayDetailScreen(
 
     MochiPageFrame(title = "当日详细天气", subtitle = city?.displayName, onBack = onBack) {
         if (day == null || visual == null) {
-            item { MochiListRow(title = "暂无这一天的预报数据") }
+            item {
+                MochiListSection {
+                    MochiListRow(title = "暂无这一天的预报数据")
+                }
+            }
             return@MochiPageFrame
         }
 
         item {
-            MochiListSection(header = "切换日期") {
+            MochiPageCard(
+                header = "切换日期",
+                footer = "左右滑动卡片，或点「前一天 / 后一天」切换日期",
+            ) {
                 Column(
                     Modifier.fillMaxWidth().swipeAdjacentDays(
                         onPrev = { prevDate?.let { selectedDate = it } },
                         onNext = { nextDate?.let { selectedDate = it } },
                     ),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     ForecastDaySwitch(
                         canPrev = prevDate != null,
@@ -90,27 +96,25 @@ internal fun DailyDayDetailScreen(
                         onPrev = { prevDate?.let { selectedDate = it } },
                         onNext = { nextDate?.let { selectedDate = it } },
                     )
-                    city?.displayName?.let {
-                        Text(it, color = MochiTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                    }
                 }
             }
         }
         item {
-            MochiListSection(header = "天气概览") {
+            MochiPageCard(header = "天气概览") {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 "${forecastTemporalLabel(day.dateMillis, utcOffsetSeconds)} · ${forecastDateLabel(day.dateMillis, utcOffsetSeconds)}",
                                 color = MochiTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MochiTheme.textStyles.subhead,
                             )
                             Text(
                                 day.weatherText ?: day.condition?.label ?: "天气预报",
                                 color = MochiTheme.colorScheme.onSurface,
+                                style = MochiTheme.textStyles.titleLarge,
                                 fontSize = 26.sp,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                             )
                         }
                         WeatherIcon(visual.dayCondition, Modifier.size(64.dp))
@@ -120,10 +124,10 @@ internal fun DailyDayDetailScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Fmt.temp(day.low, tempUnit)?.let {
-                            Text("最低 $it°", color = MochiTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge)
+                            Text("最低 $it°", color = MochiTheme.colorScheme.onSurface, style = MochiTheme.textStyles.titleLarge)
                         }
                         Fmt.temp(day.high, tempUnit)?.let {
-                            Text("最高 $it°", color = MochiTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge)
+                            Text("最高 $it°", color = MochiTheme.colorScheme.onSurface, style = MochiTheme.textStyles.titleLarge)
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -135,7 +139,7 @@ internal fun DailyDayDetailScreen(
         }
         if (forecastHasHourlyTemperatures(hours)) {
             item {
-                MochiListSection(header = "逐时气温") {
+                MochiPageCard(header = "逐时气温") {
                     ForecastHourlyTemperature(hours, tempUnit, utcOffsetSeconds)
                 }
             }
@@ -143,42 +147,23 @@ internal fun DailyDayDetailScreen(
         if (facts.isNotEmpty()) {
             item {
                 MochiListSection(header = "当日详情") {
-                    FlowRow(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp),
-                        maxItemsInEachRow = 2,
-                    ) {
-                        facts.forEach { (label, value) ->
-                            Column(
-                                Modifier.widthIn(min = 120.dp),
-                                verticalArrangement = Arrangement.spacedBy(5.dp),
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                ) {
-                                    PhosphorIcon(
-                                        forecastFactIcon(label),
-                                        null,
-                                        Modifier.size(13.dp),
-                                        MochiTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(label, color = MochiTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                                }
-                                Text(value, color = MochiTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
-                            }
-                        }
+                    facts.forEach { (label, value) ->
+                        MochiListRow(
+                            title = label,
+                            value = value,
+                            leading = {
+                                PhosphorIcon(
+                                    forecastFactIcon(label),
+                                    null,
+                                    Modifier.size(18.dp),
+                                    MochiTheme.colorScheme.primary,
+                                )
+                            },
+                            leadingStyle = MochiListLeadingStyle.Symbol,
+                        )
                     }
                 }
             }
-        }
-        item {
-            Text(
-                "左右滑动卡片或点「前一天 / 后一天」可切换日期",
-                color = MochiTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall,
-            )
         }
     }
 }

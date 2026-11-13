@@ -1,37 +1,31 @@
 package com.zhisheng.weather.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhisheng.weather.R
+import com.zhisheng.weather.data.WeatherRepository
 import com.zhisheng.weather.model.DailyWeather
 import com.zhisheng.weather.model.WeatherCondition
 import com.zhisheng.weather.model.YesterdayInfo
 import com.zhisheng.weather.ui.components.PhosphorIcon
-import com.zhisheng.weather.data.WeatherRepository
 import com.zhisheng.weather.ui.components.WeatherIcon
 import com.zhisheng.weather.ui.home.tempDelta
 import com.zhisheng.weather.ui.theme.ZhishengMint
 import com.zhisheng.weather.ui.theme.ZhishengOrange
 import com.zhisheng.weather.ui.theme.ZhishengRed
+import ui.feice.mochi.list.MochiListLeadingStyle
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
 import ui.feice.mochi.theme.MochiTheme
@@ -39,8 +33,9 @@ import kotlin.math.abs
 
 /**
  * 昨日天气二级页：昨日高低温、天气转折、风、日出日落与 AQI，并与今日最高温对比。
- * 页面骨架与设置 / 特色功能等二级页统一使用库组件；大温度、AQI 语义色与图标网格等
- * 自定义内容保留在库分组卡片内承载。
+ * 页面骨架与设置 / 特色功能等二级页统一使用库组件；大温度、AQI 语义色这类自定义内容
+ * 用库的内容卡片 [MochiPageCard] 承载（自带卡内边距），逐条信息直接排成库列表行，
+ * 行高、分隔线与字阶都由组件库给。
  */
 @Composable
 fun YesterdayDetailScreen(
@@ -68,7 +63,7 @@ fun YesterdayDetailScreen(
             return@MochiPageFrame
         }
         item {
-            MochiListSection(header = "高低温与空气质量") {
+            MochiPageCard(header = "高低温与空气质量") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.Bottom) {
@@ -89,7 +84,7 @@ fun YesterdayDetailScreen(
                         Spacer(Modifier.height(4.dp))
                         Text(
                             condition?.label ?: "天气未知",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MochiTheme.textStyles.body,
                             color = MochiTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -105,28 +100,25 @@ fun YesterdayDetailScreen(
         }
         tempDelta(today?.high, yesterday.high, tempUnit)?.let { diff ->
             item {
-                MochiListSection(header = "较今日最高温") {
+                MochiPageCard(header = "较今日最高温") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("较今日最高温", style = MaterialTheme.typography.titleMedium, color = MochiTheme.colorScheme.onSurface)
-                            Spacer(Modifier.height(3.dp))
-                            Text(
-                                when {
-                                    diff > 0 -> "今日最高温比昨天高 ${abs(diff)}°"
-                                    diff < 0 -> "今日最高温比昨天低 ${abs(diff)}°"
-                                    else -> "今日最高温与昨天持平"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MochiTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        Text(
+                            when {
+                                diff > 0 -> "今日最高温比昨天高 ${abs(diff)}°"
+                                diff < 0 -> "今日最高温比昨天低 ${abs(diff)}°"
+                                else -> "今日最高温与昨天持平"
+                            },
+                            Modifier.weight(1f),
+                            style = MochiTheme.textStyles.subhead,
+                            color = MochiTheme.colorScheme.onSurfaceVariant,
+                        )
                         Text(
                             when {
                                 diff > 0 -> "+${diff}°"
                                 diff < 0 -> "$diff°"
                                 else -> "0°"
                             },
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MochiTheme.textStyles.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = if (diff > 0) ZhishengOrange else ZhishengMint,
                         )
@@ -135,19 +127,28 @@ fun YesterdayDetailScreen(
             }
         }
         item {
+            val facts = listOf(
+                YesterdayFact(R.drawable.ph_cloud, "天气", weatherTransition(yesterday)),
+                YesterdayFact(R.drawable.ph_compass, "风向", windTransition(yesterday)),
+                YesterdayFact(R.drawable.ph_wind, "风速", windSpeedLabel(yesterday, windUnit)),
+                YesterdayFact(R.drawable.ph_sun, "日出", yesterday.sunrise?.takeIf(String::isNotBlank) ?: "—"),
+                YesterdayFact(R.drawable.ph_moon_stars, "日落", yesterday.sunset?.takeIf(String::isNotBlank) ?: "—"),
+            )
             MochiListSection(header = "天气与风") {
-                val facts = listOf(
-                    YesterdayFact(R.drawable.ph_cloud, "天气", weatherTransition(yesterday)),
-                    YesterdayFact(R.drawable.ph_compass, "风向", windTransition(yesterday)),
-                    YesterdayFact(R.drawable.ph_wind, "风速", windSpeedLabel(yesterday, windUnit)),
-                    YesterdayFact(R.drawable.ph_sun, "日出", yesterday.sunrise?.takeIf(String::isNotBlank) ?: "—"),
-                    YesterdayFact(R.drawable.ph_moon_stars, "日落", yesterday.sunset?.takeIf(String::isNotBlank) ?: "—"),
-                )
-                facts.chunked(2).forEach { rowFacts ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        rowFacts.forEach { fact -> FactCell(fact, Modifier.weight(1f)) }
-                        if (rowFacts.size == 1) Spacer(Modifier.weight(1f))
-                    }
+                facts.forEach { fact ->
+                    MochiListRow(
+                        title = fact.label,
+                        value = fact.value,
+                        leading = {
+                            PhosphorIcon(
+                                fact.icon,
+                                null,
+                                Modifier.size(18.dp),
+                                MochiTheme.colorScheme.primary,
+                            )
+                        },
+                        leadingStyle = MochiListLeadingStyle.Symbol,
+                    )
                 }
             }
         }
@@ -157,40 +158,13 @@ fun YesterdayDetailScreen(
 @Composable
 private fun MetricCell(label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = valueColor)
+        Text(value, style = MochiTheme.textStyles.titleLarge, fontWeight = FontWeight.Bold, color = valueColor)
         Spacer(Modifier.height(2.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MochiTheme.textStyles.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 private data class YesterdayFact(val icon: Int, val label: String, val value: String)
-
-/** 两列网格单元：图标 + 标签 + 值。 */
-@Composable
-private fun FactCell(fact: YesterdayFact, modifier: Modifier = Modifier) {
-    Row(
-        modifier.padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(MochiTheme.colorScheme.primary.copy(alpha = 0.10f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            PhosphorIcon(fact.icon, null, Modifier.size(15.dp), MochiTheme.colorScheme.primary)
-        }
-        Column(Modifier.weight(1f)) {
-            Text(fact.label, style = MaterialTheme.typography.labelSmall, color = MochiTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            Text(
-                fact.value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MochiTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
 
 @Composable
 private fun aqiTone(value: Int?): Color = when {

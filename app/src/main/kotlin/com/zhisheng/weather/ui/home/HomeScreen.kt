@@ -123,6 +123,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.zhisheng.weather.ui.MochiAppTheme
+import com.zhisheng.weather.ui.MochiPageCard
 import com.zhisheng.weather.ui.mochiCardSurface
 import com.zhisheng.weather.ui.rememberMochiColorScheme
 import ui.feice.mochi.navigation.MochiSidebarHeader
@@ -431,7 +433,9 @@ fun HomeScreen(
     val adviceSheet = rememberMochiSheetState(listOf(MochiSheetDetent.Medium, MochiSheetDetent.Large))
     val homeSheets = remember(outfitSheet, adviceSheet) { HomeSheetStates(outfitSheet, adviceSheet) }
     CompositionLocalProvider(LocalHomeSheetStates provides homeSheets) {
-    MochiTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
+    // 和设置 / 天气详情等二级页走同一个外观入口：配色、液态玻璃材质、卡片 token 都由
+    // 组件库按「主题配色 / 液态玻璃」设置生成，首页不再单独拼一套主题。
+    MochiAppTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
     MochiSidebarLayout(
         state = sidebar,
         style = MochiSidebarStyle.Push,
@@ -2265,25 +2269,26 @@ internal fun SectionTitle(index: Int, title: String, en: String, prominent: Bool
     }
 }
 
-// —— 首页卡片：统一用组件库分组卡片承载 ——
+// —— 首页卡片：统一用组件库的内容卡片承载 ——
 @Composable
 private fun HudCard(
     modifier: Modifier = Modifier,
     edgeContent: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    // 卡片的底色、圆角、分组留白都交给库（和设置二级页的 MochiListSection 同一套 token），
-    // 页面里只保留内容自己的内边距。
-    Box(
-        modifier = modifier
-            .padding(horizontal = 16.dp)
-            .mochiCardSurface()
-            .padding(
-                horizontal = if (edgeContent) 0.dp else 14.dp,
-                vertical = 12.dp,
-            ),
+    // 走组件库的内容卡片（和设置、天气详情等二级页同一个 MochiPageCard）：
+    // 底色、圆角、分组留白与卡内边距都由库给，首页只排内容。
+    // 内容仍放在 Box 里，保留原来「多层叠放」的排版语义；高度不做库的动画，
+    // 首页图表、卡片展开本来就是自己逐帧变高的。
+    MochiPageCard(
+        modifier = modifier.padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(
+            horizontal = if (edgeContent) 0.dp else 14.dp,
+            vertical = 12.dp,
+        ),
+        animateHeight = false,
     ) {
-        content()
+        Box(Modifier.fillMaxWidth()) { content() }
     }
 }
 

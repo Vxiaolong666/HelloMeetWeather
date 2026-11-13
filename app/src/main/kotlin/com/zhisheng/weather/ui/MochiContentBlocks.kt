@@ -79,16 +79,27 @@ internal fun MochiFadeNote(
 
 /**
  * 用库卡片承载页面自己的图表或自定义内容：只换容器，内容原样放进来。
- * 内容和间距仍由调用方决定，卡片只负责库的背景、圆角与分组留白。
+ * 内容和间距仍由调用方决定，卡片只负责库的背景、圆角、分组小标题与内边距。
+ *
+ * 直接往 [MochiListSection] 里塞自定义内容是不带内边距的（那是给 [MochiListRow] 用的行容器），
+ * 元素会贴着卡片左右边；走这里才和设置页的卡片一致。
  */
 @Composable
 internal fun MochiPageCard(
     modifier: Modifier = Modifier,
+    header: String? = null,
+    footer: String? = null,
     contentPadding: PaddingValues = PaddingValues(16.dp),
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    animateHeight: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    MochiListSection(modifier = modifier) {
+    MochiListSection(
+        modifier = modifier,
+        header = header,
+        footer = footer,
+        animateHeight = animateHeight,
+    ) {
         Column(
             Modifier.fillMaxWidth().padding(contentPadding),
             verticalArrangement = verticalArrangement,
