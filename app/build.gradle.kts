@@ -28,9 +28,9 @@ android {
         applicationId = "com.zhisheng.weather"
         minSdk = 26
         targetSdk = 34
-        // Beta 7：主题统一、二级页组件库外壳与转场重做；保持公开包名与签名。
-        versionCode = 20261177
-        versionName = "0.1-Beta7"
+        // Beta 9：云端公告与 Markdown 详情页；保持公开包名与签名。
+        versionCode = 20261179
+        versionName = "0.1-Beta9"
         resValue("string", "shortcut_target_package", "com.zhisheng.weather")
 
         // 发行渠道面向实体手机；去掉仅供 Intel 模拟器使用的 x86/x86_64 MapLibre 库。
