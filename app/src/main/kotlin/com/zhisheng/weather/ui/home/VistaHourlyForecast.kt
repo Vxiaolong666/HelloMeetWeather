@@ -1,17 +1,17 @@
 package com.zhisheng.weather.ui.home
 
 import android.os.Build
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -29,7 +29,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,7 +46,6 @@ import com.zhisheng.weather.ui.components.WeatherIcon
 import com.zhisheng.weather.ui.theme.LocalHomeSurfaceStyle
 import com.zhisheng.weather.ui.theme.LocalZhishengPalette
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -77,8 +75,11 @@ internal fun VistaHourlyForecast(
         if (hasTrend) HourlyTemperatureLineGap + HourlyTemperatureMistDepth else 0.dp
     val iconToTemperatureGap = if (hasTrend) 6.dp else 8.dp
     val showRain = vistaHourlyShowsPrecip(items.map { it.weather })
-    val scrollState = rememberScrollState()
-    val scope = rememberCoroutineScope()
+    // 逐时列表用与经典页同款的 LazyRow（state 交给库横向滚动），曲线画在列表背后、
+    // 随滚动平移，列内容与曲线始终对齐。cityChartGestures 的嵌套滚动连接把横向滚动
+    // 认领下来，城市分页/侧推返回不会抢；自定义 detectHorizontalDragGestures 在这里会
+    // 和 HorizontalPager 抢事件导致无法滑动，已退回 LazyRow + cityChartGestures()。
+    val listState = rememberLazyListState()
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val visibleColumns = floor(maxWidth.value / (56f * fontScale)).toInt()
             .coerceIn(if (fontScale <= 1.5f) 3 else 2, 8)
@@ -86,11 +87,14 @@ internal fun VistaHourlyForecast(
         val cellPx = with(LocalDensity.current) { cellWidth.toPx() }
         val surfaceStyle = LocalHomeSurfaceStyle.current
         val refract = surfaceStyle == HomeSurfaceStyle.FRAGRANCE_GLASS && edgeOptics != null
+        // 全部逐时列等宽，滚动偏移 = 首个可见项索引 × 格宽 + 项内偏移。
+        fun scrollPx(): Float = listState.firstVisibleItemIndex * cellPx + listState.firstVisibleItemScrollOffset
+        val maxScrollPx = (items.size * cellPx - with(LocalDensity.current) { maxWidth.toPx() }).coerceAtLeast(0f)
 
-        LaunchedEffect(scrollState, cellPx, haptic) {
+        LaunchedEffect(listState, cellPx, haptic) {
             var lastHour = -1
             snapshotFlow {
-                if (scrollState.isScrollInProgress) (scrollState.value / cellPx).roundToInt() else -1
+                if (listState.isScrollInProgress) listState.firstVisibleItemIndex else -1
             }.distinctUntilChanged().collect { hour ->
                 if (hour >= 0 && lastHour >= 0 && hour != lastHour) {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -98,13 +102,17 @@ internal fun VistaHourlyForecast(
                 lastHour = hour
             }
         }
-        LaunchedEffect(scrollState, cellPx, surfaceStyle) {
-            snapshotFlow { scrollState.isScrollInProgress to scrollState.maxValue }.distinctUntilChanged()
-                .collect { (inProgress, maxValue) ->
-                    if (!inProgress && maxValue > 0) {
-                        val target = ((scrollState.value / cellPx).roundToInt() * cellPx).roundToInt()
-                            .coerceIn(0, maxValue)
-                        if (abs(target - scrollState.value) > 1) scrollState.animateScrollTo(target)
+        LaunchedEffect(listState, cellPx, surfaceStyle, items.size) {
+            snapshotFlow { listState.isScrollInProgress }.distinctUntilChanged()
+                .collect { inProgress ->
+                    if (!inProgress && maxScrollPx > 0) {
+                        val target = ((scrollPx() / cellPx).roundToInt() * cellPx).roundToInt()
+                            .coerceIn(0, maxScrollPx.roundToInt())
+                        if (abs(target - scrollPx()) > 1) {
+                            val index = (target / cellPx).roundToInt().coerceIn(0, items.lastIndex)
+                            val itemOffset = (target - index * cellPx).roundToInt().coerceIn(0, cellPx.roundToInt())
+                            listState.animateScrollToItem(index, itemOffset)
+                        }
                     }
                 }
         }
@@ -115,10 +123,10 @@ internal fun VistaHourlyForecast(
             drawContent()
             val edge = ((if (refract) 14.dp else 12.dp).toPx() / size.width.coerceAtLeast(1f)).coerceIn(0f, 0.16f)
             drawRect(Brush.horizontalGradient(
-                0f to Color.Black.copy(alpha = if (scrollState.value > 0) 0f else 1f),
+                0f to Color.Black.copy(alpha = if (scrollPx() > 0) 0f else 1f),
                 edge to Color.Black,
                 (1f - edge) to Color.Black,
-                1f to Color.Black.copy(alpha = if (scrollState.value < scrollState.maxValue) 0f else 1f),
+                1f to Color.Black.copy(alpha = if (scrollPx() < maxScrollPx) 0f else 1f),
             ), blendMode = BlendMode.DstIn)
         }) {
         Box(Modifier.fillMaxWidth().graphicsLayer {
@@ -127,35 +135,16 @@ internal fun VistaHourlyForecast(
                     width = size.width,
                     height = size.height,
                     edgeWidth = 20.dp.toPx(),
-                    hasLeft = scrollState.value > 0,
-                    hasRight = scrollState.value < scrollState.maxValue,
+                    hasLeft = scrollPx() > 0,
+                    hasRight = scrollPx() < maxScrollPx,
                 )
             }
         }) {
-        // 逐时卡片自己接管左右滑动：整张卡片可点，外面还叠着城市分页、侧栏与侧推返回手势，
-        // horizontalScroll 自带的拖动会被抢走。关掉它的手势（仍负责按 scrollState 裁剪、
-        // 平移内容），由卡片消费横向拖动推进 scrollState；没拖动时不消费，点卡片照常进详情。
-        Row(Modifier.cityChartGestures()
-            .horizontalScroll(scrollState, enabled = false)
-            .pointerInput(scrollState, cellPx) {
-                detectHorizontalDragGestures(
-                    onHorizontalDrag = { change, dragAmount ->
-                        val before = (scrollState.value / cellPx).roundToInt()
-                        change.consume()
-                        scrollState.dispatchRawDelta(-dragAmount)
-                        val after = (scrollState.value / cellPx).roundToInt()
-                        if (after != before) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    },
-                    onDragEnd = {
-                        val target = ((scrollState.value / cellPx).roundToInt() * cellPx)
-                            .roundToInt().coerceIn(0, scrollState.maxValue)
-                        if (abs(target - scrollState.value) > 1) {
-                            scope.launch { scrollState.animateScrollTo(target) }
-                        }
-                    },
-                )
-            }
-            .drawWithCache {
+        // 逐时列内容用与经典页同款的 LazyRow 横向滚动；cityChartGestures 的嵌套滚动连接把
+        // 横向滚动认领下来，城市分页/侧推返回不会抢。温度曲线画在列表背后、随滚动平移，
+        // 列内容与曲线始终对齐（此前 custom detectHorizontalDragGestures / Row+horizontalScroll
+        // 都会和 HorizontalPager 抢事件导致无法滑动，已退回 LazyRow + cityChartGestures()）。
+        Box(Modifier.fillMaxWidth().clipToBounds().drawWithCache {
             // Match the actual rounded Column/Spacer measurements, including large type.
             val columnWidth = cellWidth.roundToPx().toFloat()
             val top = (22.dp * fontScale).roundToPx() + 8.dp.roundToPx() +
@@ -192,7 +181,8 @@ internal fun VistaHourlyForecast(
             val cool = lerp(palette.cyan, palette.mint, 0.25f)
             val colorTop = lineTop.toFloat()
             val dyes = trend.map { lerp(warm, cool, it?.fraction ?: 0.5f).copy(alpha = 0.88f) }
-            val contentWidth = size.width.coerceAtLeast(1f)
+            // 曲线画在列表背后，坐标以整段内容（items.size × 格宽）为基准，绘制时按滚动偏移平移。
+            val contentWidth = (items.size * columnWidth).coerceAtLeast(1f)
             val edge = (14.dp.toPx() / contentWidth).coerceIn(0f, 0.15f)
             val colorStops = buildList<Pair<Float, Color>> {
                 add(0f to dyes.first().copy(alpha = 0f))
@@ -209,24 +199,32 @@ internal fun VistaHourlyForecast(
             val softOffset = 1.dp.toPx()
             val nowRadius = 2.dp.toPx()
             onDrawBehind {
-                contours.forEach { (trace, wash) ->
-                    drawPath(wash, mist)
-                    withTransform({ translate(top = softOffset) }) {
-                        drawPath(trace, silk, alpha = 0.075f, style = softStroke)
+                withTransform({ translate(left = -scrollPx()) }) {
+                    contours.forEach { (trace, wash) ->
+                        drawPath(wash, mist)
+                        withTransform({ translate(top = softOffset) }) {
+                            drawPath(trace, silk, alpha = 0.075f, style = softStroke)
+                        }
+                        drawPath(trace, silk, style = traceStroke)
                     }
-                    drawPath(trace, silk, style = traceStroke)
-                }
-                points.forEachIndexed { index, point ->
-                    if (point != null && items[index].isNow) {
-                        val tint = lerp(warm, cool, trend[index]!!.fraction)
-                        drawCircle(tint.copy(alpha = 0.12f), 5.dp.toPx(), point)
-                        drawCircle(tint, nowRadius, point)
-                        drawCircle(lerp(tint, palette.text, 0.6f), 0.8.dp.toPx(), point)
+                    points.forEachIndexed { index, point ->
+                        if (point != null && items[index].isNow) {
+                            val tint = lerp(warm, cool, trend[index]!!.fraction)
+                            drawCircle(tint.copy(alpha = 0.12f), 5.dp.toPx(), point)
+                            drawCircle(tint, nowRadius, point)
+                            drawCircle(lerp(tint, palette.text, 0.6f), 0.8.dp.toPx(), point)
+                        }
                     }
                 }
             }
         }) {
-            items.forEachIndexed { index, item ->
+            LazyRow(
+                state = listState,
+                modifier = Modifier.fillMaxWidth().cityChartGestures(),
+            ) {
+                itemsIndexed(items, key = { i, item ->
+                    if (item.isNow) "now-${item.weather.timeMillis}" else "hour-$i-${item.weather.timeMillis}"
+                }) { index, item ->
                 val h = item.weather
                 val condition = phaseAwareCondition(h.condition, data, h.timeMillis)
                 val temperature = Fmt.temp(h.temperature?.takeIf(Double::isFinite), unit)?.let { "$it°" } ?: "—"
@@ -281,6 +279,7 @@ internal fun VistaHourlyForecast(
                     }
                 }
             }
+        }
         }
         }
         }

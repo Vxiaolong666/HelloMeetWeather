@@ -449,10 +449,18 @@ fun HomeScreen(
         if (from != null && to != null) SkyPagingTransition(from, to) else null
     }
 
-    val outfitSheet = rememberMochiSheetState(listOf(MochiSheetDetent.Large))
+    val outfitSheet = rememberMochiSheetState(listOf(MochiSheetDetent.Medium, MochiSheetDetent.Large))
     val adviceSheet = rememberMochiSheetState(listOf(MochiSheetDetent.Medium, MochiSheetDetent.Large))
     val homeSheets = remember(outfitSheet, adviceSheet) { HomeSheetStates(outfitSheet, adviceSheet) }
+    // 穿搭状态提升到首页：坐标或缓存刷新可能替换城市页，但不能因此关掉已打开的衣柜。
+    val outfitState = rememberOutfitUiState()
+    var outfitRequest by rememberSaveable(stateSaver = OutfitDialogRequest.Saver) {
+        mutableStateOf<OutfitDialogRequest?>(null)
+    }
     CompositionLocalProvider(LocalHomeSheetStates provides homeSheets) {
+    // 衣柜抽屉要用与 mochiSheetBackdrop(outfitSheet) 同一个共享状态才能按面板堆叠退后，
+    // 必须放在 LocalHomeSheetStates 提供范围之内（生活指数 LifeAdviceSheet 同款）。
+    outfitRequest?.let { OutfitWardrobeOverlay(it, outfitState) { outfitRequest = null } }
     // 和设置 / 天气详情等二级页走同一个外观入口：配色、液态玻璃材质、卡片 token 都由
     // 组件库按「主题配色 / 液态玻璃」设置生成，首页不再单独拼一套主题。
     MochiAppTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
@@ -487,7 +495,7 @@ fun HomeScreen(
         NaturalWeatherSurface(atmosphereWeather, uiState.prefs.ambience, night,
             modifier = Modifier.fillMaxSize()
                 .mochiSheetBackdrop(outfitSheet).mochiSheetBackdrop(adviceSheet),
-            active = ambienceActive && sidebarFullyClosed,
+            active = ambienceActive && outfitRequest == null && sidebarFullyClosed,
             parallax = { ambienceParallax.floatValue }, city = atmosphereCity,
             pagingTransition = skyTransition,
             pagingFraction = { cityPager?.let { p ->
@@ -503,7 +511,7 @@ fun HomeScreen(
                 } else CompositionLocalProvider(LocalCitySharedChrome provides sharedChrome) { CityWeatherPager(
                     cities = uiState.cities,
                     selectedKey = uiState.selectedCity?.locationKey,
-                    enabled = ambienceActive && !cityDeckVisible && !sidebar.isOpen,
+                    enabled = ambienceActive && outfitRequest == null && !cityDeckVisible && !sidebar.isOpen,
                     onSelect = viewModel::selectCity,
                     onPaging = { cityPaging = it },
                     onPagerReady = { cityPager = it },
@@ -548,6 +556,8 @@ fun HomeScreen(
                             onAirQualityClick = { openCityDetail(onAirQualityClick) },
                             onYesterdayClick = { openCityDetail(onYesterdayClick) },
                             onFeatureHubClick = { openCityDetail(onFeatureHubClick) },
+                            outfitState = outfitState,
+                            onOutfitOpen = { request -> openCityDetail { outfitRequest = request } },
                         )
                     }
                 }
@@ -654,6 +664,8 @@ internal fun HomeCityPage(
     onAirQualityClick: () -> Unit, onYesterdayClick: () -> Unit,
     onFeatureHubClick: () -> Unit = {},
     onOpenDailyDay: (Long) -> Unit = {},
+    outfitState: OutfitUiState = rememberOutfitUiState(),
+    onOutfitOpen: ((OutfitDialogRequest) -> Unit)? = null,
 ) {
     val chrome = LocalZhishengChrome.current
     val density = LocalDensity.current
@@ -739,6 +751,8 @@ internal fun HomeCityPage(
                     onAirQualityClick = onAirQualityClick, onYesterdayClick = onYesterdayClick,
                     onFeatureHubClick = onFeatureHubClick,
                     onOpenDailyDay = onOpenDailyDay,
+                    outfitState = outfitState,
+                    onOutfitOpen = onOutfitOpen,
                 )
                 else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(
                     top = bodyInset + 48.dp, start = 28.dp, end = 28.dp, bottom = 48.dp)) {
@@ -1252,6 +1266,8 @@ private fun WeatherContent(
     onAirQualityClick: () -> Unit = {},
     onYesterdayClick: () -> Unit = {},
     onFeatureHubClick: () -> Unit = {},
+    outfitState: OutfitUiState = rememberOutfitUiState(),
+    onOutfitOpen: ((OutfitDialogRequest) -> Unit)? = null,
 ) {
     val heroEntry = LocalCityChromeEntry.current
     // 入场动画总开关：状态提升到 LazyColumn 之上，只驱动一次交错入场（v0.0.1 修复快滑闪卡）
@@ -1282,7 +1298,7 @@ private fun WeatherContent(
     // typhoon 字段决定入口是否出现。用户关闭模块时才隐藏。
     val showTy = showTyphoon && com.zhisheng.weather.data.ReleaseFeatures.typhoon
     val showFeatures = prefs.showFeatures
-    val showOutfit = prefs.showOutfit && data.current?.let { outfitRecommendation(it, unit) } != null
+    val showOutfit = prefs.showOutfit
     val showAtlas = if (isPhosphorVista) prefs.showSpacetime || vistaScenePages(sceneWeather, prefs).isNotEmpty()
     else prefs.showSpacetime || prefs.showSkyPhotography || prefs.showCoastWeather
     val vista = isPhosphorVista
@@ -1354,11 +1370,17 @@ private fun WeatherContent(
                         HomeModule.YESTERDAY -> data.yesterday?.let {
                             YesterdayCard(it, todayDaily, unit, prefs.windUnit, m, onClick = onYesterdayClick)
                         }
-                        HomeModule.TYPHOON -> TyphoonCard(data.typhoons, m, onTyphoonClick)
+                        HomeModule.TYPHOON -> TyphoonEntryCard(m, onTyphoonClick)
                         HomeModule.FEATURES -> FeatureCard(m, onClick = onFeatureHubClick)
-                        HomeModule.OUTFIT -> data.current?.let { cur ->
-                            OutfitCard(cur, unit, m, city?.displayName, prefs.windUnit, data.hourly)
-                        }
+                        HomeModule.OUTFIT -> OutfitCard(
+                            data = data,
+                            unit = unit,
+                            modifier = m,
+                            windUnit = prefs.windUnit,
+                            cityName = city?.displayName.orEmpty(),
+                            state = outfitState,
+                            onOpen = onOutfitOpen,
+                        )
                     }
                 }
                 }
@@ -1438,6 +1460,7 @@ private fun HomeModule.isPrimaryHomeModule(): Boolean = when (this) {
     HomeModule.HOURLY,
     HomeModule.PRECIP,
     HomeModule.DAILY,
+    HomeModule.OUTFIT,
     HomeModule.SPACETIME
     -> true
     HomeModule.TELEMETRY,
@@ -1445,8 +1468,7 @@ private fun HomeModule.isPrimaryHomeModule(): Boolean = when (this) {
     HomeModule.INDICES,
     HomeModule.YESTERDAY,
     HomeModule.TYPHOON,
-    HomeModule.FEATURES,
-    HomeModule.OUTFIT
+    HomeModule.FEATURES
     -> false
 }
 
@@ -2198,7 +2220,7 @@ internal fun SectionTitle(index: Int, title: String, en: String, prominent: Bool
 
 // —— 首页卡片：统一用组件库的内容卡片承载 ——
 @Composable
-private fun HudCard(
+internal fun HudCard(
     modifier: Modifier = Modifier,
     edgeContent: Boolean = false,
     navSourceKey: String? = null,
@@ -3578,7 +3600,7 @@ internal fun TelemetryGrid(
                 }
             }
             if (showLuminary) Column(Modifier.fillMaxWidth().zhishengPanel().padding(16.dp)) {
-                VistaLuminary(today, utcOffsetSeconds)
+                VistaLuminarySlot(today, utcOffsetSeconds)
             }
         }
     } else {
@@ -3628,7 +3650,7 @@ internal fun TelemetryGrid(
                 Modifier.padding(horizontal = 16.dp), color = ZhishengCardBorder.copy(alpha = 0.5f))
             Box(Modifier.fillMaxWidth().padding(horizontal = if (isPhosphorVista) 16.dp else 12.dp, vertical = if (isPhosphorVista) 16.dp else 10.dp)) {
                 if (isPhosphorVista) {
-                    VistaLuminary(today, utcOffsetSeconds)
+                    VistaLuminarySlot(today, utcOffsetSeconds)
                 } else {
                     Column {
                         TeleLabel("日月", "LUMINARY")
@@ -4437,60 +4459,6 @@ private fun YesterdayCard(
     }
 }
 
-// —— 台风 ——
-
-/**
- * 台风入口卡：与其他首页模块卡共用 [HudCard]（库卡片材质、圆角、分组留白），
- * 信息层级也对齐特色功能 / 昨日复盘：图标 + 标题 + 一行副标题 + 「查看 →」，能力标签降为注释级。
- */
-@Composable
-private fun TyphoonCard(typhoons: List<TyphoonInfo>, modifier: Modifier, onClick: () -> Unit) {
-    val active = typhoons.firstOrNull()
-    val region = "西北太平洋 · 南海"
-    val activeName = active?.name?.takeIf { it.isNotBlank() } ?: active?.id
-    HudCard(
-        modifier = modifier.fillMaxWidth()
-            .clickable(role = Role.Button, onClickLabel = "打开台风路径", onClick = onClick),
-        navSourceKey = "typhoon",
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TyphoonSwirlIcon(Modifier.size(26.dp))
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("台风追踪", style = MaterialTheme.typography.titleSmall, color = ZhishengText)
-                    Text(
-                        if (activeName == null) "$region · 暂无活动台风"
-                        else "$region · $activeName 活动中",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ZhishengTextTertiary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "查看  →",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ZhishengMint,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                listOf("实况路径", "预报走势", "风圈范围").forEach { label ->
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ZhishengTextSecondary,
-                    )
-                }
-            }
-        }
-    }
-}
 
 /** 蓝色渐变台风漩涡：三条螺旋臂 + 中心风眼。 */
 @Composable
@@ -4561,118 +4529,6 @@ private fun FeatureCard(modifier: Modifier, onClick: () -> Unit = {}) {
                 style = MaterialTheme.typography.labelMedium,
                 color = ZhishengMint,
                 fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-}
-
-/**
- * 穿搭建议卡：插画 + 四项搭配 + 体感温度；点「搭配一下」打开搭配弹层。
- * 数据仅需预报接口的 apparent_temperature / weather_code / wind_speed_10m / relative_humidity_2m。
- */
-@Composable
-internal fun OutfitCard(
-    cur: CurrentWeather,
-    unit: String,
-    modifier: Modifier,
-    cityName: String? = null,
-    windUnit: String = "kmh",
-    hourly: List<HourlyWeather> = emptyList(),
-) {
-    val outfit = remember(cur, unit) { outfitRecommendation(cur, unit) } ?: return
-    val palette = LocalZhishengPalette.current
-    var showSheet by remember { mutableStateOf(false) }
-    val style = outfitStyleFor(outfit.palette)
-    val pieces = listOf(
-        Triple(R.drawable.ph_t_shirt, "上身", outfit.top),
-        Triple(R.drawable.ph_t_shirt, "外搭", outfit.outer),
-        Triple(R.drawable.ph_pants, "下装", outfit.bottom),
-        Triple(R.drawable.ph_sneaker, "鞋履", outfit.shoes),
-    )
-    HudCard(modifier = modifier.fillMaxWidth()) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        outfit.headline,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = ZhishengText,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(outfit.advice, style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        outfit.feelLabel,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.mint,
-                    )
-                    Text("体感", style = MaterialTheme.typography.labelSmall, color = ZhishengTextSecondary)
-                }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutfitFigure(style, Modifier.weight(1f).height(240.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    pieces.forEach { (icon, label, value) ->
-                        OutfitCardPiece(icon, label, value, Modifier.fillMaxWidth())
-                    }
-                }
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.mint.copy(alpha = .12f))
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                ) {
-                    Text(outfit.tag, style = MaterialTheme.typography.labelSmall, color = palette.mint)
-                }
-                Spacer(Modifier.width(10.dp))
-                Text(outfit.palette, style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
-                Spacer(Modifier.weight(1f))
-                Row(
-                    Modifier.clickable(role = Role.Button, onClickLabel = "搭配一下") { showSheet = true },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        "搭配一下",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = palette.mint,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    PhosphorIcon(R.drawable.ph_arrow_up_right, null, Modifier.size(16.dp), palette.mint)
-                }
-            }
-        }
-    }
-    if (showSheet) {
-        OutfitStylingSheet(cur, unit, windUnit, cityName, hourly) { showSheet = false }
-    }
-}
-
-@Composable
-private fun OutfitCardPiece(icon: Int, label: String, value: String, modifier: Modifier) {
-    val palette = LocalZhishengPalette.current
-    Row(
-        modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(palette.surface.copy(alpha = 0.75f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        PhosphorIcon(icon, null, Modifier.size(20.dp), palette.textSecondary)
-        Column {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
-            Text(
-                value,
-                style = MaterialTheme.typography.titleSmall,
-                color = palette.text,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }

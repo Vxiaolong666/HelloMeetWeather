@@ -135,18 +135,23 @@ object LocationSource {
                 if (streets && clean.street == null) emptyList() else listOf(clean)
             }.orEmpty()
         }
-        val providers = mutableListOf<suspend () -> List<City>>()
-        if (credentials.amap.isNotBlank() && (streets || credentials.sharedPlace.enabled)) providers += {
+        val providers = mutableListOf<Pair<LocationEnginePref, suspend () -> List<City>>>()
+        // 定位引擎偏好只决定尝试顺序：所选引擎排最前，其余按可用性跟随，失败仍可降级。
+        // AUTO 保持「高德 → 枳生 → 系统 → 百度」的既有默认顺序。
+        val pref = SettingsRepository.locationEngine.first()
+        fun engineRank(engine: LocationEnginePref): Int =
+            if (pref == LocationEnginePref.AUTO || engine == pref) 0 else 1
+        if (credentials.amap.isNotBlank() && (streets || credentials.sharedPlace.enabled)) providers += LocationEnginePref.AMAP to {
             cached("amap:" + credentials.amap) {
                 val r = AmapApi.reverseStreetFromWgs84(credentials.amap, lat, lon, null)
                 if (!r.ok) throw PlaceServiceException(r.failure ?: amapFailure(r.infocode))
                 preciseAddressCity(r.district, r.city, r.province, r.street, null, null, lat, lon, source = "amap")
             }
         }
-        if (credentials.sharedPlace.enabled) providers += {
+        if (credentials.sharedPlace.enabled) providers += LocationEnginePref.SHARED to {
             cached("shared") { SharedPlaceApi.reverse(context, measured, streets, credentials.sharedPlace) }
         }
-        providers += {
+        providers += LocationEnginePref.SYSTEM to {
             cached("system") {
                 if (!Geocoder.isPresent()) throw PlaceServiceException(PlaceFailure.UNAVAILABLE)
                 val address = geocodeAddress(context, lat, lon) ?: return@cached null
@@ -156,14 +161,15 @@ object LocationSource {
                     address.locality, address.subAdminArea, label.name))
             }
         }
-        if (streets && credentials.baidu.isNotBlank()) providers += {
+        if (streets && credentials.baidu.isNotBlank()) providers += LocationEnginePref.BAIDU to {
             cached("baidu:" + credentials.baidu) {
                 val r = BaiduApi.reverseStreetFromWgs84(credentials.baidu, lat, lon)
                 if (!r.ok) throw PlaceServiceException(PlaceFailure.UNAVAILABLE)
                 preciseAddressCity(r.district, r.city, r.province, r.street, null, null, lat, lon, source = "baidu")
             }
         }
-        val outcome = coordinatePlaceSearch(providers, isCurrent = { currentPlaceCredentials() == credentials })
+        val outcome = coordinatePlaceSearch(providers.sortedBy { engineRank(it.first) }.map { it.second },
+            isCurrent = { currentPlaceCredentials() == credentials })
         return if (outcome.failure == PlaceFailure.CONFIG_CHANGED) null
             else outcome.cities.firstOrNull() ?: administrativeLabel
     }

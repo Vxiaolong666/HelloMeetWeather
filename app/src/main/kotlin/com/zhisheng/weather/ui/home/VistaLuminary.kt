@@ -1,38 +1,20 @@
 package com.zhisheng.weather.ui.home
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.CornerRadius
@@ -45,7 +27,6 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -132,52 +113,14 @@ internal fun vistaAstroProgressInWindow(now: Int, window: VistaAstroWindow): Flo
     return (elapsed.toFloat() / window.windowLength.toFloat()).coerceIn(0f, 1f)
 }
 
-/** 升起到落下之间的进度 0..1；不在窗口或数据无效返回 null。月升月落跨日也能算。 */
-internal fun vistaAstroUpProgress(now: Int, rise: Int, set: Int): Float? {
-    val up = vistaAstroUpDuration(rise, set) ?: return null
-    val elapsed = Math.floorMod(now - rise, VISTA_DAY_MINUTES)
-    if (elapsed >= up) return null
-    return elapsed.toFloat() / up.toFloat()
-}
-
 /** 当天 0 点到 24 点，横轴按钟点对齐。 */
 internal fun vistaAstroClockFraction(clockMinutes: Int): Float =
     Math.floorMod(clockMinutes, VISTA_DAY_MINUTES).toFloat() / VISTA_DAY_MINUTES.toFloat()
 
-/** 时长文案：10小时29分 / 11小时 / 29分。 */
-internal fun vistaAstroDuration(minutes: Int): String {
-    val h = minutes / 60
-    val m = minutes % 60
-    return when {
-        h > 0 && m > 0 -> "${h}小时${m}分"
-        h > 0 -> "${h}小时"
-        else -> "${m}分"
-    }
-}
-
-/** 下一次日出/日落倒计时；日落后算到次日日出。 */
-internal fun vistaAstroCountdown(nowMinutes: Int, sunrise: String?, sunset: String?): String? {
-    val rise = clockMinutes(sunrise) ?: return null
-    val set = clockMinutes(sunset) ?: return null
-    val (label, delta) = when {
-        nowMinutes < rise -> "日出" to (rise - nowMinutes)
-        nowMinutes < set -> "日落" to (set - nowMinutes)
-        else -> "日出" to (VISTA_DAY_MINUTES - nowMinutes + rise)
-    }
-    return "${label}还有 ${vistaAstroDuration(delta)}"
-}
-
 @Composable
 internal fun VistaLuminary(today: DailyWeather, utcOffsetSeconds: Int?) {
-    val nowMinutes = vistaNowMinutes(weatherPresentationTime(), utcOffsetSeconds)
     val phase = Fmt.moonPhaseZh(today.moonPhase)
     val illumination = MoonCalc.illuminationFraction(weatherPresentationTime()).coerceIn(0.0, 1.0)
-    val orange = ZhishengOrange
-    val cyan = ZhishengCyan
-    val palette = LocalZhishengPalette.current
-    val rail = palette.cardBorder.copy(alpha = 0.55f)
-    // 弧线轨迹（参考设计，默认）与原来的时钟波形，右上角切换。
-    var arcMode by rememberSaveable { mutableStateOf(true) }
     Column(
         Modifier.fillMaxWidth().semantics {
             contentDescription = buildString {
@@ -185,259 +128,49 @@ internal fun VistaLuminary(today: DailyWeather, utcOffsetSeconds: Int?) {
                 append("日出 ${today.sunrise ?: "暂缺"}，日落 ${today.sunset ?: "暂缺"}，")
                 append("月升 ${today.moonrise ?: "暂缺"}，月落 ${today.moonset ?: "暂缺"}")
                 phase?.let { append("，$it") }
-                append(if (arcMode) "，弧线轨迹视图" else "，波形视图")
             }
         },
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("太阳和月亮", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
                 color = ZhishengText, fontWeight = FontWeight.Medium)
             if (phase != null) {
-                VistaMoonDisc(illumination, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
+                VistaMoonDisc(illumination, Modifier.size(20.dp))
                 Text(phase, style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
             }
-            Spacer(Modifier.width(10.dp))
-            LuminaryModeSwitch(arcMode) { arcMode = it }
         }
-        vistaAstroCountdown(nowMinutes, today.sunrise, today.sunset)?.let { countdown ->
-            Text(
-                countdown,
-                Modifier.fillMaxWidth(),
-                textAlign = TextAlign.End,
-                style = MaterialTheme.typography.titleSmall,
-                color = ZhishengText,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-        Crossfade(
-            targetState = arcMode,
-            modifier = Modifier.animateContentSize(tween(260)),
-            animationSpec = tween(260),
-            label = "luminary-view",
-        ) { arc ->
-            if (arc) {
-                VistaLuminaryArc(today, nowMinutes, illumination, rail, orange, cyan)
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    VistaAstroWave(
-                        riseText = today.sunrise,
-                        setText = today.sunset,
-                        riseLabel = "日出",
-                        setLabel = "日落",
-                        nowMinutes = nowMinutes,
-                        color = orange,
-                        rail = rail,
-                    )
-                    VistaAstroWave(
-                        riseText = today.moonrise,
-                        setText = today.moonset,
-                        riseLabel = "月升",
-                        setLabel = "月落",
-                        nowMinutes = nowMinutes,
-                        color = cyan,
-                        rail = rail,
-                    )
-                }
-            }
-        }
+        VistaAstroWaveBody(today, utcOffsetSeconds)
     }
 }
 
-/** 右上角两态切换：波形 ∿ / 弧线 ⌒；选中项用主色实心强调。 */
+/** 波形卡片去掉标题行后的主体，供可切换卡片在动画里复用。 */
 @Composable
-private fun LuminaryModeSwitch(arc: Boolean, onChange: (Boolean) -> Unit) {
-    val palette = LocalZhishengPalette.current
-    val shape = RoundedCornerShape(14.dp)
-    Row(
-        Modifier
-            .width(58.dp)
-            .height(28.dp)
-            .clip(shape)
-            .background(palette.surface.copy(alpha = 0.72f))
-            .border(1.dp, palette.cardBorder.copy(alpha = 0.45f), shape)
-            .selectableGroup()
-            .padding(2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        listOf(false, true).forEach { isArc ->
-            val selected = arc == isArc
-            val fill by animateColorAsState(
-                targetValue = if (selected) palette.mint else Color.Transparent,
-                animationSpec = tween(220),
-                label = "luminary-switch-fill",
-            )
-            val iconTint by animateColorAsState(
-                targetValue = if (selected) palette.surface else palette.textTertiary,
-                animationSpec = tween(220),
-                label = "luminary-switch-tint",
-            )
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(fill)
-                    .selectable(selected = selected, role = Role.Tab) { onChange(isArc) }
-                    .semantics {
-                        contentDescription = if (isArc) "弧线轨迹视图" else "波形视图"
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                LuminaryModeIcon(isArc, iconTint, Modifier.size(14.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun LuminaryModeIcon(arc: Boolean, tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        val path = Path().apply {
-            if (arc) {
-                moveTo(w * 0.12f, h * 0.72f)
-                cubicTo(w * 0.22f, h * 0.16f, w * 0.78f, h * 0.16f, w * 0.88f, h * 0.72f)
-            } else {
-                moveTo(w * 0.08f, h * 0.50f)
-                cubicTo(w * 0.24f, h * 0.14f, w * 0.34f, h * 0.86f, w * 0.50f, h * 0.50f)
-                cubicTo(w * 0.66f, h * 0.14f, w * 0.76f, h * 0.86f, w * 0.92f, h * 0.50f)
-            }
-        }
-        drawPath(path, tint, style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round))
-    }
-}
-
-/**
- * 弧线轨迹视图：外弧为太阳（日出→日落），内弧为月亮（月升→月落），
- * 基线四个点对应底部四个时刻；照亮与白昼时长放在最后一行。
- */
-@Composable
-private fun VistaLuminaryArc(
-    today: DailyWeather,
-    nowMinutes: Int,
-    illumination: Double,
-    rail: Color,
-    orange: Color,
-    cyan: Color,
-) {
-    val marks = listOf(
-        Triple("日出", today.sunrise, orange),
-        Triple("月升", today.moonrise, cyan),
-        Triple("月落", today.moonset, cyan),
-        Triple("日落", today.sunset, orange),
-    )
-    val hasMoon = today.moonrise != null && today.moonset != null
-    val rise = clockMinutes(today.sunrise)
-    val set = clockMinutes(today.sunset)
-    val daylight = if (rise != null && set != null && set > rise) vistaAstroDuration(set - rise) else "—"
-    // 必须包成单个根布局：外层 Crossfade/AnimatedContent 会把多个子节点叠放，
-    // 否则弧线、四个时刻与照亮/白昼文字会互相压在同一行。
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // 空心位置点的底色用卡片背景色，Canvas 的 DrawScope 里不能读 Composable 状态，提前取好。
-        val surface = LocalZhishengPalette.current.surface
-        Canvas(Modifier.fillMaxWidth().height(150.dp)) {
-            val left = 6.dp.toPx()
-            val right = size.width - 6.dp.toPx()
-            val width = (right - left).coerceAtLeast(1f)
-            val base = size.height - 14.dp.toPx()
-            val dash = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 6.dp.toPx()))
-            val arcStroke = Stroke(1.5.dp.toPx(), pathEffect = dash)
-            fun buildArc(startFraction: Float, endFraction: Float, height: Float): Path {
-                val x1 = left + width * startFraction
-                val x2 = left + width * endFraction
-                val mid = (x1 + x2) / 2f
-                val half = (x2 - x1) / 2f
-                return Path().apply {
-                    moveTo(x1, base)
-                    cubicTo(x1 + half * 0.25f, base - height * 0.86f,
-                        mid - half * 0.55f, base - height, mid, base - height)
-                    cubicTo(mid + half * 0.55f, base - height,
-                        x2 - half * 0.25f, base - height * 0.86f, x2, base)
-                }
-            }
-            // 参考图样式：完整轨迹是灰色虚线，天体在天上时把「升起点 → 当前位置」
-            // 描成实线，末端用背景色圆盘 + 彩色描边画空心圆点标记当前位置。
-            // 弧的贝塞尔控制点横向单调递增，进度段用矩形裁剪完整弧即可精确截出，
-            // 位置点坐标按贝塞尔参数二分求出，避免依赖平台 PathMeasure 的行为差异。
-            fun cubic(a: Float, b: Float, c: Float, d: Float, u: Float): Float {
-                val v = 1f - u
-                return v * v * v * a + 3 * v * v * u * b + 3 * v * u * u * c + u * u * u * d
-            }
-            fun arcPoint(progress: Float, x1: Float, x2: Float, height: Float): Offset {
-                val mid = (x1 + x2) / 2f
-                val half = (x2 - x1) / 2f
-                val targetX = x1 + (x2 - x1) * progress
-                val (xs, ys) = if (targetX <= mid) {
-                    listOf(x1, x1 + half * 0.25f, mid - half * 0.55f, mid) to
-                        listOf(base, base - height * 0.86f, base - height, base - height)
-                } else {
-                    listOf(mid, mid + half * 0.55f, x2 - half * 0.25f, x2) to
-                        listOf(base - height, base - height, base - height * 0.86f, base)
-                }
-                var lo = 0f
-                var hi = 1f
-                repeat(24) {
-                    val midU = (lo + hi) / 2f
-                    if (cubic(xs[0], xs[1], xs[2], xs[3], midU) < targetX) lo = midU else hi = midU
-                }
-                val u = (lo + hi) / 2f
-                return Offset(cubic(xs[0], xs[1], xs[2], xs[3], u), cubic(ys[0], ys[1], ys[2], ys[3], u))
-            }
-            fun drawProgress(path: Path, progress: Float, color: Color, x1: Float, x2: Float, height: Float) {
-                val clamped = progress.coerceIn(0.01f, 1f)
-                val pos = arcPoint(clamped, x1, x2, height)
-                clipRect(left = 0f, top = 0f, right = pos.x, bottom = size.height) {
-                    drawPath(path, color, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round))
-                }
-                drawCircle(surface, 5.dp.toPx(), pos)
-                drawCircle(color, 5.dp.toPx(), pos, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
-            }
-            drawLine(rail.copy(alpha = 0.55f), Offset(left, base), Offset(right, base), 1.dp.toPx())
-            val outerHeight = (base - 12.dp.toPx()).coerceAtLeast(24f)
-            val sunPath = buildArc(0.06f, 0.94f, outerHeight)
-            drawPath(sunPath, rail.copy(alpha = 0.9f), style = arcStroke)
-            val moonPath = if (hasMoon) buildArc(0.22f, 0.78f, outerHeight * 0.62f) else null
-            moonPath?.let { drawPath(it, rail.copy(alpha = 0.9f), style = arcStroke) }
-            listOf(0.06f, 0.22f, 0.78f, 0.94f).forEach { fraction ->
-                drawCircle(rail.copy(alpha = 0.95f), 3.dp.toPx(), Offset(left + width * fraction, base))
-            }
-            // 实线进度与当前位置：太阳沿外弧、月亮沿内弧，进度按升落窗口计算。
-            val sunRise = clockMinutes(today.sunrise)
-            val sunSet = clockMinutes(today.sunset)
-            if (sunRise != null && sunSet != null) {
-                vistaAstroUpProgress(nowMinutes, sunRise, sunSet)?.let {
-                    drawProgress(sunPath, it, orange, left + width * 0.06f, left + width * 0.94f, outerHeight)
-                }
-            }
-            val moonRise = clockMinutes(today.moonrise)
-            val moonSet = clockMinutes(today.moonset)
-            if (moonPath != null && moonRise != null && moonSet != null) {
-                vistaAstroUpProgress(nowMinutes, moonRise, moonSet)?.let {
-                    drawProgress(moonPath, it, cyan, left + width * 0.22f, left + width * 0.78f, outerHeight * 0.62f)
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth()) {
-            marks.forEach { (label, time, color) ->
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(label, style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        time ?: "—",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = color,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("照亮 ${(illumination * 100).toInt()}%", style = MaterialTheme.typography.titleSmall, color = ZhishengTextSecondary)
-            Text("白昼 $daylight", style = MaterialTheme.typography.titleSmall, color = ZhishengTextSecondary)
-        }
+internal fun VistaAstroWaveBody(today: DailyWeather, utcOffsetSeconds: Int?) {
+    val nowMinutes = vistaNowMinutes(weatherPresentationTime(), utcOffsetSeconds)
+    val orange = ZhishengOrange
+    val cyan = ZhishengCyan
+    val rail = LocalZhishengPalette.current.cardBorder.copy(alpha = 0.55f)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        VistaAstroWave(
+            riseText = today.sunrise,
+            setText = today.sunset,
+            riseLabel = "日出",
+            setLabel = "日落",
+            nowMinutes = nowMinutes,
+            color = orange,
+            rail = rail,
+        )
+        VistaAstroWave(
+            riseText = today.moonrise,
+            setText = today.moonset,
+            riseLabel = "月升",
+            setLabel = "月落",
+            nowMinutes = nowMinutes,
+            color = cyan,
+            rail = rail,
+        )
     }
 }
 
@@ -589,24 +322,32 @@ private fun VistaAstroCaption(time: String, label: String, modifier: Modifier) {
 @Composable
 internal fun VistaMoonDisc(fraction: Double, modifier: Modifier = Modifier) {
     val palette = LocalZhishengPalette.current
-    val lit = if (palette.isLight) palette.textSecondary else palette.text
-    val dark = if (palette.isLight) palette.cardBorder else palette.surface
+    // Moonlight has the same physical meaning in both themes; text colours invert.
+    val lit = Color(0xFFF0F4EB)
+    val dark = Color(0xFF35434C)
+    val waxing = MoonCalc.isWaxing(weatherPresentationTime())
     Canvas(modifier.semantics { contentDescription = "月面照明约 ${(fraction * 100).toInt()}%" }) {
         val radius = size.minDimension * 0.46f
         drawCircle(dark, radius, center)
         val illumination = fraction.coerceIn(0.0, 1.0).toFloat()
-        val step = 1.dp.toPx()
-        var yy = -radius
-        while (yy <= radius) {
-            val limb = sqrt((radius * radius - yy * yy).coerceAtLeast(0f))
-            drawLine(
-                lit,
-                Offset(center.x + (1 - 2 * illumination) * limb, center.y + yy),
-                Offset(center.x + limb, center.y + yy),
-                step,
-            )
-            yy += step
+        val illuminated = Path().apply {
+            // One filled contour avoids the striped appearance of 1dp scanlines.
+            for (i in 0..64) {
+                val yy = radius * (i / 32f - 1f)
+                val limb = sqrt((radius * radius - yy * yy).coerceAtLeast(0f))
+                val x = if (waxing) (1 - 2 * illumination) * limb else -limb
+                if (i == 0) moveTo(center.x + x, center.y + yy)
+                else lineTo(center.x + x, center.y + yy)
+            }
+            for (i in 64 downTo 0) {
+                val yy = radius * (i / 32f - 1f)
+                val limb = sqrt((radius * radius - yy * yy).coerceAtLeast(0f))
+                val x = if (waxing) limb else -(1 - 2 * illumination) * limb
+                lineTo(center.x + x, center.y + yy)
+            }
+            close()
         }
+        drawPath(illuminated, lit)
         drawCircle(palette.textTertiary.copy(alpha = 0.7f), radius, center, style = Stroke(1.dp.toPx()))
     }
 }

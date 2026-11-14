@@ -21,7 +21,8 @@ import com.zhisheng.weather.model.RadarSource
 private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(
     name = "settings", produceMigrations = { listOf(WeatherAppearanceDefaultsMigration()) })
 
-// 数据源偏好：AUTO 默认小米→Open-Meteo（0.1.5-beta6 起百度/高德天气下线，两把 AK 只服务定位地理）。
+// 数据源偏好：AUTO 默认小米→Open-Meteo（0.1.5-beta6 起百度/高德天气下线，两把 AK 只服务定位地理；
+// 天气源设置不再列出「百度天气 / 高德天气」，持久化的旧 amap/baidu 经 effective() 一律回落 AUTO）。
 // 需凭据的数据源只在开发者模式下可锁定；手动锁定时保持纯源，便于判断真实表现。
 enum class SourcePref(val key: String, val cn: String, val en: String, val desc: String) {
     AUTO("auto", "自动优选", "AUTO", "按功能优选·失败降级"),
@@ -55,16 +56,18 @@ enum class SourcePref(val key: String, val cn: String, val en: String, val desc:
             if (developerMode) {
                 add(CAIYUN)
                 add(QWEATHER)
-                add(AMAP)
-                add(BAIDU)
                 add(SENIVERSE)
                 add(MOJI)
             }
         }
     }
 
-    fun effective(developerMode: Boolean): SourcePref =
-        if ((this in setOf(QWEATHER, CAIYUN, AMAP, BAIDU, SENIVERSE, MOJI)) && !developerMode) AUTO else this
+    fun effective(developerMode: Boolean): SourcePref = when {
+        // 百度/高德是定位地理服务，不作为天气源：即使持久化了旧 amap/baidu 也一律回落 AUTO。
+        this == AMAP || this == BAIDU -> AUTO
+        (this in setOf(QWEATHER, CAIYUN, SENIVERSE, MOJI)) && !developerMode -> AUTO
+        else -> this
+    }
 
     fun matches(dataSource: String?): Boolean = when (this) {
         // AUTO 只读自身降级链（小米/中央气象台/Open-Meteo）的缓存；仍不接受仅手动锁定的和风/彩云缓存，
@@ -88,6 +91,21 @@ enum class SourcePref(val key: String, val cn: String, val en: String, val desc:
         matches(data.dataSource) &&
             // 枳生源的 blockSources 记录的是参与源（小米/中央气象台/…），身份只由 dataSource 唯一确定
             (this == AUTO || this == ZHISHENG || data.blockSources.values.all { it == data.dataSource })
+}
+
+// 定位地理服务引擎偏好：决定逆地理（坐标 → 城市/街道）时优先尝试的定位服务，
+// 与天气来源平行。AUTO 按「可用凭据 → 系统 Geocoder」的顺序依次尝试并失败降级。
+// 高德/百度需要用户 Key，枳生位置服务需要接入授权，系统定位免配置。
+enum class LocationEnginePref(val key: String, val cn: String, val en: String, val desc: String) {
+    AUTO("auto", "自动优选", "AUTO", "按可用定位能力依次尝试·失败降级"),
+    SYSTEM("system", "系统定位", "SYSTEM", "免配置·系统 Geocoder"),
+    AMAP("amap", "高德定位", "AMAP", "用户 Key·区县街道定位"),
+    BAIDU("baidu", "百度定位", "BAIDU", "用户 AK·街道级定位"),
+    SHARED("shared", "枳生位置服务", "SHARED", "需接入授权·自有服务");
+
+    companion object {
+        fun from(v: String?): LocationEnginePref = entries.firstOrNull { it.key == v } ?: AUTO
+    }
 }
 
 // beta10.5 默认强烈自然天光与流光；持久化用户选择仍优先于缺省值。
@@ -279,6 +297,16 @@ enum class HomeSurfaceStyle(val key: String, val cn: String) {
     }
 }
 
+/** 首页日月卡的两种画法：波形（原版）/ 同心弧（2026-10-23 新版）。卡片右上角按钮切换。 */
+enum class LuminaryStyle(val key: String) {
+    WAVE("wave"),
+    ARC("arc");
+
+    companion object {
+        fun from(v: String?): LuminaryStyle = entries.firstOrNull { it.key == v } ?: WAVE
+    }
+}
+
 // 强调色亮度只调整数据绿与线框蓝，橙/红等语义色保持稳定。
 enum class AccentTone(val key: String, val cn: String) {
     STANDARD("standard", "标准"),
@@ -392,13 +420,20 @@ enum class HomeModule(val key: String, val cn: String, val en: String) {
                 // 旧版本曾把完整默认序列写入偏好；这不代表用户主动排序。
                 // 仅当它仍与旧默认完全一致时迁移到新默认，任何真实改动过的顺序都原样保留。
                 val previousDefault = listOf(HOURLY, PRECIP, DAILY, SPACETIME, TELEMETRY, AQI, INDICES, YESTERDAY, TYPHOON)
-                if (selected == entries.toList() || selected == previousDefault) return defaultOrder
+                val previousDeclaration = entries.filterNot { it == OUTFIT }
+                val previousReadingOrder = listOf(HOURLY, PRECIP, DAILY, TELEMETRY, AQI, SPACETIME, INDICES, YESTERDAY, TYPHOON)
+                if (selected == entries.toList() || selected == previousDeclaration || selected == previousDefault || selected == previousReadingOrder) return defaultOrder
                 // 旧版自定义顺序缺少专题时，以空气质量为锚；其余模块的相对顺序不变。
                 if (SPACETIME !in selected) {
                     val anchor = selected.indexOf(AQI).takeIf { it >= 0 } ?: selected.indexOf(TELEMETRY)
                     val insertion = if (anchor >= 0) anchor + 1 else selected.size
                     selected.add(insertion, SPACETIME)
                 }
+            }
+            // 新增穿搭模块固定补在五天天气之后；其余已保存模块的相对顺序一律不动。
+            if (OUTFIT !in selected) {
+                val daily = selected.indexOf(DAILY)
+                selected.add(if (daily >= 0) daily + 1 else selected.size, OUTFIT)
             }
             selected += defaultOrder.filterNot(selected::contains)
             return selected
@@ -454,6 +489,7 @@ object SettingsRepository {
     private val KEY_LOCATION_ENABLED = booleanPreferencesKey("location_enabled")
     private val KEY_PRECISE_LOCATION = booleanPreferencesKey("precise_location")
     private val KEY_PRECISE_LOCATION_ASKED = booleanPreferencesKey("precise_location_asked")
+    private val KEY_LOCATION_ENGINE = stringPreferencesKey("location_engine")
     private val KEY_WIND_UNIT = stringPreferencesKey("wind_unit")
     private val KEY_PRESSURE_UNIT = stringPreferencesKey("pressure_unit")
     private val KEY_SHOW_AQI = booleanPreferencesKey("show_aqi")
@@ -487,6 +523,8 @@ object SettingsRepository {
     private val KEY_CITY_MANAGER_STYLE = stringPreferencesKey("city_manager_style")
     private val KEY_TELEMETRY_METRICS = stringPreferencesKey("telemetry_metrics")
     private val KEY_LIFE_INDEX_METRICS = stringPreferencesKey("life_index_metrics")
+    private val KEY_LUMINARY_STYLE = stringPreferencesKey("luminary_style")
+    private val KEY_TIANDITU_TOKEN = stringPreferencesKey("tianditu_token")
     // mochi UI 个性化：画面效果档位 / HDR / 按压高光 / 转场与侧推
     private val KEY_MOCHI_GRAPHICS_LEVEL = stringPreferencesKey("mochi_graphics_level")
     private val KEY_MOCHI_HDR_ENABLED = booleanPreferencesKey("mochi_hdr_enabled")
@@ -547,6 +585,10 @@ object SettingsRepository {
     val softGlowLevel: Flow<SoftGlowLevel> by lazy { store.data.map { SoftGlowLevel.from(it[KEY_SOFT_GLOW_LEVEL]) }.distinctUntilChanged() }
     // 定位总开关：关闭时 App 完全不碰位置权限（默认关，兑现「不主动获取权限」）
     val locationEnabled: Flow<Boolean> by lazy { store.data.map { it[KEY_LOCATION_ENABLED] ?: false } }
+    // 定位地理服务引擎：默认自动优选。
+    val locationEngine: Flow<LocationEnginePref> by lazy {
+        store.data.map { LocationEnginePref.from(it[KEY_LOCATION_ENGINE]) }.distinctUntilChanged()
+    }
     // 街道级定位为单独的可选能力；关闭时仍只使用粗略位置。
     val preciseLocationEnabled: Flow<Boolean> by lazy {
         store.data.map { it[KEY_PRECISE_LOCATION] ?: false }.distinctUntilChanged()
@@ -593,6 +635,13 @@ object SettingsRepository {
     }
     val lifeIndexMetrics: Flow<Set<LifeIndexMetric>> by lazy {
         store.data.map { LifeIndexMetric.selectionFrom(it[KEY_LIFE_INDEX_METRICS]) }.distinctUntilChanged()
+    }
+    val luminaryStyle: Flow<LuminaryStyle> by lazy {
+        store.data.map { LuminaryStyle.from(it[KEY_LUMINARY_STYLE]) }.distinctUntilChanged()
+    }
+    // 天地图凭据：填了就改用天地图底图，留空回落 OpenFreeMap（台风地图页使用）。
+    val tiandituToken: Flow<String?> by lazy {
+        store.data.map { it[KEY_TIANDITU_TOKEN]?.takeIf { v -> v.isNotBlank() } }.distinctUntilChanged()
     }
     // 深浅主题的唯一来源是「主题配色」页的黑暗模式（mochi_color_mode）。
     // 这里派生出 ThemeMode 给 ZhishengWeatherTheme、闪屏与桌面图标联动使用，避免两套主题打架。
@@ -814,6 +863,10 @@ object SettingsRepository {
     suspend fun setSoftGlow(v: Boolean) = store.edit { it[KEY_SOFT_GLOW] = v }
     suspend fun setSoftGlowLevel(v: SoftGlowLevel) = store.edit { it[KEY_SOFT_GLOW_LEVEL] = v.key }
     suspend fun setLocationEnabled(v: Boolean) = editWeatherContext { PlaceConfigurationRevision.changed(); it[KEY_LOCATION_ENABLED] = v }
+    suspend fun setLocationEngine(v: LocationEnginePref) = editWeatherContext {
+        PlaceConfigurationRevision.changed()
+        it[KEY_LOCATION_ENGINE] = v.key
+    }
     suspend fun setPreciseLocationEnabled(v: Boolean) = editWeatherContext {
         PlaceConfigurationRevision.changed()
         it[KEY_PRECISE_LOCATION] = v
@@ -848,6 +901,9 @@ object SettingsRepository {
     suspend fun setLifeIndexMetrics(selection: Set<LifeIndexMetric>) = store.edit {
         it[KEY_LIFE_INDEX_METRICS] = LifeIndexMetric.selectionKey(selection)
     }
+    suspend fun setLuminaryStyle(style: LuminaryStyle) = store.edit { it[KEY_LUMINARY_STYLE] = style.key }
+
+    suspend fun setTiandituToken(token: String) = store.edit { it[KEY_TIANDITU_TOKEN] = token.trim() }
     // 兼容旧调用点：深浅统一写回黑暗模式这一个键。
     suspend fun setThemeMode(mode: ThemeMode) = store.edit {
         it[KEY_MOCHI_COLOR_MODE] = mode.key

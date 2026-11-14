@@ -1,13 +1,18 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 package com.zhisheng.weather.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -36,6 +41,7 @@ import com.zhisheng.weather.ui.components.WeatherIcon
 import com.zhisheng.weather.ui.theme.*
 import kotlinx.collections.immutable.persistentListOf
 import ui.feice.mochi.basic.MochiSegmentedControl
+import ui.feice.mochi.list.MochiListDefaults
 import java.util.Locale
 
 @Composable
@@ -62,6 +68,8 @@ internal fun VistaForecastScreen(
         title = if (days.isEmpty()) "多天天气" else "${days.size}日天气预报",
         subtitle = city?.displayName?.takeIf { it.isNotBlank() },
         onBack = onBack,
+        // 纵向日签是紧凑卡片列表，每天一项；用 10dp 卡缝（横向视图保留库默认的分组间距）。
+        contentSpacing = if (vertical) 10.dp else MochiListDefaults.SectionSpacing,
     ) {
         item {
             MochiSegmentedControl(
@@ -87,17 +95,15 @@ internal fun VistaForecastScreen(
             }
         }
             if (vertical) {
-                item {
-                    ForecastVerticalList(
-                        days = track,
-                        selectedMillis = selectedDate,
-                        tempUnit = tempUnit,
-                        windUnit = windUnit,
-                        utcOffsetSeconds = utcOffsetSeconds,
-                        hourly = hourly,
-                        onSelect = { selectedDate = it },
-                    )
-                }
+                forecastVerticalList(
+                    days = track,
+                    selectedMillis = selectedDate,
+                    tempUnit = tempUnit,
+                    windUnit = windUnit,
+                    utcOffsetSeconds = utcOffsetSeconds,
+                    hourly = hourly,
+                    onSelect = { selectedDate = it },
+                )
             } else if (selected == null) {
                 item { Text("暂无逐日预报，返回主页刷新后再试", color = ZhishengTextSecondary) }
             } else {
@@ -443,9 +449,14 @@ internal fun ForecastDateHeader(
     }
 }
 
-/** 纵向日签：每天一张卡，点开的卡片展开当日要素（两列对齐）。 */
-@Composable
-internal fun ForecastVerticalList(
+/**
+ * 纵向日签：每天一张 LazyColumn 项，点开的卡片展开当日要素（两列对齐）。
+ *
+ * 每天必须单独成一个 LazyColumn 项（而不是把整张 15 日列表塞进一个 item 里的 Column）：
+ * LazyColumn 只有拿到「每一项各自的高度」才能在卡片展开/收起动画期间重测、扩出滚动范围。
+ * 之前是单个超大 item + 内部 Column，卡片高度动画时 item 不重测、内容越界重叠、列表滑不动。
+ */
+internal fun LazyListScope.forecastVerticalList(
     days: List<DailyWeather>,
     selectedMillis: Long?,
     tempUnit: String,
@@ -453,129 +464,157 @@ internal fun ForecastVerticalList(
     utcOffsetSeconds: Int?,
     hourly: List<HourlyWeather>,
     onSelect: (Long?) -> Unit,
-    modifier: Modifier = Modifier,
+) {
+    days.forEach { day ->
+        val open = day.dateMillis == selectedMillis
+        item(key = day.dateMillis) {
+            ForecastVerticalDayCard(
+                day = day,
+                open = open,
+                tempUnit = tempUnit,
+                windUnit = windUnit,
+                utcOffsetSeconds = utcOffsetSeconds,
+                hourly = hourly,
+                onToggle = { onSelect(if (open) null else day.dateMillis) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ForecastVerticalDayCard(
+    day: DailyWeather,
+    open: Boolean,
+    tempUnit: String,
+    windUnit: String,
+    utcOffsetSeconds: Int?,
+    hourly: List<HourlyWeather>,
+    onToggle: () -> Unit,
 ) {
     val palette = LocalZhishengPalette.current
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        days.forEach { day ->
-            val open = day.dateMillis == selectedMillis
-            val visual = forecastDayNightVisual(day)
-            Column(
-                Modifier.fillMaxWidth().zhishengPanel().padding(horizontal = 14.dp, vertical = 12.dp),
-            ) {
-                Row(
-                    Modifier.fillMaxWidth()
-                        .clickable(
-                            role = Role.Button,
-                            onClickLabel = if (open) "收起当日详情" else "展开当日详情",
-                        ) { onSelect(if (open) null else day.dateMillis) },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Column(Modifier.width(56.dp)) {
+    val visual = forecastDayNightVisual(day)
+    Column(
+        Modifier.fillMaxWidth().zhishengPanel().padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = if (open) "收起当日详情" else "展开当日详情",
+                ) { onToggle() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(Modifier.width(56.dp)) {
+                Text(
+                    Fmt.dailyDayLabel(day.dateMillis, utcOffsetSeconds = utcOffsetSeconds),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = palette.text,
+                    maxLines = 1,
+                )
+                Text(
+                    Fmt.dayOfMonth(day.dateMillis, utcOffsetSeconds),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.textTertiary,
+                    maxLines = 1,
+                )
+            }
+            WeatherIcon(visual.dayCondition, Modifier.size(28.dp))
+            Text(
+                day.weatherText?.takeIf(String::isNotBlank) ?: day.condition?.label ?: "天气暂缺",
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = palette.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    Fmt.temp(day.high, tempUnit)?.let { "$it°" } ?: "—",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = palette.text,
+                )
+                Text(
+                    Fmt.temp(day.low, tempUnit)?.let { "$it°" } ?: "—",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.textSecondary,
+                )
+            }
+        }
+        // 详情区展开/收起：AnimatedVisibility 逐帧改变这一项的高度，LazyColumn 会重测该项并扩出
+        // 滚动范围；竖向伸缩把内容裁到动画中的卡身内，不会越界重叠，也不与列表滚动抢事件。
+        AnimatedVisibility(
+            visible = open,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            Column {
+                val hours = remember(hourly, day.dateMillis, utcOffsetSeconds) {
+                    forecastHoursForDate(hourly, day.dateMillis, utcOffsetSeconds)
+                }
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.45f), thickness = 1.dp)
+                Spacer(Modifier.height(12.dp))
+                // 当日主信息：天气、温度区间与昼夜两段
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            Fmt.dailyDayLabel(day.dateMillis, utcOffsetSeconds = utcOffsetSeconds),
-                            style = MaterialTheme.typography.titleSmall,
+                            day.weatherText?.takeIf(String::isNotBlank) ?: day.condition?.label ?: "天气预报",
+                            style = MaterialTheme.typography.titleMedium,
                             color = palette.text,
-                            maxLines = 1,
                         )
                         Text(
-                            Fmt.dayOfMonth(day.dateMillis, utcOffsetSeconds),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = palette.textTertiary,
-                            maxLines = 1,
-                        )
-                    }
-                    WeatherIcon(visual.dayCondition, Modifier.size(28.dp))
-                    Text(
-                        day.weatherText?.takeIf(String::isNotBlank) ?: day.condition?.label ?: "天气暂缺",
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = palette.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            Fmt.temp(day.high, tempUnit)?.let { "$it°" } ?: "—",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = palette.text,
-                        )
-                        Text(
-                            Fmt.temp(day.low, tempUnit)?.let { "$it°" } ?: "—",
-                            style = MaterialTheme.typography.labelSmall,
+                            "${Fmt.temp(day.low, tempUnit)?.let { "$it°" } ?: "—"} ~ ${Fmt.temp(day.high, tempUnit)?.let { "$it°" } ?: "—"}",
+                            style = MaterialTheme.typography.bodySmall,
                             color = palette.textSecondary,
                         )
                     }
+                    WeatherIcon(visual.dayCondition, Modifier.size(48.dp))
                 }
-                if (open) {
-                    val hours = remember(hourly, day.dateMillis, utcOffsetSeconds) {
-                        forecastHoursForDate(hourly, day.dateMillis, utcOffsetSeconds)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.45f), thickness = 1.dp)
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ForecastPhase("白天", visual.dayLabel, visual.dayCondition, Modifier.weight(1f))
+                    ForecastPhase("夜间", visual.nightLabel, visual.nightCondition, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(14.dp))
+                if (forecastHasHourlyTemperatures(hours)) {
+                    ForecastHourlyTemperature(hours, tempUnit, utcOffsetSeconds)
                     Spacer(Modifier.height(12.dp))
-                    // 当日主信息：天气、温度区间与昼夜两段
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                day.weatherText?.takeIf(String::isNotBlank) ?: day.condition?.label ?: "天气预报",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = palette.text,
-                            )
-                            Text(
-                                "${Fmt.temp(day.low, tempUnit)?.let { "$it°" } ?: "—"} ~ ${Fmt.temp(day.high, tempUnit)?.let { "$it°" } ?: "—"}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = palette.textSecondary,
-                            )
-                        }
-                        WeatherIcon(visual.dayCondition, Modifier.size(48.dp))
-                    }
+                    HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.45f), thickness = 1.dp)
                     Spacer(Modifier.height(10.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        ForecastPhase("白天", visual.dayLabel, visual.dayCondition, Modifier.weight(1f))
-                        ForecastPhase("夜间", visual.nightLabel, visual.nightCondition, Modifier.weight(1f))
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    if (forecastHasHourlyTemperatures(hours)) {
-                        ForecastHourlyTemperature(hours, tempUnit, utcOffsetSeconds)
-                        Spacer(Modifier.height(12.dp))
-                        HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.45f), thickness = 1.dp)
-                        Spacer(Modifier.height(10.dp))
-                    }
-                    Text("当日信息", style = MaterialTheme.typography.labelLarge, color = palette.text)
-                    Spacer(Modifier.height(4.dp))
-                    val facts = vistaForecastFacts(day, windUnit)
-                    if (facts.isEmpty()) {
-                        Text("暂无当日详情", style = MaterialTheme.typography.labelSmall, color = palette.textTertiary)
-                    } else {
-                        facts.chunked(2).forEach { rowFacts ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                                rowFacts.forEach { (label, value) ->
-                                    Column(Modifier.weight(1f)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                        ) {
-                                            PhosphorIcon(
-                                                forecastFactIcon(label),
-                                                null,
-                                                Modifier.size(12.dp),
-                                                palette.textTertiary,
-                                            )
-                                            Text(
-                                                label,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = palette.textSecondary,
-                                                maxLines = 1,
-                                            )
-                                        }
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(value, style = MaterialTheme.typography.titleSmall, color = palette.text)
+                }
+                Text("当日信息", style = MaterialTheme.typography.labelLarge, color = palette.text)
+                Spacer(Modifier.height(4.dp))
+                val facts = vistaForecastFacts(day, windUnit)
+                if (facts.isEmpty()) {
+                    Text("暂无当日详情", style = MaterialTheme.typography.labelSmall, color = palette.textTertiary)
+                } else {
+                    facts.chunked(2).forEach { rowFacts ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                            rowFacts.forEach { (label, value) ->
+                                Column(Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                    ) {
+                                        PhosphorIcon(
+                                            forecastFactIcon(label),
+                                            null,
+                                            Modifier.size(12.dp),
+                                            palette.textTertiary,
+                                        )
+                                        Text(
+                                            label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = palette.textSecondary,
+                                            maxLines = 1,
+                                        )
                                     }
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(value, style = MaterialTheme.typography.titleSmall, color = palette.text)
                                 }
-                                if (rowFacts.size == 1) Spacer(Modifier.weight(1f))
                             }
+                            if (rowFacts.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }

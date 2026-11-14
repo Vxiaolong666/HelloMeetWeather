@@ -222,8 +222,8 @@ internal fun WidgetStudio(style: WidgetStyle, editingId: Int?, initialKind: Widg
                                                 StudioBarButton(if (largePreview) "缩小预览" else "放大预览", onClick = { largePreview = !largePreview })
                                             }
                                             if (editingId == null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                                                StudioBarButton("上一个", onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage + 4) % 5) } })
-                                                StudioBarButton("下一个", onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage + 1) % 5) } })
+                                                StudioBarButton("上一个", onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage + WidgetKind.entries.size - 1) % WidgetKind.entries.size) } })
+                                                StudioBarButton("下一个", onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage + 1) % WidgetKind.entries.size) } })
                                             }
                                         }
                                     }
@@ -286,7 +286,7 @@ internal fun WidgetStudio(style: WidgetStyle, editingId: Int?, initialKind: Widg
                                                 Toggle("显示时钟和日期", config.showClock) { config = config.copy(showClock = it) }
                                                 Toggle("24 小时制", config.clock24) { config = config.copy(clock24 = it) }
                                             }
-                                            if (kind in listOf(WidgetKind.SCENE, WidgetKind.WEEK, WidgetKind.BAND)) Toggle("显示天气预报", config.showForecast) { config = config.copy(showForecast = it) }
+                                            if (kind in listOf(WidgetKind.SCENE, WidgetKind.WEEK, WidgetKind.BAND, WidgetKind.COMBO)) Toggle("显示天气预报", config.showForecast) { config = config.copy(showForecast = it) }
                                             if (kind == WidgetKind.SCENE) Toggle("短时降水柱图", config.showPrecipitation) { config = config.copy(showPrecipitation = it) }
                                             if (kind == WidgetKind.SCENE || (kind == WidgetKind.WEEK && !classic)) Toggle("农历", config.showLunar) { config = config.copy(showLunar = it) }
                                             if (kind == WidgetKind.SCENE) Toggle("天气娘提示", config.showWeatherGirl) { config = config.copy(showWeatherGirl = it) }
@@ -448,7 +448,7 @@ internal fun WidgetPreviewDialogContent(style: WidgetStyle, kind: WidgetKind, co
                     if (allKinds) Text("${candidate.name(style)} · ${candidate.columns} × ${candidate.rows}", color = colors.ink,
                         fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
                     Box(Modifier.fillMaxWidth().height(when (candidate) {
-                        WidgetKind.PULSE -> 100.dp; WidgetKind.NOW -> 190.dp; WidgetKind.SCENE -> 300.dp; else -> 200.dp
+                        WidgetKind.PULSE -> 100.dp; WidgetKind.NOW -> 190.dp; WidgetKind.SCENE -> 300.dp; WidgetKind.COMBO -> 260.dp; else -> 200.dp
                     }).clip(colors.shape).background(Brush.linearGradient(studioBackdropColors(style, backdrop)))
                         .semantics { contentDescription = "${candidate.name(style)}预览，试览壁纸${backdrop + 1}" }) {
                         NativeWidgetPreview(style, candidate, config, preview, Modifier.fillMaxSize().padding(12.dp),
@@ -658,7 +658,11 @@ internal fun NativeWidgetPreview(style: WidgetStyle, kind: WidgetKind, config: W
     var results by remember { mutableStateOf(emptyList<City>()) }
     var searching by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf(false) }
-    var recent by remember { mutableStateOf(WidgetStore.recentCities(context)) }
+    // 组合期同步读会与 Application 启动迁移竞跑（首载+两次 commit 落主线程），首读放 IO。
+    var recent by remember { mutableStateOf(emptyList<City>()) }
+    LaunchedEffect(Unit) {
+        recent = withContext(Dispatchers.IO) { WidgetStore.recentCities(context) }
+    }
     LaunchedEffect(query) {
         error = false
         if (query.trim().isEmpty()) { results = emptyList(); searching = false; return@LaunchedEffect }

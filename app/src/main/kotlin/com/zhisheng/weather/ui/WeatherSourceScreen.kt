@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zhisheng.weather.R
 import com.zhisheng.weather.data.CityRepository
+import com.zhisheng.weather.data.LocationEnginePref
 import com.zhisheng.weather.data.ModuleSourcePolicy
 import com.zhisheng.weather.data.SecretStore
 import com.zhisheng.weather.data.SettingsRepository
@@ -88,6 +89,15 @@ internal fun weatherModuleIcon(module: WeatherModule): Int = when (module) {
     WeatherModule.ALERTS -> R.drawable.ph_warning
     WeatherModule.INDICES -> R.drawable.ph_person_simple_walk
     WeatherModule.AIR -> R.drawable.ph_leaf
+}
+
+/** 每个定位地理服务引擎对应的 Phosphor 图标，供引擎列表与入口行统一使用。 */
+internal fun locationEngineIcon(engine: LocationEnginePref): Int = when (engine) {
+    LocationEnginePref.AUTO -> R.drawable.ph_crosshair
+    LocationEnginePref.SYSTEM -> R.drawable.ph_compass
+    LocationEnginePref.AMAP -> R.drawable.ph_map_pin
+    LocationEnginePref.BAIDU -> R.drawable.ph_map_trifold
+    LocationEnginePref.SHARED -> R.drawable.ph_database
 }
 
 /**

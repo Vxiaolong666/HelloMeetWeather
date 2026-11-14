@@ -142,8 +142,6 @@ class WeatherRepositoryTest {
                 SourcePref.OPEN_METEO,
                 SourcePref.CAIYUN,
                 SourcePref.QWEATHER,
-                SourcePref.AMAP,
-                SourcePref.BAIDU,
                 SourcePref.SENIVERSE,
                 SourcePref.MOJI,
             ),
@@ -159,13 +157,13 @@ class WeatherRepositoryTest {
         assertEquals(SourcePref.CAIYUN, SourcePref.CAIYUN.effective(developerMode = true))
         assertEquals(SourcePref.AUTO, SourcePref.AUTO.effective(developerMode = false))
         assertEquals(SourcePref.XIAOMI, SourcePref.XIAOMI.effective(developerMode = false))
-        // 恢复天气能力后保留持久化身份，非开发者模式仍按既有权限门控回落。
+        // 百度/高德是定位地理服务，不作为天气源：持久化的旧 amap/baidu 即使开发者模式也回落 AUTO。
         assertEquals(SourcePref.AMAP, SourcePref.from("amap"))
         assertEquals(SourcePref.BAIDU, SourcePref.from("baidu"))
         assertEquals(SourcePref.AUTO, SourcePref.AMAP.effective(developerMode = false))
         assertEquals(SourcePref.AUTO, SourcePref.BAIDU.effective(developerMode = false))
-        assertEquals(SourcePref.AMAP, SourcePref.AMAP.effective(developerMode = true))
-        assertEquals(SourcePref.BAIDU, SourcePref.BAIDU.effective(developerMode = true))
+        assertEquals(SourcePref.AUTO, SourcePref.AMAP.effective(developerMode = true))
+        assertEquals(SourcePref.AUTO, SourcePref.BAIDU.effective(developerMode = true))
     }
 
     @Test

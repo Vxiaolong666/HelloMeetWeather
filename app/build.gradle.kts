@@ -7,6 +7,18 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// 生成按变体 applicationId 化的小组件配置入口串（manifest 的 activity-alias 引用）。
+abstract class GenerateWidgetConfiguration : DefaultTask() {
+    @get:Input abstract val applicationId: Property<String>
+    @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction fun generate() {
+        val target = outputDirectory.file("values/widget_configuration.xml").get().asFile
+        target.parentFile.mkdirs()
+        target.writeText("<resources><string name=\"widget_configure_class\" translatable=\"false\">${applicationId.get()}.WidgetConfigure</string></resources>")
+    }
+}
+
 // 和风天气凭据（不入库，仅存 local.properties）
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
@@ -116,6 +128,17 @@ android {
         //（SourceHealth 熔断等逻辑的日志路径进入单测，v0.0.4）
         unitTests.isReturnDefaultValues = true
     }
+}
+
+// 每个变体生成对应 applicationId 的小组件配置入口串（preview 变体带后缀，必须按变体生成）。
+androidComponents.onVariants { variant ->
+    val generateWidgetConfiguration = tasks.register<GenerateWidgetConfiguration>(
+        "generate${variant.name.replaceFirstChar(Char::uppercase)}WidgetConfiguration",
+    ) {
+        applicationId.set(variant.applicationId)
+        outputDirectory.set(layout.buildDirectory.dir("generated/widgetConfiguration/${variant.name}"))
+    }
+    variant.sources.res?.addGeneratedSourceDirectory(generateWidgetConfiguration, GenerateWidgetConfiguration::outputDirectory)
 }
 
 kotlin {

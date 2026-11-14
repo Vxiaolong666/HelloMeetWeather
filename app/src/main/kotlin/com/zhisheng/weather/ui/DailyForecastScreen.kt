@@ -74,6 +74,7 @@ import com.zhisheng.weather.ui.theme.ZhishengTextTertiary
 import com.zhisheng.weather.ui.theme.zhishengScreen
 import kotlinx.collections.immutable.persistentListOf
 import ui.feice.mochi.basic.MochiSegmentedControl
+import ui.feice.mochi.list.MochiListDefaults
 import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.theme.MochiDefaults
 import ui.feice.mochi.theme.MochiTheme
@@ -162,6 +163,8 @@ fun DailyForecastScreen(
         title = pageTitle,
         subtitle = city?.displayName?.takeIf { it.isNotBlank() },
         onBack = onBack,
+        // 纵向日签是紧凑卡片列表，每天一项；用 10dp 卡缝（横向视图保留库默认的分组间距）。
+        contentSpacing = if (vertical) 10.dp else MochiListDefaults.SectionSpacing,
     ) {
         item {
             MochiSegmentedControl(
@@ -207,18 +210,15 @@ fun DailyForecastScreen(
             }
         }
         if (vertical) {
-            item {
-                ForecastVerticalList(
-                    days = trackDays,
-                    selectedMillis = selectedDay?.dateMillis,
-                    tempUnit = tempUnit,
-                    windUnit = windUnit,
-                    utcOffsetSeconds = utcOffsetSeconds,
-                    hourly = hourly,
-                    onSelect = { millis -> millis?.let { selectedMillis = it } },
-                    modifier = Modifier,
-                )
-            }
+            forecastVerticalList(
+                days = trackDays,
+                selectedMillis = selectedDay?.dateMillis,
+                tempUnit = tempUnit,
+                windUnit = windUnit,
+                utcOffsetSeconds = utcOffsetSeconds,
+                hourly = hourly,
+                onSelect = { millis -> millis?.let { selectedMillis = it } },
+            )
         } else {
             item { FeatureSectionTitle(1, sectionTitle, "DAY / NIGHT / RANGE") }
             item {

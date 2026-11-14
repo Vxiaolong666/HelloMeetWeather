@@ -15,6 +15,7 @@ import com.zhisheng.weather.widget.WidgetSkyBitmap
 class ZhishengApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        com.zhisheng.weather.ui.UiRefreshRate.install(this)
         // Compose controls app palettes. Keep platform resources on the system
         // configuration, including widgets and notification RemoteViews.
         if (android.os.Build.VERSION.SDK_INT >= 31) {

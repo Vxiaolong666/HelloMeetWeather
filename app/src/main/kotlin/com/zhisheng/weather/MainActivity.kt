@@ -570,7 +570,10 @@ class MainActivity : ComponentActivity() {
                         // 「无动画」时系统预测性返回与应用内右滑一起关掉：
                         // 否则手指仍会跟手拖出一段返回动画。
                         predictiveBack = transitionsEnabled && uiPrefs.predictiveBack && uiPrefs.swipeBack,
-                        swipeBackEnabled = transitionsEnabled && uiPrefs.swipeBack,
+                        // 台风页整页是原生地图：地图横向拖动与应用内右滑返回互相抢事件，
+                        // 台风页停用应用内右滑返回；顶栏返回按钮与系统返回键照常退出。
+                        swipeBackEnabled = transitionsEnabled && uiPrefs.swipeBack &&
+                            AppScreen.fromRoute(nav.current) != AppScreen.TYPHOON,
                         // 首页天空是不间断动画、雷达页是原生地图视图：整页录进离屏图层给浮层玻璃
                         // 取样会每帧重录（原生视图甚至可能取样崩溃）。浮层玻璃退回各页自己的
                         // 正文来源，与迁移前的行为一致。

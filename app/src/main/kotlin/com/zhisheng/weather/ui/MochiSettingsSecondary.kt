@@ -28,11 +28,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.zhisheng.weather.R
 import com.zhisheng.weather.data.AmbienceLevel
 import com.zhisheng.weather.data.CityRepository
+import com.zhisheng.weather.data.LocationEnginePref
 import com.zhisheng.weather.data.ModuleSourcePolicy
 import com.zhisheng.weather.data.SecretStore
 import com.zhisheng.weather.data.SettingsRepository
@@ -52,6 +54,7 @@ import kotlinx.coroutines.launch
 import ui.feice.mochi.basic.MochiBarButton
 import ui.feice.mochi.basic.MochiButton
 import ui.feice.mochi.basic.MochiButtonStyle
+import ui.feice.mochi.basic.MochiListTextFieldRow
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.effect.content.MochiBlurText
 import ui.feice.mochi.list.MochiListDisclosure
@@ -261,6 +264,98 @@ fun MochiWeatherSourceScreen(
 }
 
 /**
+ * 定位地理服务引擎二级页：参考 [MochiWeatherSourceScreen] 的结构，
+ * 列出系统定位 / 高德 / 百度 / 枳生位置服务，点选即写入 [SettingsRepository.setLocationEngine]，
+ * 当前引擎与凭据可用性实时反映在行内。
+ */
+@Composable
+fun MochiLocationEngineScreen(
+    onBack: () -> Unit,
+    onManageProviders: () -> Unit = {},
+) {
+    val scope = rememberCoroutineScope()
+    val current by SettingsRepository.locationEngine.collectAsState(initial = LocationEnginePref.AUTO)
+    val amap by SecretStore.amapRuntimeFlow.collectAsState(initial = SecretStore.amapRuntime)
+    val baidu by SecretStore.baiduRuntimeFlow.collectAsState(initial = SecretStore.baiduRuntime)
+    val shared by SecretStore.sharedPlaceFlow.collectAsState(initial = SecretStore.sharedPlaceRuntime)
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun available(engine: LocationEnginePref): Boolean = when (engine) {
+        LocationEnginePref.AUTO, LocationEnginePref.SYSTEM -> true
+        LocationEnginePref.AMAP -> amap.ready
+        LocationEnginePref.BAIDU -> baidu.ready
+        LocationEnginePref.SHARED -> shared.enabled
+    }
+
+    fun select(engine: LocationEnginePref) {
+        if (saving) return
+        scope.launch {
+            saving = true
+            error = null
+            try {
+                SettingsRepository.setLocationEngine(engine)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                error = "没有保存成功，请重试"
+            } finally {
+                saving = false
+            }
+        }
+    }
+
+    MochiPageFrame(title = "位置服务引擎", onBack = onBack, subtitle = "LOCATION ENGINE", showSave = true) {
+        item {
+            MochiListSection(header = "当前引擎", footer = current.desc) {
+                MochiListRow(
+                    title = current.cn,
+                    subtitle = "定位地理数据当前优先从此服务获取",
+                    leading = { PhosphorIcon(locationEngineIcon(current), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
+                )
+            }
+        }
+        if (error != null) {
+            item {
+                MochiListSection(header = "提示") {
+                    MochiListRow(title = "> $error", destructive = true)
+                }
+            }
+        }
+        item {
+            MochiListSection(header = "定位服务引擎", footer = "不可用的服务可在「服务接入」中配置凭据。") {
+                LocationEnginePref.entries.forEach { engine ->
+                    val ok = available(engine)
+                    MochiListRow(
+                        title = engine.cn,
+                        subtitle = when {
+                            !ok -> "当前不可用，可在服务接入中检查"
+                            else -> engine.desc
+                        },
+                        leading = { PhosphorIcon(locationEngineIcon(engine), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
+                        checked = engine == current,
+                        enabled = ok && !saving,
+                        onClick = { select(engine) },
+                    )
+                }
+            }
+        }
+        item {
+            MochiListSection(header = "凭据与接入") {
+                MochiListRow(
+                    title = "管理自有服务接入",
+                    subtitle = "高德 / 百度 / 枳生位置服务",
+                    leading = { PhosphorIcon(R.drawable.ph_database, null, Modifier.size(22.dp), mochiLeadingIconTint()) },
+                    chevron = true,
+                    enabled = !saving,
+                    onClick = onManageProviders,
+                )
+            }
+        }
+    }
+}
+
+/**
  * 缺失数据补全顺序：照 demo「列表编辑与索引」重写。
  * [MochiListDisclosure] 收起时只显示已启用数量，展开后是同一张卡片里的编辑区；
  * [rememberMochiListEditState] + [MochiSelectableRow] 让已启用来源与可选来源都能多选，
@@ -431,6 +526,9 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
                 MochiListRow(title = "已接入 $connected / $total")
             }
         }
+        item {
+            MochiMapServiceSection()
+        }
         groups.forEach { group ->
             item {
                 MochiListSection(header = group.title, footer = group.caption) {
@@ -478,6 +576,31 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
     }
 }
 
+
+/**
+ * 地图底图凭据：填了天地图 Key 就用官方天地图，留空时台风页回落 OpenFreeMap 公共底图。
+ * 与「构建默认凭据」的读取顺序一致：应用内设置覆盖 BuildConfig.TDT_TOKEN。
+ */
+@Composable
+private fun MochiMapServiceSection() {
+    val scope = rememberCoroutineScope()
+    val saved by SettingsRepository.tiandituToken.collectAsState(initial = null)
+    var draft by rememberSaveable { mutableStateOf(saved.orEmpty()) }
+    MochiListSection(
+        header = "地图底图",
+        footer = "填写天地图 Key 后，台风路径页改用官方天地图；留空回落 OpenFreeMap 公共底图。",
+    ) {
+        MochiListTextFieldRow(
+            value = draft,
+            onValueChange = { draft = it },
+            label = "天地图 Key",
+            placeholder = "留空使用 OpenFreeMap",
+            keyboardActions = KeyboardActions(onDone = {
+                scope.launch { SettingsRepository.setTiandituToken(draft) }
+            }),
+        )
+    }
+}
 
 /** 「一天的天空」的六个时刻：合并进天气效果预览页，不再单独开一个弹窗。 */
 private data class SkyPreviewMoment(val label: String, val altitude: Float, val minutes: Int, val rising: Boolean = false)

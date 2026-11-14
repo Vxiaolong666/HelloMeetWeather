@@ -56,6 +56,7 @@ import com.zhisheng.weather.data.SourcePref
 import com.zhisheng.weather.data.TelemetryMetric
 import com.zhisheng.weather.model.WeatherData
 import com.zhisheng.weather.ui.components.PhosphorIcon
+import com.zhisheng.weather.ui.home.lifeIndexIcon
 import com.zhisheng.weather.ui.theme.ZhishengCyan
 import com.zhisheng.weather.ui.theme.ZhishengMint
 import com.zhisheng.weather.ui.theme.ZhishengOrange
@@ -284,6 +285,7 @@ fun MochiSettingsScreen(
                                     scope.launch { SettingsRepository.setDeveloperMode(enabled) }
                                 },
                                 onWeatherSource = { openSettingsPage("settings.weatherSource") },
+                                onLocationEngine = { openSettingsPage("settings.locationEngine") },
                                 onProviders = { openSettingsPage("settings.providers") },
                             )
                             1 -> mochiHomeSection(
@@ -379,6 +381,10 @@ fun MochiSettingsScreen(
                         onManageProviders = { openSettingsPage("settings.providers") },
                         onBack = { nav.pop() },
                     )
+                    "settings.locationEngine" -> MochiLocationEngineScreen(
+                        onManageProviders = { openSettingsPage("settings.providers") },
+                        onBack = { nav.pop() },
+                    )
                     "settings.providers" -> MochiProviderAccessScreen(onBack = { nav.pop() })
                     "settings.atmosphere" -> MochiAtmosphereLabScreen(
                         initialLevel = ambience,
@@ -419,6 +425,7 @@ fun MochiSettingsScreen(
                                     MochiListRow(
                                         title = metric.cn,
                                         subtitle = metric.en,
+                                        leading = { PhosphorIcon(telemetryMetricIcon(metric), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                                         trailing = {
                                             MochiSettingSwitch(metric in telemetryMetrics) { checked ->
                                                 val next = telemetryMetrics.toMutableSet().apply {
@@ -454,6 +461,7 @@ fun MochiSettingsScreen(
                                     MochiListRow(
                                         title = metric.cn,
                                         subtitle = metric.en,
+                                        leading = { PhosphorIcon(lifeIndexIcon(metric.en), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                                         trailing = {
                                             MochiSettingSwitch(metric in lifeIndexMetrics) { checked ->
                                                 val next = lifeIndexMetrics.toMutableSet().apply {
@@ -570,6 +578,7 @@ private fun MochiSettingsNavRow(
     enabled: Boolean = true,
     chevron: Boolean = true,
     trailing: @Composable (() -> Unit)? = null,
+    titleTrailing: @Composable (() -> Unit)? = null,
 ) {
     // 默认用卡片真实底色，返回落地时不会突然被主题色铺一下；开关打开后才用主题色高亮。
     val sourceColor = if (MochiTransitionConfig.sourceHighlight) {
@@ -584,6 +593,7 @@ private fun MochiSettingsNavRow(
         enabled = enabled,
         chevron = chevron,
         trailing = trailing,
+        titleTrailing = titleTrailing,
         modifier = Modifier.mochiNavSource(
             mochiSettingsSourceKey(route),
             MochiListDefaults.SectionCorner,
@@ -591,17 +601,6 @@ private fun MochiSettingsNavRow(
         ),
         onClick = { onPush(route) },
     )
-}
-
-/** HDR 高光设置入口右侧的「Beta」小徽章。 */
-@Composable
-private fun BetaBadge() {
-    val cs = MochiTheme.colorScheme
-    Box(
-        Modifier
-            .background(cs.secondaryContainer, MochiTheme.shapes.full)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    ) { Text("Beta", style = MochiTheme.textStyles.labelSmall, color = cs.onSecondaryContainer) }
 }
 
 /** 二级设置页统一外壳：库顶栏 + 侧推返回按钮 + 懒加载列表。 */
@@ -647,7 +646,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiDataSection(
     launchPermissions: (Boolean) -> Unit, openAppSettings: () -> Unit,
     toggleLocation: (Boolean) -> Unit, togglePrecise: (Boolean) -> Unit,
     toggleDeveloper: (Boolean) -> Unit,
-    onWeatherSource: () -> Unit, onProviders: () -> Unit,
+    onWeatherSource: () -> Unit, onLocationEngine: () -> Unit, onProviders: () -> Unit,
 ) {
     item {
         MochiListSection(
@@ -679,6 +678,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiDataSection(
                 trailing = { MochiSettingSwitch(locationEnabled, toggleLocation) },
             )
             if (locationEnabled) {
+                MochiListRow(
+                    title = "位置服务引擎",
+                    subtitle = "系统定位 / 高德 / 百度 / 枳生位置服务",
+                    chevron = true,
+                    onClick = onLocationEngine,
+                )
                 MochiListRow(
                     title = "街道级精确定位",
                     subtitle = if (preciseLocationEnabled) "开启·系统定位与街道识别无需 Key；精度不足保留坐标"
@@ -929,7 +934,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
                 title = "HDR 高光设置",
                 subtitle = "按压高光、边缘流光、亮度余量与全部参数",
                 onPush = onPush,
-                trailing = { BetaBadge() },
+                titleTrailing = { MochiBadge("Beta") },
             )
             MochiSettingsNavRow(
                 route = "settings.pressGlow",

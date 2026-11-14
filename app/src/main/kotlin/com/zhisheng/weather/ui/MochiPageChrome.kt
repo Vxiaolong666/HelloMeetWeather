@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.zhisheng.weather.R
 import com.zhisheng.weather.ui.components.PhosphorIcon
@@ -54,6 +55,7 @@ import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.navigation.MochiLazyCompactTitleScaffold
 import ui.feice.mochi.navigation.MochiNavigator
 import ui.feice.mochi.navigation.MochiTitleBar
+import ui.feice.mochi.list.MochiListDefaults
 import ui.feice.mochi.theme.MochiDefaults
 import ui.feice.mochi.theme.MochiTheme
 
@@ -105,6 +107,7 @@ internal fun MochiSettingsScaffold(
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     showSave: Boolean = true,
+    contentSpacing: Dp = MochiListDefaults.SectionSpacing,
     actions: (@Composable RowScope.() -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
@@ -129,6 +132,7 @@ internal fun MochiSettingsScaffold(
                 )
             }
         } else null,
+        contentSpacing = contentSpacing,
         content = content,
     )
 }
@@ -144,6 +148,7 @@ internal fun MochiPageFrame(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     showSave: Boolean = false,
+    contentSpacing: Dp = MochiListDefaults.SectionSpacing,
     actions: (@Composable RowScope.() -> Unit)? = null,
     overlay: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
@@ -157,6 +162,7 @@ internal fun MochiPageFrame(
                 subtitle = subtitle,
                 onBack = onBack,
                 showSave = showSave,
+                contentSpacing = contentSpacing,
                 actions = actions,
                 content = content,
             )
