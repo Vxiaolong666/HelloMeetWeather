@@ -762,7 +762,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiHomeSection(
         }
     }
     item {
-        MochiListSection(header = "模块", footer = "开关会立即影响首页内容。") {
+        MochiListSection(header = "模块展示", footer = "设置后立即生效") {
             MochiListRow(
                 title = if (ReleaseFeatures.starPhotography) "气象视界 · 天空" else "霞光时刻",
                 subtitle = if (ReleaseFeatures.starPhotography) "查看霞光和星空拍摄时段"
@@ -771,7 +771,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiHomeSection(
             )
             if (ReleaseFeatures.coastalWeather) MochiListRow(
                 title = "气象视界 · 海岸",
-                subtitle = "潮位、海浪与海温预览；开启后把地点坐标发送给 Open-Meteo",
+                subtitle = "潮位、海浪与海温预览",
                 trailing = { MochiSettingSwitch(showCoastWeather) { onModuleToggle("coast", it) } },
             )
             MochiListRow(
@@ -785,31 +785,31 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiHomeSection(
                 trailing = { MochiSettingSwitch(showTelemetry) { onModuleToggle("telemetry", it) } })
             MochiListRow(title = "空气质量", subtitle = "AQI 与六项污染物",
                 trailing = { MochiSettingSwitch(showAqi) { onModuleToggle("aqi", it) } })
-            MochiListRow(title = "生活指数", subtitle = "当天指数与未来三天建议，项目随数据源而定",
+            MochiListRow(title = "生活指数", subtitle = "当天指数与未来三天建议",
                 trailing = { MochiSettingSwitch(showIndices) { onModuleToggle("indices", it) } })
             MochiListRow(title = "昨日复盘", subtitle = "昨日高低温与温差",
                 trailing = { MochiSettingSwitch(showYesterday) { onModuleToggle("yesterday", it) } })
             if (ReleaseFeatures.typhoon) MochiListRow(title = "台风路径", subtitle = "实况路径、强度变化与多机构预报",
                 trailing = { MochiSettingSwitch(showTyphoon) { onModuleToggle("typhoon", it) } })
-            MochiListRow(title = "特色功能", subtitle = "卫星辐射、洪水风险、预报扩展字段与海拔",
+            MochiListRow(title = "特色功能", subtitle = "卫星辐射、洪水风险、预报扩展",
                 trailing = { MochiSettingSwitch(showFeatures) { onModuleToggle("features", it) } })
-            MochiListRow(title = "穿搭", subtitle = "按体感温度推荐上身/外搭/下装与鞋履",
+            MochiListRow(title = "穿搭", subtitle = "按体感温度推荐穿搭",
                 trailing = { MochiSettingSwitch(showOutfit) { onModuleToggle("outfit", it) } })
         }
     }
     if (developerMode) {
         item {
-            MochiListSection(header = "开发者选项") {
+            MochiListSection(header = "自定义数据") {
                 MochiSettingsNavRow(
                     route = "settings.telemetry",
-                    title = "选择遥测项目",
+                    title = "遥测数据",
                     value = "${telemetryMetrics.size}/${TelemetryMetric.entries.size}",
                     enabled = showTelemetry,
                     onPush = onPush,
                 )
                 MochiSettingsNavRow(
                     route = "settings.lifeIndex",
-                    title = "选择生活指数项目",
+                    title = "生活指数数据",
                     value = "${lifeIndexMetrics.size}/${LifeIndexMetric.entries.size}",
                     enabled = showIndices,
                     onPush = onPush,

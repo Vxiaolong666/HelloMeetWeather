@@ -150,7 +150,7 @@ internal fun MochiAutomationSettingsPage() {
                 // 步进器：照 demo「专注时长」的写法，5 分钟一格，点一下轻震、按住连发。
                 MochiListRow(
                     title = "天气刷新间隔",
-                    subtitle = "每格 5 分钟，可按住连续加减",
+                    subtitle = "天气数据刷新间隔",
                     trailing = {
                         MochiStepper(
                             value = settings.foregroundMinutes,
@@ -163,7 +163,7 @@ internal fun MochiAutomationSettingsPage() {
                 )
                 MochiListRow(
                     title = "后台刷新",
-                    subtitle = "离开应用后也更新已保存的当前地点",
+                    subtitle = "离开应用后也更新",
                     trailing = {
                         MochiSwitch(
                             checked = settings.backgroundEnabled,

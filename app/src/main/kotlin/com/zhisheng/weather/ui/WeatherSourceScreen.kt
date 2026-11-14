@@ -283,7 +283,7 @@ fun WeatherSourceScreen(
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            "和风 / 彩云 / 心知 / 墨迹 / 高德 / 百度",
+                            "自定义数据来源设置",
                             style = MaterialTheme.typography.labelSmall,
                             color = ZhishengTextSecondary,
                         )
