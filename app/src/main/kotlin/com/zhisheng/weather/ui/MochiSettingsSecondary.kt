@@ -53,6 +53,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import ui.feice.mochi.basic.MochiBarButton
 import ui.feice.mochi.basic.MochiButton
+import ui.feice.mochi.basic.MochiButtonColors
 import ui.feice.mochi.basic.MochiButtonStyle
 import ui.feice.mochi.basic.MochiListTextFieldRow
 import ui.feice.mochi.basic.MochiSegmentedControl
@@ -495,6 +496,20 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
     var wizard by rememberSaveable { mutableStateOf<ProviderWizardKind?>(null) }
     var pendingClear by remember { mutableStateOf<MochiProviderItem?>(null) }
 
+    // 「清除凭据」是破坏性操作：按钮用错误容器色，未接入时禁用。
+    val cs = MochiTheme.colorScheme
+    val clearColors = remember(cs) {
+        MochiButtonColors(
+            container = cs.errorContainer,
+            content = cs.onErrorContainer,
+            outline = Color.Transparent,
+            pressedContainer = Color.Transparent,
+            glow = Color.White.copy(alpha = if (cs.isDark) 0.16f else 0.45f),
+            disabledContainer = cs.onSurface.copy(alpha = 0.12f),
+            disabledContent = cs.onSurface.copy(alpha = 0.38f),
+        )
+    }
+
     val groups = remember(
         qwRt.ready, caiyunRt.ready, amapRt.ready, baiduRt.ready, seniverseRt.ready, mojiRt.ready,
     ) {
@@ -542,17 +557,35 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
                             chevron = true,
                             onClick = { wizard = item.kind },
                         )
-                        MochiListRow(
-                            title = if (item.ready) "重新配置" else "接入",
-                            chevron = true,
-                            onClick = { wizard = item.kind },
-                        )
-                        MochiListRow(
-                            title = "清除凭据",
-                            enabled = item.ready,
-                            destructive = true,
-                            onClick = { pendingClear = item },
-                        )
+                        // 卡片里放的不是列表行时，自己补上内边距和块间距。
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                MochiButton(
+                                    onClick = { wizard = item.kind },
+                                    modifier = Modifier.weight(1f),
+                                    style = MochiButtonStyle.Tonal,
+                                ) {
+                                    Text(if (item.ready) "重新配置" else "接入")
+                                }
+                                MochiButton(
+                                    onClick = { pendingClear = item },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = item.ready,
+                                    style = MochiButtonStyle.Tonal,
+                                    colors = clearColors,
+                                ) {
+                                    Text("清除凭据")
+                                }
+                            }
+                        }
                     }
                 }
             }

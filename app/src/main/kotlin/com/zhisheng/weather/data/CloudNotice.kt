@@ -94,6 +94,11 @@ xS6FTfc266ywQFdxtkJIW28=
     /** 进程内客户端 id：一次启动只生成一次。 */
     private val clientId = randomToken()
 
+    /** 最近一次成功请求的公告服务源（用于解析公告正文里的相对图片路径）。 */
+    @Volatile
+    internal var noticeOrigin: String = hosts.first()
+        private set
+
     @Volatile
     private var cache: List<CloudNotice>? = null
 
@@ -178,7 +183,7 @@ xS6FTfc266ywQFdxtkJIW28=
                 client.newCall(call).execute().use { response ->
                     if (!response.isSuccessful) error("公告服务返回 ${response.code}")
                     val text = response.body?.string().orEmpty()
-                    return decode(text)
+                    return decode(text).also { noticeOrigin = host }
                 }
             } catch (e: Exception) {
                 last = e

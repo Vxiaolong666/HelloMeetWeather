@@ -10,13 +10,64 @@ internal sealed interface MdBlock {
     data class Ordered(val start: Int, val items: List<MdItem>) : MdBlock
     data object Rule : MdBlock
     data class Formula(val tex: String) : MdBlock
-    data class Picture(val alt: String, val url: String, val title: String?) : MdBlock
+    data class Picture(val alt: String, val url: String, val title: String?, val width: Int? = null) : MdBlock
+    /** 表格：首行为表头，其余为数据行；单元格内可有文字与图片。 */
+    data class Table(val rows: List<List<TableCell>>) : MdBlock
 }
 
 internal data class MdItem(val text: String, val checked: Boolean?)
 
+/** 表格单元格：由若干块组成（一般为一段文字，或一张图片）。 */
+internal data class TableCell(val blocks: List<MdBlock>)
+
+/** 行内图片：Markdown `![alt](url)` 或 HTML `<img>`。用于把藏在段落/单元格里的图片提升为块级图片。 */
+private val inlineImagePattern = Regex(
+    """!\[([^\]]*)]\(\s*([^)\s]+)(?:\s+"([^"]*)")?\s*\)|<img\b[^>]*>""",
+    RegexOption.IGNORE_CASE,
+)
+
 /**
- * 极简 Markdown 解析：只覆盖公告实际会用到的语法。
+ * 把一段「行内文本」切成块：行内图片（Markdown 或 HTML）提升为 [MdBlock.Picture]，
+ * 其余文字按图片切分成若干 [MdBlock.Paragraph]。这样图片不会降级成 `[图片]` 文字，
+ * 且 `<img>` 藏在 `<p>` / `<td>` / `<blockquote>` 里也能正常显示。
+ */
+internal fun inlineBlocks(text: String): List<MdBlock> {
+    if (text.isBlank()) return emptyList()
+    val out = mutableListOf<MdBlock>()
+    var cursor = 0
+    for (m in inlineImagePattern.findAll(text)) {
+        if (m.range.first > cursor) {
+            val seg = text.substring(cursor, m.range.first)
+            if (stripHtmlTags(seg).isNotBlank()) out += MdBlock.Paragraph(seg.trim())
+        }
+        if (m.value.startsWith("<img", ignoreCase = true)) {
+            val attrs = m.value.removePrefix("<img").removeSuffix(">").trim().trimEnd('/')
+            val src = htmlAttr(attrs, "src") ?: htmlAttr(attrs, "data-src")
+            if (src != null) {
+                out += MdBlock.Picture(
+                    alt = htmlAttr(attrs, "alt").orEmpty(),
+                    url = src,
+                    title = null,
+                    width = htmlAttr(attrs, "width")?.toIntOrNull(),
+                )
+            }
+        } else {
+            out += MdBlock.Picture(m.groupValues[1], m.groupValues[2], m.groupValues[3].takeIf { it.isNotBlank() })
+        }
+        cursor = m.range.last + 1
+    }
+    if (cursor < text.length) {
+        val seg = text.substring(cursor)
+        if (stripHtmlTags(seg).isNotBlank()) out += MdBlock.Paragraph(seg.trim())
+    }
+    return out
+}
+
+/**
+ * 极简公告正文解析：同时识别 Markdown 与基础 HTML 的块级结构（公告常见为两者混合）。
+ * 块级覆盖标题、引用、代码、列表、任务、分割线、公式、图片、表格，以及
+ * p / div / h1-h6 / ul / ol / li / blockquote / pre / hr / img / table 等 HTML 元素；
+ * 行内语法（Markdown 强调 / 链接 / 代码 / 公式 与 HTML 颜色 / 粗体等）留在渲染层处理。
  * 不用第三方库，避免为一段说明文字引入整套解析器与图片加载依赖。
  */
 internal object MarkdownParser {
@@ -27,6 +78,13 @@ internal object MarkdownParser {
     private val taskPattern = Regex("^\\[([ xX])]\\s+(.*)$")
     private val rulePattern = Regex("^(-{3,}|\\*{3,}|_{3,})$")
     private val picturePattern = Regex("^!\\[([^]]*)]\\(\\s*(\\S+?)(?:\\s+\"([^\"]*)\")?\\s*\\)$")
+    private val tableSeparator = Regex("^\\|?\\s*:?-{2,}:?\\s*(\\|\\s*:?-{2,}:?\\s*)*\\|?\\s*$")
+
+    /** HTML 块级标签：一行以它开头时整段交给 [HtmlParser.consumeElement]。 */
+    private val htmlBlockOpen = Regex(
+        """^<(p|div|h[1-6]|ul|ol|li|blockquote|pre|table|img|hr)\b[^>]*>""",
+        RegexOption.IGNORE_CASE,
+    )
 
     fun parse(source: String): List<MdBlock> {
         val lines = source.replace("\r\n", "\n").replace('\r', '\n').split('\n')
@@ -38,7 +96,7 @@ internal object MarkdownParser {
 
         fun flushParagraph() {
             if (paragraph.isNotEmpty()) {
-                blocks += MdBlock.Paragraph(paragraph.joinToString("\n"))
+                blocks += inlineBlocks(paragraph.joinToString("\n"))
                 paragraph.clear()
             }
         }
@@ -62,6 +120,15 @@ internal object MarkdownParser {
             if (text.isEmpty()) {
                 flushAll()
                 index++
+                continue
+            }
+
+            // HTML 块级元素：一行以块标签开头，整段（可跨行）交给 HTML 解析
+            if (htmlBlockOpen.containsMatchIn(text)) {
+                flushAll()
+                val (htmlBlocks, consumed) = HtmlParser.consumeElement(lines, index)
+                blocks += htmlBlocks
+                index += consumed
                 continue
             }
 
@@ -144,6 +211,15 @@ internal object MarkdownParser {
                 continue
             }
 
+            // Markdown 表格：当前行带 |，且下一行是分隔线
+            if (text.contains('|') && index + 1 < lines.size && tableSeparator.matches(lines[index + 1].trim())) {
+                flushAll()
+                val (table, consumed) = parseMarkdownTable(lines, index)
+                blocks += MdBlock.Table(table)
+                index += consumed
+                continue
+            }
+
             val bullet = bulletPattern.matchEntire(text)
             if (bullet != null) {
                 flushParagraph()
@@ -180,5 +256,24 @@ internal object MarkdownParser {
         }
         flushAll()
         return blocks
+    }
+
+    private fun parseMarkdownTable(lines: List<String>, start: Int): Pair<List<List<TableCell>>, Int> {
+        val rows = mutableListOf<List<TableCell>>()
+        var i = start
+        rows += splitTableRow(lines[i])
+        i++ // 分隔线行
+        i++
+        while (i < lines.size && lines[i].trim().contains('|')) {
+            rows += splitTableRow(lines[i])
+            i++
+        }
+        return rows to (i - start)
+    }
+
+    private fun splitTableRow(line: String): List<TableCell> {
+        val trimmed = line.trim()
+        val body = trimmed.removePrefix("|").removeSuffix("|")
+        return body.split("|").map { TableCell(inlineBlocks(it.trim())) }
     }
 }

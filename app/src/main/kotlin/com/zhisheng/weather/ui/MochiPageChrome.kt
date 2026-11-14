@@ -109,6 +109,7 @@ internal fun MochiSettingsScaffold(
     showSave: Boolean = true,
     contentSpacing: Dp = MochiListDefaults.SectionSpacing,
     actions: (@Composable RowScope.() -> Unit)? = null,
+    onRefresh: (suspend () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val toast = LocalMochiToast.current
@@ -133,6 +134,7 @@ internal fun MochiSettingsScaffold(
             }
         } else null,
         contentSpacing = contentSpacing,
+        onRefresh = onRefresh,
         content = content,
     )
 }
@@ -150,6 +152,7 @@ internal fun MochiPageFrame(
     showSave: Boolean = false,
     contentSpacing: Dp = MochiListDefaults.SectionSpacing,
     actions: (@Composable RowScope.() -> Unit)? = null,
+    onRefresh: (suspend () -> Unit)? = null,
     overlay: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
@@ -164,6 +167,7 @@ internal fun MochiPageFrame(
                 showSave = showSave,
                 contentSpacing = contentSpacing,
                 actions = actions,
+                onRefresh = onRefresh,
                 content = content,
             )
             overlay()

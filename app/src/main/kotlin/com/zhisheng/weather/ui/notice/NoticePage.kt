@@ -2,10 +2,11 @@ package com.zhisheng.weather.ui.notice
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -21,13 +22,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhisheng.weather.R
 import com.zhisheng.weather.data.CloudNotice
 import com.zhisheng.weather.data.CloudNoticeRepository
-import com.zhisheng.weather.ui.MochiFadeNote
 import com.zhisheng.weather.ui.MochiPageCard
 import com.zhisheng.weather.ui.MochiPageFrame
+import com.zhisheng.weather.ui.components.PhosphorIcon
+import ui.feice.mochi.basic.MochiButton
+import ui.feice.mochi.basic.MochiButtonStyle
+import ui.feice.mochi.basic.MochiEmptyState
 import ui.feice.mochi.basic.Text
-import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.theme.MochiTheme
 
 private sealed interface NoticeUiState {
@@ -39,6 +43,7 @@ private sealed interface NoticeUiState {
 /**
  * 独立公告页：从「关于」进入，走设置页同一套库导航与转场。
  * 正文外壳由 [MochiPageFrame] 统一给出左右 16dp，卡片不再自行加边距。
+ * 空 / 加载 / 失败态用库 [MochiEmptyState] 整块遮罩；下拉刷新走库顶栏的 onRefresh。
  */
 @Composable
 internal fun NoticePage(onBack: () -> Unit, onOpen: (CloudNotice) -> Unit) {
@@ -46,35 +51,48 @@ internal fun NoticePage(onBack: () -> Unit, onOpen: (CloudNotice) -> Unit) {
     var state by remember { mutableStateOf<NoticeUiState>(NoticeUiState.Loading) }
     var attempt by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(attempt) {
-        state = NoticeUiState.Loading
-        state = runCatching { CloudNoticeRepository.notices(context, force = attempt > 0) }
+    suspend fun load(force: Boolean): NoticeUiState =
+        runCatching { CloudNoticeRepository.notices(context, force = force) }
             .fold(
                 onSuccess = { NoticeUiState.Ready(it) },
                 onFailure = { NoticeUiState.Failed(it.message?.takeIf(String::isNotBlank) ?: "公告获取失败") },
             )
+
+    LaunchedEffect(attempt) {
+        state = NoticeUiState.Loading
+        state = load(force = attempt > 0)
     }
 
-    MochiPageFrame(title = "公告", onBack = onBack) {
+    MochiPageFrame(
+        title = "公告",
+        onBack = onBack,
+        onRefresh = { state = load(force = true) },
+    ) {
         when (val current = state) {
             NoticeUiState.Loading -> item {
-                MochiFadeNote("正在获取公告…")
+                NoticeEmpty(Modifier.fillParentMaxSize(), title = "正在获取公告", message = "请稍候…")
             }
 
-            is NoticeUiState.Failed -> {
-                item {
-                    MochiFadeNote(current.message, title = "没能取到公告")
-                }
-                item {
-                    MochiPageCard(contentPadding = PaddingValues(0.dp)) {
-                        MochiListRow("重新获取", onClick = { attempt++ }, chevron = true)
-                    }
-                }
+            is NoticeUiState.Failed -> item {
+                NoticeEmpty(
+                    Modifier.fillParentMaxSize(),
+                    title = "没能取到公告",
+                    message = current.message,
+                    icon = R.drawable.ph_warning,
+                    action = {
+                        MochiButton({ attempt++ }, style = MochiButtonStyle.Tonal) { Text("重新获取") }
+                    },
+                )
             }
 
             is NoticeUiState.Ready -> if (current.items.isEmpty()) {
                 item {
-                    MochiFadeNote("暂时没有公告。")
+                    NoticeEmpty(
+                        Modifier.fillParentMaxSize(),
+                        title = "暂无公告",
+                        message = "下拉可以刷新。",
+                        icon = R.drawable.ph_database,
+                    )
                 }
             } else {
                 items(current.items.size) { index ->
@@ -86,12 +104,35 @@ internal fun NoticePage(onBack: () -> Unit, onOpen: (CloudNotice) -> Unit) {
     }
 }
 
-/** 公告详情：标题进顶栏，正文按 Markdown 渲染。 */
+/** 整块状态遮罩：库空状态居中，图标固定用次要文字色。 */
+@Composable
+private fun NoticeEmpty(
+    modifier: Modifier = Modifier,
+    title: String,
+    message: String? = null,
+    icon: Int? = null,
+    action: (@Composable () -> Unit)? = null,
+) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        MochiEmptyState(
+            title = title,
+            message = message,
+            icon = icon?.let {
+                { PhosphorIcon(it, null, Modifier.size(48.dp), MochiTheme.colorScheme.onSurfaceVariant) }
+            },
+            action = action,
+        )
+    }
+}
+
+/** 公告详情：标题进顶栏，正文按 Markdown / HTML 渲染。 */
 @Composable
 internal fun NoticeDetailPage(notice: CloudNotice?, onBack: () -> Unit) {
     MochiPageFrame(title = "公告详情", onBack = onBack) {
         if (notice == null) {
-            item { MochiFadeNote("这条公告已不可用。") }
+            item {
+                NoticeEmpty(Modifier.fillParentMaxSize(), title = "公告不可用", message = "这条公告已不可用")
+            }
             return@MochiPageFrame
         }
         item { NoticeHeader(notice) }
@@ -183,9 +224,12 @@ private val previewTokens = Regex(
     """```[\s\S]*?```|\$\$[\s\S]*?\$\$|!\[[^\]]*]\(\S*?\)|\[([^\]]+)]\(\S*?\)|[*_~`>$#]""",
 )
 
-/** 列表预览：去掉语法符号，压成一行，最多三行显示。 */
+private val htmlTagRe = Regex("""<[^>]+>""")
+
+/** 列表预览：先剥 HTML 标签，再去 Markdown 语法符号，压成一行，最多三行显示。 */
 private fun noticePreview(markdown: String): String {
-    val stripped = previewTokens.replace(markdown) { match ->
+    val withoutHtml = htmlTagRe.replace(markdown, " ")
+    val stripped = previewTokens.replace(withoutHtml) { match ->
         match.groupValues[1].ifBlank { " " }
     }
     return stripped.lineSequence()
