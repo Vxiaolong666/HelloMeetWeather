@@ -3,7 +3,7 @@ package com.zhisheng.weather.ui
 internal enum class AppScreen {
     HOME, SEARCH, DAILY_FORECAST, DAILY_DAY_DETAIL, HISTORY, RADAR, TYPHOON, PRECIPITATION,
     HOURLY_DETAIL, AIR_QUALITY, YESTERDAY_DETAIL, FEATURES, CITY_MANAGER,
-    MOCHI_SETTINGS;
+    MOCHI_SETTINGS, SCENE_GLOW, SCENE_STARS, SCENE_COAST;
 
     /** 库导航用的路由名（rememberMochiNavigator / MochiNavHost 的 route）。 */
     val route: String get() = when (this) {
@@ -21,6 +21,9 @@ internal enum class AppScreen {
         FEATURES -> "features"
         CITY_MANAGER -> "city_manager"
         MOCHI_SETTINGS -> "settings"
+        SCENE_GLOW -> "scene_glow"
+        SCENE_STARS -> "scene_stars"
+        SCENE_COAST -> "scene_coast"
     }
 
     companion object {
@@ -39,7 +42,9 @@ internal enum class AppScreen {
         return when (this) {
             HOME -> null
             SEARCH -> null
-            CITY_MANAGER -> null
+            // 城市管理页从首页顶栏的汉堡菜单按钮长成整页：按钮在共享顶栏上、不随城市分页变化，
+            // 所以登记 key 不带城市后缀。
+            CITY_MANAGER -> "city_manager"
             MOCHI_SETTINGS -> "settings"
             HISTORY -> "history$suffix"
             RADAR -> "radar$suffix"
@@ -50,6 +55,9 @@ internal enum class AppScreen {
             YESTERDAY_DETAIL -> "yesterday$suffix"
             FEATURES -> "features$suffix"
             TYPHOON -> "typhoon$suffix"
+            SCENE_GLOW -> "glow$suffix"
+            SCENE_STARS -> "stars$suffix"
+            SCENE_COAST -> "coast$suffix"
         }
     }
 }

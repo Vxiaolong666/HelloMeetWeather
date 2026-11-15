@@ -7,17 +7,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -26,9 +21,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.zhisheng.weather.ui.components.WeatherDialogWindow
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.zhisheng.weather.model.*
 import com.zhisheng.weather.R
 import com.zhisheng.weather.ui.DisplayPrefs
@@ -38,13 +30,14 @@ import com.zhisheng.weather.ui.Text
 import com.zhisheng.weather.ui.rememberRainviewerDisclosureAccepted
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.theme.*
-import ui.feice.mochi.navigation.MochiBackButton
-import ui.feice.mochi.navigation.MochiScrollEdgeDefaults
+import ui.feice.mochi.list.MochiListDefaults
+import ui.feice.mochi.navigation.mochiNavSource
 import ui.feice.mochi.theme.MochiDefaults
 import ui.feice.mochi.theme.MochiTheme
 import java.util.Locale
 
-internal enum class AtlasPage(val title: String, val signal: String) {
+// public：HomeScreen（public）的 onScenePage 参数把它交给应用层路由，不能再是 internal。
+enum class AtlasPage(val title: String, val signal: String) {
     GLOW("霞光时刻", "SOLAR WINDOW"), STARS("星空拍摄", "NIGHT WINDOW"),
     COAST("海岸气象", "COASTAL OUTLOOK"), DARK("暗空环境", "DARK SKY"),
 }
@@ -76,27 +69,13 @@ internal fun AtlasSectionHeading(index: Int) {
 }
 
 @Composable
-internal fun AtlasPageHeader(page: AtlasPage, onDismiss: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onDismiss, modifier = Modifier.size(56.dp)) {
-            PhosphorIcon(R.drawable.ph_arrow_left, "返回气象视界", Modifier.size(22.dp), ZhishengText)
-        }
-        Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
-            if (!isPhosphorVista) Text(page.signal, color = ZhishengOrange, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.4.sp)
-            Text(page.title, color = ZhishengText, style = MaterialTheme.typography.titleLarge)
-        }
-    }
-    HorizontalDivider(color = ZhishengCardBorder)
-}
-
-@Composable
 internal fun WeatherAtlas(
     weather: WeatherData, scene: SceneWeatherData?, city: City?, unit: String,
     prefs: DisplayPrefs, modifier: Modifier = Modifier,
     onHistoryClick: () -> Unit, onRadarClick: () -> Unit,
+    onScenePage: (AtlasPage) -> Unit = {},
     radarContent: (@Composable () -> Unit)? = null,
 ) {
-    var page by rememberSaveable(city?.locationKey) { mutableStateOf<AtlasPage?>(null) }
     val vista = isPhosphorVista
     val radarAccepted by rememberRainviewerDisclosureAccepted()
     val radarPreview = if (ReleaseFeatures.radar && prefs.showSpacetime && radarAccepted && radarContent == null) rememberAtlasRadarPreview(city, weather.fetchedAt) else null
@@ -111,7 +90,7 @@ internal fun WeatherAtlas(
         .then(if (vista) Modifier.zhishengPanel() else Modifier),
         verticalArrangement = Arrangement.spacedBy(if (vista) 0.dp else 16.dp)) {
         if (showGlow) {
-            AtlasTile("霞光时刻", "SOLAR", onClick = { page = AtlasPage.GLOW }) {
+            AtlasTile("霞光时刻", "SOLAR", onClick = { onScenePage(AtlasPage.GLOW) }, navSourceKey = "glow") {
                 val glow = scene?.sky?.glow
                 val zone = scene?.sky?.zoneId ?: "UTC"
                 // 霞光示意与澄空一致：结论（今晚/明晚 + 等级）→ 参考时段 → 一句依据。
@@ -125,7 +104,7 @@ internal fun WeatherAtlas(
             val pair = showStars && showRadar
             val stack = maxWidth < (if (vista) 560.dp else 320.dp) || LocalDensity.current.fontScale > 1.15f
             val night: @Composable (Modifier) -> Unit = { m ->
-                AtlasTile("星空拍摄", "NIGHT", m, { page = AtlasPage.STARS }) {
+                AtlasTile("星空拍摄", "NIGHT", m, { onScenePage(AtlasPage.STARS) }, navSourceKey = "stars") {
                     val stars = scene?.sky?.stars
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -144,8 +123,8 @@ internal fun WeatherAtlas(
             }
             val radar: @Composable (Modifier) -> Unit = { m ->
                 if (vista) HomeRadarCard(city, cityZone(weather.utcOffsetSeconds).id, radarPreview,
-                    radarAccepted, m, onRadarClick, radarContent)
-                else AtlasTile("雷达回波", "RADAR", m, onRadarClick) {
+                    radarAccepted, m, onRadarClick, navSourceKey = "radar", content = radarContent)
+                else AtlasTile("雷达回波", "RADAR", m, onRadarClick, navSourceKey = "radar") {
                     if (radarContent != null) radarContent()
                     else if (!radarAccepted) {
                         AtlasCaption("查看降雨变化与数据来源说明")
@@ -165,7 +144,7 @@ internal fun WeatherAtlas(
             }
         }
         if (vista && (showStars || showRadar) && (showCoast || prefs.showSpacetime)) AtlasGroupDivider()
-        if (showCoast) AtlasTile("海岸气象", "COAST", onClick = { page = AtlasPage.COAST }) {
+        if (showCoast) AtlasTile("海岸气象", "COAST", onClick = { onScenePage(AtlasPage.COAST) }, navSourceKey = "coast") {
             val coast = scene?.coast
             if (coast != null) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -184,7 +163,7 @@ internal fun WeatherAtlas(
             }
         }
         if (vista && showCoast && prefs.showSpacetime) AtlasGroupDivider()
-        if (prefs.showSpacetime) AtlasEntry("天气回看", "ARCHIVE", onHistoryClick) {
+        if (prefs.showSpacetime) AtlasEntry("天气回看", "ARCHIVE", onHistoryClick, navSourceKey = "history") {
             val yesterday = weather.yesterday
             AtlasCaption(if (yesterday?.low != null && yesterday.high != null)
                 "昨日 ${atlasTemperature(yesterday.low, unit)} — ${atlasTemperature(yesterday.high, unit)}"
@@ -193,15 +172,20 @@ internal fun WeatherAtlas(
         // “暗空环境”暂不提供入口：波特尔等级数据尚未接入，
         // 两主题一致地不展示没有数据支撑的占位卡（组件与枚举保留给后续接入）。
     }
-    page?.takeIf { it == AtlasPage.GLOW || it in availablePages }?.let { selected ->
-        AtlasDetailDialog(selected, scene, city, unit, onDismiss = { page = null })
-    }
 }
 
 @Composable
 internal fun AtlasTile(title: String, signal: String, modifier: Modifier = Modifier,
-    onClick: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier.fillMaxWidth().then(if (isPhosphorVista) Modifier
+    onClick: () -> Unit, navSourceKey: String? = null,
+    content: @Composable ColumnScope.() -> Unit) {
+    // 「打开应用式」来源登记：页面从这张瓦片长成整页，返回缩回瓦片。
+    Column(modifier.fillMaxWidth()
+        .then(if (navSourceKey != null) Modifier.mochiNavSource(
+            navSourceKey + LocalNavSourceSuffix.current,
+            if (isPhosphorVista) MochiListDefaults.SectionCorner else 0.dp,
+            MochiDefaults.groupedContainer(),
+        ) else Modifier)
+        .then(if (isPhosphorVista) Modifier
         else Modifier.background(ZhishengCard).border(1.dp, ZhishengCardBorder))
         .clickable(role = Role.Button, onClickLabel = "查看${title}详情", onClick = onClick)
         .padding(16.dp),
@@ -223,9 +207,15 @@ internal fun AtlasTile(title: String, signal: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun AtlasEntry(title: String, signal: String, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun AtlasEntry(title: String, signal: String, onClick: () -> Unit, navSourceKey: String? = null, content: @Composable () -> Unit) {
+    // 同 AtlasTile：登记行本身为转场来源，页面从这一行展开 / 缩回。
+    val sourceModifier = if (navSourceKey != null) Modifier.mochiNavSource(
+        navSourceKey + LocalNavSourceSuffix.current,
+        if (isPhosphorVista) MochiListDefaults.SectionCorner else 0.dp,
+        MochiDefaults.groupedContainer(),
+    ) else Modifier
     if (isPhosphorVista) {
-        Row(Modifier.fillMaxWidth()
+        Row(sourceModifier.fillMaxWidth()
             .clickable(role = Role.Button, onClickLabel = "查看$title", onClick = onClick)
             .padding(16.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -238,7 +228,7 @@ private fun AtlasEntry(title: String, signal: String, onClick: () -> Unit, conte
         }
         return
     }
-    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button, onClick = onClick)
+    Row(sourceModifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button, onClick = onClick)
         .padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, color = ZhishengText, style = MaterialTheme.typography.titleMedium)
@@ -289,33 +279,32 @@ internal fun atlasNumber(value: Double?, unit: String = "") = value?.takeIf(Doub
 internal fun atlasTemperature(value: Double?, unit: String) = atlasNumber(value?.let { if (unit == "f") it * 1.8 + 32 else it }, if (unit == "f") "°F" else "°C")
 
 @Composable
-private fun AtlasDetailDialog(page: AtlasPage, scene: SceneWeatherData?, city: City?, unit: String, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        // 与设置二级页完全同一个外壳：库标题脚手架 + 液态玻璃材质 + 越界手感。
-        // 系统栏底色取库的分组背景，和顶栏是同一块颜色；状态栏内边距由库顶栏自己处理，不能再加 safeDrawing。
-        MochiPageFrame(
-            title = page.title,
-            subtitle = page.signal,
-            onBack = onDismiss,
-            overlay = { WeatherDialogWindow(background = MochiDefaults.groupedBackground()) },
-        ) {
-            item {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AtlasCaption(city?.displayName ?: "当前地点未选择")
-                    if (city != null) AtlasCaption("经纬度 ${com.zhisheng.weather.ui.Fmt.coordinates(city.latitude, city.longitude, precise = city.isPreciseLocation)}")
-                }
+internal fun SceneAtlasPage(page: AtlasPage, scene: SceneWeatherData?, city: City?, unit: String, onBack: () -> Unit) {
+    // 与设置二级页完全同一个外壳：库标题脚手架 + 液态玻璃材质 + 越界手感。
+    // 系统栏底色取库的分组背景，和顶栏是同一块颜色；状态栏内边距由库顶栏自己处理，不能再加 safeDrawing。
+    // 原来是页内 Dialog 自开窗口自播进出动画，绕过了统一转场契约；现在作为 AppScreen 路由页，
+    // 进出由 MochiNavHost 按「应用转场」设置执行，来源登记在首页对应的那张瓦片上。
+    MochiPageFrame(
+        title = page.title,
+        subtitle = page.signal,
+        onBack = onBack,
+    ) {
+        item {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                AtlasCaption(city?.displayName ?: "当前地点未选择")
+                if (city != null) AtlasCaption("经纬度 ${com.zhisheng.weather.ui.Fmt.coordinates(city.latitude, city.longitude, precise = city.isPreciseLocation)}")
             }
-            item {
-                Column(
-                    Modifier.fillMaxWidth().widthIn(max = 760.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    when (page) {
-                        AtlasPage.GLOW -> AtlasGlowDetail(scene, city)
-                        AtlasPage.STARS -> AtlasStarsDetail(scene, city)
-                        AtlasPage.COAST -> AtlasCoastDetail(scene, unit)
-                        AtlasPage.DARK -> AtlasDarkDetail()
-                    }
+        }
+        item {
+            Column(
+                Modifier.fillMaxWidth().widthIn(max = 760.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                when (page) {
+                    AtlasPage.GLOW -> AtlasGlowDetail(scene, city)
+                    AtlasPage.STARS -> AtlasStarsDetail(scene, city)
+                    AtlasPage.COAST -> AtlasCoastDetail(scene, unit)
+                    AtlasPage.DARK -> AtlasDarkDetail()
                 }
             }
         }

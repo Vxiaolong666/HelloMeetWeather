@@ -27,14 +27,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -54,6 +63,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.awaitCancellation
 import com.zhisheng.weather.data.UsageStatistics
 import com.zhisheng.weather.data.ServiceDiagnostics
@@ -85,6 +95,8 @@ import com.zhisheng.weather.ui.WeatherViewModel
 import com.zhisheng.weather.ui.ProvideWeatherPresentationClock
 import com.zhisheng.weather.ui.weatherPresentationTime
 import com.zhisheng.weather.ui.home.HomeScreen
+import com.zhisheng.weather.ui.home.AtlasPage
+import com.zhisheng.weather.ui.home.SceneAtlasPage
 import com.zhisheng.weather.ui.home.CityManagerScreen
 import com.zhisheng.weather.ui.MochiSettingsScreen
 import com.zhisheng.weather.ui.LocalMochiSettingsEntry
@@ -113,8 +125,11 @@ import com.zhisheng.weather.ui.WhatsNewDialog
 import com.zhisheng.weather.ui.shouldAutoPlayUpdateOpening
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
+import ui.feice.mochi.anim.MochiSprings
 import ui.feice.mochi.navigation.MochiNavHost
 import ui.feice.mochi.navigation.rememberMochiNavigator
+import ui.feice.mochi.theme.MochiDefaults
+import androidx.compose.animation.core.tween
 import com.zhisheng.weather.ui.systemAnimationsEnabled
 import com.zhisheng.weather.ui.updateOpeningSpec
 import com.zhisheng.weather.ui.WhatsNewPreferenceFile
@@ -129,6 +144,9 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 private data class ShortcutCommand(val action: String? = null, val sequence: Long = 0L)
+
+// 问题4：城市管理页选城时的扩散请求——被点卡片的屏幕矩形 + 目标城市 key。
+private data class CityExpandRequest(val rect: Rect, val cityKey: String)
 
 class MainActivity : ComponentActivity() {
     private var hostResumed by mutableStateOf(false)
@@ -470,12 +488,18 @@ class MainActivity : ComponentActivity() {
                 val uiPrefs = rememberMochiUiPrefs()
                 ApplyMochiUiPrefs(uiPrefs, motionEnabled)
                 val appStyle = PageTransitionStyle.from(uiPrefs.pageTransition)
+                // LaunchedEffect(Unit) 的收集协程只创建一次，直接引用组合期 val 会把样式
+                // 永远冻结在首帧（首帧偏好还没从磁盘读回来，兜底值会覆盖用户真实设置）；
+                // 用 rememberUpdatedState 让每次 push 实时读当前样式。
+                val currentAppStyle by rememberUpdatedState(appStyle)
                 // 「无动画」或系统关掉动画时，页面弹簧 / 压暗与所有返回手势一起关掉。
                 // 偏好一变就重组，下一次打开或返回立即采用新设置。
                 val transitionsEnabled = appTransitionsEnabled(appStyle, motionEnabled)
                 // 应用级导航走库的 MochiNavHost（与设置页内部同一条转场）：
                 // 弹簧、下层页缩放、压暗、侧推与预测性返回都由库给，MainActivity 不再自拼覆盖层动画。
                 val nav = rememberMochiNavigator(AppScreen.HOME.route)
+                // 城市管理页「点城市卡 → 卡片从页面中部扩散长成整屏首页」的请求（问题4）。
+                var cityExpand by remember { mutableStateOf<CityExpandRequest?>(null) }
                 // screen 仍是应用导航的唯一事实（意图、小组件、页面回调都写它）；
                 // 这里把它单向同步进库导航，库导航自己退回根（返回键 / 侧推手势）时再写回 screen。
                 LaunchedEffect(Unit) {
@@ -492,7 +516,7 @@ class MainActivity : ComponentActivity() {
                                 // 兜底成角落哨兵 key，走「从角落小卡展开 / 缩回小卡」；其余样式走库的侧推。
                                 // 来源 key 与首页 mochiNavSource 的登记一一对应（含城市后缀）。
                                 val from = AppTransitions.pushFrom(
-                                    appStyle, dest, uiState.selectedCity?.locationKey,
+                                    currentAppStyle, dest, uiState.selectedCity?.locationKey,
                                 )
                                 nav.push(target, from = from)
                             }
@@ -551,6 +575,7 @@ class MainActivity : ComponentActivity() {
                     val liveGlow = com.zhisheng.weather.ui.theme.LocalVistaGlowPhase.current
                     val frozenGlow = remember { mutableStateOf(0.0) }
                     MochiAppTheme(colors = rememberMochiColorScheme(), systemBarAppearance = false) {
+                Box(Modifier.fillMaxSize()) {
                     CompositionLocalProvider(
                         com.zhisheng.weather.ui.theme.LocalVistaGlowPhase provides
                             if (homeSettled) liveGlow else frozenGlow,
@@ -616,6 +641,15 @@ class MainActivity : ComponentActivity() {
                                     onYesterdayClick = { screen = AppScreen.YESTERDAY_DETAIL },
                                     onFeatureHubClick = { screen = AppScreen.FEATURES },
                                     onCityManagerClick = { screen = AppScreen.CITY_MANAGER },
+                    // 三个场景页（霞光时刻 / 星空拍摄 / 海岸气象）从首页瓦片走统一路由，不再用页内自开窗口覆盖层。
+                    onScenePage = { page ->
+                        screen = when (page) {
+                            AtlasPage.GLOW -> AppScreen.SCENE_GLOW
+                            AtlasPage.STARS -> AppScreen.SCENE_STARS
+                            AtlasPage.COAST -> AppScreen.SCENE_COAST
+                            AtlasPage.DARK -> screen
+                        }
+                    },
                                 )
                             }
                                     AppScreen.MOCHI_SETTINGS -> Box(Modifier.fillMaxSize()) {
@@ -712,12 +746,34 @@ class MainActivity : ComponentActivity() {
                                         longitude = uiState.selectedCity?.longitude ?: 0.0,
                                         onBack = { returnHome() },
                                     )
+                                    AppScreen.SCENE_GLOW, AppScreen.SCENE_STARS, AppScreen.SCENE_COAST ->
+                                        SceneAtlasPage(
+                                            page = when (dest) {
+                                                AppScreen.SCENE_STARS -> AtlasPage.STARS
+                                                AppScreen.SCENE_COAST -> AtlasPage.COAST
+                                                else -> AtlasPage.GLOW
+                                            },
+                                            scene = uiState.sceneWeather,
+                                            city = uiState.selectedCity,
+                                            unit = uiState.tempUnit,
+                                            onBack = { returnHome() },
+                                        )
                                     AppScreen.CITY_MANAGER -> CityManagerScreen(
                                         uiState = uiState,
                                         onBack = { returnHome() },
                                         onSelect = { key ->
                                             vm.selectCity(key)
                                             returnHome()
+                                        },
+                                        // 「打开应用式」下选城：先记下卡片矩形，由应用根部遮罩播扩散变换，
+                                        // 遮罩铺满全屏后再在底下切城回首页；其余样式保持原来的直接切换。
+                                        onSelectAt = { key, rect ->
+                                            if (currentAppStyle == PageTransitionStyle.APP && motionEnabled) {
+                                                cityExpand = CityExpandRequest(rect, key)
+                                            } else {
+                                                vm.selectCity(key)
+                                                returnHome()
+                                            }
                                         },
                                         onToggleFavorite = { key -> vm.toggleCityFavorite(key) },
                                         onRemove = { key -> vm.removeCity(key) },
@@ -753,6 +809,47 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     }
+                }
+                // 问题4：城市管理页「点城市卡 → 卡片从页面中部扩散长成整屏首页」。
+                // 库的 pop 只支持「顶层页缩回下层来源卡」，不支持从顶层页内的来源长成整屏，
+                // 所以「打开应用式」下在应用根部自绘反向容器变换：卡片矩形按与库同一条弹簧
+                // （MochiSprings.smooth(300)）插值铺满全屏，遮罩在底下切城回首页，
+                // 等库的返回动画收尾后遮罩淡出露出首页，两段动画不叠影。
+                cityExpand?.let { request ->
+                    val expand = remember(request) { Animatable(0f) }
+                    val reveal = remember(request) { Animatable(1f) }
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val density = LocalDensity.current
+                        val screenW = with(density) { maxWidth.toPx() }
+                        val screenH = with(density) { maxHeight.toPx() }
+                        LaunchedEffect(request) {
+                            expand.animateTo(1f, MochiSprings.smooth(300, visibilityThreshold = 0.0005f))
+                            vm.selectCity(request.cityKey)
+                            returnHome()
+                            // returnHome 要等导航协程下一帧才真正 pop，先等动画开始再等它结束；
+                            // 加超时兜底，万一没走到动画也不能把遮罩永远盖在首页上。
+                            withTimeoutOrNull(1200L) {
+                                snapshotFlow { nav.isTransitioning }.first { it }
+                                snapshotFlow { homeSettled }.first { settled -> settled }
+                            }
+                            reveal.animateTo(0f, tween(220))
+                            cityExpand = null
+                        }
+                        val p = expand.value
+                        val left = request.rect.left * (1f - p)
+                        val top = request.rect.top * (1f - p)
+                        val width = request.rect.width + (screenW - request.rect.width) * p
+                        val height = request.rect.height + (screenH - request.rect.height) * p
+                        Box(
+                            Modifier
+                                .offset { IntOffset(left.toInt().coerceAtLeast(0), top.toInt().coerceAtLeast(0)) }
+                                .size(width = (width / density.density).dp, height = (height / density.density).dp)
+                                .pointerInput(request) { detectTapGestures { } }
+                                .clip(RoundedCornerShape(26.dp * (1f - p)))
+                                .background(MochiDefaults.groupedContainer().copy(alpha = reveal.value)),
+                        )
+                    }
+                }
                 }
                 }
                             }

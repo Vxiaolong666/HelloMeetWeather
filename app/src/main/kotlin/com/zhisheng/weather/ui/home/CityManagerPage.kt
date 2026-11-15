@@ -76,6 +76,8 @@ fun CityManagerScreen(
     onLocate: () -> Unit,
     onClearLocateMessage: () -> Unit,
     onAddCity: () -> Unit,
+    // 选城时把被点卡片的屏幕矩形一并上报，由应用根部播「卡片扩散成整屏首页」的反向容器变换。
+    onSelectAt: (String, androidx.compose.ui.geometry.Rect) -> Unit = { key, _ -> onSelect(key) },
 ) {
     val colors = rememberMochiColorScheme()
     MochiAppTheme(colors = colors) {
@@ -108,6 +110,7 @@ fun CityManagerScreen(
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
                     onAdd = onAddCity,
                     onSelect = onSelect,
+                    onSelectAt = onSelectAt,
                     onFavorite = onToggleFavorite,
                     onRemove = onRemove,
                     active = true,

@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,7 +36,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 internal fun CityWeatherList(ui: HomeUiState, modifier: Modifier, onAdd: () -> Unit,
-    onSelect: (String) -> Unit, onFavorite: (String) -> Unit, onRemove: (String) -> Unit, active: Boolean) {
+    onSelect: (String) -> Unit, onFavorite: (String) -> Unit, onRemove: (String) -> Unit, active: Boolean,
+    // 城市管理页选城时要把被点卡片的屏幕矩形一起交出去：首页要按它做「卡片扩散成整屏」
+    // 的反向容器变换；侧边栏不需要，保持 null 走原 onSelect。
+    onSelectAt: ((String, androidx.compose.ui.geometry.Rect) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val glass = isPhosphorVista && LocalHomeSurfaceStyle.current == HomeSurfaceStyle.FRAGRANCE_GLASS
     val weather = remember { mutableStateMapOf<String, CachedWeather>() }
@@ -112,10 +118,15 @@ internal fun CityWeatherList(ui: HomeUiState, modifier: Modifier, onAdd: () -> U
                         } ?: false
                         val selected = city.locationKey == ui.selectedCity?.locationKey
                         val moving = active && city.locationKey in visibleCityKeys
+                        var cardRect by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
                         Column {
                             CityAtmosphere(data, ui.prefs.ambience, night,
                                 Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(26.dp))
-                                    .clickable { onSelect(city.locationKey) }, active = moving) {
+                                    .onGloballyPositioned { cardRect = it.boundsInRoot() }
+                                    .clickable {
+                                        val at = onSelectAt
+                                        if (at != null) at(city.locationKey, cardRect) else onSelect(city.locationKey)
+                                    }, active = moving) {
                                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(
                                     ZhishengBg.copy(alpha = .25f), Color.Transparent, ZhishengBg.copy(alpha = .20f)))))
                                 Row(Modifier.fillMaxSize().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween) {

@@ -15,10 +15,14 @@ import com.zhisheng.weather.ui.Text
 import com.zhisheng.weather.ui.components.PhosphorIcon
 import com.zhisheng.weather.ui.theme.*
 import kotlinx.coroutines.CancellationException
+import ui.feice.mochi.list.MochiListDefaults
+import ui.feice.mochi.navigation.mochiNavSource
+import ui.feice.mochi.theme.MochiDefaults
 
 @Composable
 internal fun HomeRadarCard(city: City?, zoneId: String, state: AtlasRadarPreviewState?,
     accepted: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit,
+    navSourceKey: String? = null,
     content: (@Composable () -> Unit)? = null,
     geographyOverride: List<List<PreviewWorldPoint>>? = null) {
     val context = LocalContext.current
@@ -31,7 +35,14 @@ internal fun HomeRadarCard(city: City?, zoneId: String, state: AtlasRadarPreview
             catch (_: Exception) { emptyList() }
         }
     }
-    Column(modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "查看降水地图与未来两小时", onClick = onClick)
+    Column(modifier.fillMaxWidth()
+        // 「打开应用式」来源登记：雷达页从这张卡长成整页，返回缩回卡片。
+        .then(if (navSourceKey != null) Modifier.mochiNavSource(
+            navSourceKey + LocalNavSourceSuffix.current,
+            if (isPhosphorVista) MochiListDefaults.SectionCorner else 0.dp,
+            MochiDefaults.groupedContainer(),
+        ) else Modifier)
+        .clickable(role = Role.Button, onClickLabel = "查看降水地图与未来两小时", onClick = onClick)
         .padding(horizontal = 16.dp,vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {

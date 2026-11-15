@@ -352,6 +352,7 @@ fun HomeScreen(
     onYesterdayClick: () -> Unit = {},
     onFeatureHubClick: () -> Unit = {},
     onCityManagerClick: () -> Unit = {},
+    onScenePage: (AtlasPage) -> Unit = {},
     dismissCitiesRequest: Int = 0,
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -556,6 +557,7 @@ fun HomeScreen(
                             onAirQualityClick = { openCityDetail(onAirQualityClick) },
                             onYesterdayClick = { openCityDetail(onYesterdayClick) },
                             onFeatureHubClick = { openCityDetail(onFeatureHubClick) },
+                            onScenePage = { page -> openCityDetail { onScenePage(page) } },
                             outfitState = outfitState,
                             onOutfitOpen = { request -> openCityDetail { outfitRequest = request } },
                         )
@@ -663,6 +665,7 @@ internal fun HomeCityPage(
     onPrecipitationClick: () -> Unit, onHourlyClick: () -> Unit, onTyphoonClick: () -> Unit,
     onAirQualityClick: () -> Unit, onYesterdayClick: () -> Unit,
     onFeatureHubClick: () -> Unit = {},
+    onScenePage: (AtlasPage) -> Unit = {},
     onOpenDailyDay: (Long) -> Unit = {},
     outfitState: OutfitUiState = rememberOutfitUiState(),
     onOutfitOpen: ((OutfitDialogRequest) -> Unit)? = null,
@@ -750,6 +753,7 @@ internal fun HomeCityPage(
                     onHourlyClick = onHourlyClick, onTyphoonClick = onTyphoonClick,
                     onAirQualityClick = onAirQualityClick, onYesterdayClick = onYesterdayClick,
                     onFeatureHubClick = onFeatureHubClick,
+                    onScenePage = onScenePage,
                     onOpenDailyDay = onOpenDailyDay,
                     outfitState = outfitState,
                     onOutfitOpen = onOutfitOpen,
@@ -1155,7 +1159,16 @@ internal fun TopBar(
             title = title,
             subtitle = address.takeIf(String::isNotEmpty),
             navigationIcon = {
-                IconButton(onClick = onMenu, modifier = Modifier.size(44.dp)) {
+                // 「打开应用式」的来源登记（顶栏是共享 chrome，不带城市后缀）：
+                // 城市管理页从这颗汉堡按钮长成整页，返回缩回按钮。
+                IconButton(
+                    onClick = onMenu,
+                    modifier = Modifier.size(44.dp).mochiNavSource(
+                        "city_manager",
+                        MochiButtonDefaults.BarItemSize / 2,
+                        MochiDefaults.groupedContainer(),
+                    ),
+                ) {
                     if (isPhosphorVista) PhosphorIcon(R.drawable.ph_list, "城市列表", Modifier.size(22.dp), ZhishengTextSecondary)
                     else Icon(Icons.Filled.Menu, contentDescription = "城市列表", tint = ZhishengTextSecondary, modifier = Modifier.size(22.dp))
                 }
@@ -1266,6 +1279,7 @@ private fun WeatherContent(
     onAirQualityClick: () -> Unit = {},
     onYesterdayClick: () -> Unit = {},
     onFeatureHubClick: () -> Unit = {},
+    onScenePage: (AtlasPage) -> Unit = {},
     outfitState: OutfitUiState = rememberOutfitUiState(),
     onOutfitOpen: ((OutfitDialogRequest) -> Unit)? = null,
 ) {
@@ -1354,6 +1368,7 @@ private fun WeatherContent(
                             modifier = m,
                             onHistoryClick = onHistoryClick,
                             onRadarClick = onRadarClick,
+                            onScenePage = onScenePage,
                         )
                         HomeModule.DAILY -> DailySection(
                             currentDaily,
@@ -2653,7 +2668,9 @@ internal fun PrecipCard(data: WeatherData, modifier: Modifier, onClick: () -> Un
     LaunchedEffect(drySky) { if (!drySky) showBird = false }
     if (showBird && drySky) SkyBirdGameDialog(onWeatherDetails = { showBird = false; onClick() }) { showBird = false }
     if (drySky) {
-        HudCard(modifier = modifier.fillMaxWidth()) {
+        // 无降水时这张卡是降水页唯一的可见来源（游戏弹窗里「查看天气详情」也回到这里），
+        // 登记同一个 key，保证「打开应用式」返回缩回的是用户点过的卡而不是角落。
+        HudCard(modifier = modifier.fillMaxWidth(), navSourceKey = "precipitation") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f).heightIn(min = 48.dp)
                     .clickable(role = Role.Button, onClickLabel = "打开云间小鸟游戏", onClick = { showBird = true }),
