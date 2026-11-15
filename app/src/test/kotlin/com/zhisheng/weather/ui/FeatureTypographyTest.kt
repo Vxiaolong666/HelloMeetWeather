@@ -25,11 +25,11 @@ class FeatureTypographyTest {
     @Test
     fun `secondary headers and history dates avoid display scale typography`() {
         val root = File(requireNotNull(System.getProperty("user.dir")))
-        val chrome = File(root, "src/main/kotlin/com/zhisheng/weather/ui/FeatureScreenChrome.kt").readText()
+        // FeaturePageHeader 已随遗留页面一并删除（返回统一走库 MochiBackButton），
+        // 这里只保留仍然存在的历史页 / 雷达页断言。
         val history = File(root, "src/main/kotlin/com/zhisheng/weather/ui/HistoryScreen.kt").readText()
         val radar = File(root, "src/main/kotlin/com/zhisheng/weather/ui/RadarExperience.kt").readText()
 
-        assertTrue(chrome.contains("fontSize = 18.sp"))
         assertTrue(history.contains("fontSize = 24.sp"))
         assertFalse(history.contains("MaterialTheme.typography.displaySmall"))
         assertTrue(radar.contains("title = \"降水地图\""))

@@ -195,7 +195,7 @@ internal fun InitialLocationSetupHost(
                 targetState = welcome,
                 modifier = modifier.animateContentSize(tween(motionMs)),
                 transitionSpec = {
-                    screenTransition(
+                    AppTransitions.contentTransform(
                         MochiTransitionConfig.motionEnabled,
                         MochiTransitionConfig.style,
                         MochiTransitionConfig.swipeBack,

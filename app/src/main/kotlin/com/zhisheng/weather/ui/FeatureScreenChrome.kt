@@ -15,10 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,48 +38,6 @@ import com.zhisheng.weather.ui.theme.ZhishengTextSecondary
 import com.zhisheng.weather.ui.theme.isPhosphorVista
 import com.zhisheng.weather.ui.theme.zhishengPanel
 import kotlinx.coroutines.delay
-
-@Composable
-internal fun FeaturePageHeader(
-    title: String,
-    subtitle: String,
-    onBack: () -> Unit,
-    trailing: @Composable (() -> Unit)? = null,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(
-            horizontal = if (isPhosphorVista) 8.dp else 4.dp,
-            vertical = if (isPhosphorVista) 10.dp else 6.dp,
-        ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = ZhishengText)
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 18.sp,
-                    lineHeight = 22.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
-                color = if (isPhosphorVista) ZhishengText else ZhishengOrange,
-                maxLines = 1,
-            )
-            if (!isPhosphorVista) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.labelSmall.copy(lineHeight = 13.sp),
-                    color = ZhishengTextSecondary,
-                    letterSpacing = 1.6.sp,
-                    maxLines = 1,
-                )
-            }
-        }
-        trailing?.invoke()
-    }
-}
 
 @Composable
 internal fun FeatureSectionTitle(index: Int, title: String, en: String) {

@@ -32,8 +32,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import ui.feice.mochi.navigation.MochiBackButton
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -282,7 +282,8 @@ private fun TyphoonTopBar(detail: TyphoonDetail?, stale: Boolean, refreshing: Bo
     val p = LocalZhishengPalette.current
     val status = detail?.let { typhoonObservationStatus(it, stale, weatherPresentationTime()) }
     Row(modifier.typhoonGlass(compact = true).padding(horizontal = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-        TyAction(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+        // 返回统一走库组件：与设置页二级页同一条转场，地图悬浮摆放保持不变
+        MochiBackButton(onClick = onBack)
         Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
             Text("台风追踪", color = p.text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (status != null) Text(status.substringBefore('·').trim() + " · " + status.takeLast(5),

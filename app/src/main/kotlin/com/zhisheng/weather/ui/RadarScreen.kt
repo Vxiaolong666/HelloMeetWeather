@@ -44,8 +44,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import ui.feice.mochi.navigation.MochiBackButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
@@ -803,7 +803,8 @@ private fun RadarTopChrome(
             Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RadarIconAction(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+            // 返回统一走库组件：与设置页二级页同一条转场，地图悬浮摆放保持不变
+            MochiBackButton(onClick = onBack)
             Spacer(Modifier.width(8.dp))
             Column(
                 Modifier.weight(1f).height(44.dp)

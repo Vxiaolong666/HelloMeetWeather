@@ -1,7 +1,5 @@
 package com.zhisheng.weather.ui
 
-import androidx.compose.animation.core.AnimationSpec
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -12,14 +10,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import com.zhisheng.weather.data.SettingsRepository
-import ui.feice.mochi.anim.MochiSprings
 import ui.feice.mochi.effect.elastic.MochiGelDefaults
 import ui.feice.mochi.effect.glow.MochiGlowDefaults
 import ui.feice.mochi.effect.glow.MochiGlowPreference
 import ui.feice.mochi.effect.glow.MochiGlowSpec
 import ui.feice.mochi.ios.IosGlassStyle
 import ui.feice.mochi.ios.iosMaterials
-import ui.feice.mochi.navigation.MochiNavDefaults
 import ui.feice.mochi.navigation.MochiNavSpec
 import ui.feice.mochi.theme.MochiColorScheme
 import ui.feice.mochi.theme.MochiGraphics
@@ -38,7 +34,8 @@ import ui.feice.mochi.theme.lightColorScheme
  * 由 [ApplyMochiUiPrefs] 每次偏好变化时同步写入。
  */
 internal object MochiTransitionConfig {
-    var style: PageTransitionStyle by mutableStateOf(PageTransitionStyle.FADE)
+    // 默认「打开应用式」：新装 / 未设置过的用户直接拿到卡片展开的转场。
+    var style: PageTransitionStyle by mutableStateOf(PageTransitionStyle.APP)
     var swipeBack: Boolean by mutableStateOf(true)
     var predictiveBack: Boolean by mutableStateOf(true)
     var motionEnabled: Boolean by mutableStateOf(true)
@@ -59,7 +56,7 @@ internal data class MochiUiPrefs(
     val pressTinted: Boolean = false,
     val pressStrength: Float = 0.45f,
     val predictiveBack: Boolean = true,
-    val pageTransition: String = "fade",
+    val pageTransition: String = "app",
     val swipeBack: Boolean = true,
     val backScale: String = "subtle",
     val colorMode: String = "light",
@@ -94,7 +91,7 @@ internal fun rememberMochiUiPrefs(): MochiUiPrefs {
     val pressTinted by SettingsRepository.mochiPressTinted.collectAsState(initial = false)
     val pressStrength by SettingsRepository.mochiPressStrength.collectAsState(initial = 0.45f)
     val predictiveBack by SettingsRepository.mochiPredictiveBack.collectAsState(initial = true)
-    val pageTransition by SettingsRepository.mochiPageTransition.collectAsState(initial = "fade")
+    val pageTransition by SettingsRepository.mochiPageTransition.collectAsState(initial = "app")
     val swipeBack by SettingsRepository.mochiSwipeBack.collectAsState(initial = true)
     val backScale by SettingsRepository.mochiBackScale.collectAsState(initial = "subtle")
     val colorMode by SettingsRepository.mochiColorMode.collectAsState(initial = "light")
@@ -275,56 +272,12 @@ internal fun ApplyMochiUiPrefs(prefs: MochiUiPrefs, motionEnabled: Boolean = tru
 }
 
 /**
- * 「应用转场」是全站页面转场的唯一契约：弹簧、下层页缩放、压暗都按当前样式生成，
- * 偏好 / 系统动画开关一变就重建 spec，下一次打开或返回立即采用新设置。
- * 样式是否为「无动画」由 [appTransitionsEnabled] 统一判定，手势开关也读它。
+ * 「应用转场」是全站页面转场的唯一契约：实现已收敛到 [AppTransitions.navSpec]，
+ * 这里保留薄委托，旧调用点不必再引新名字。
  */
 @Composable
-internal fun mochiNavSpecFor(prefs: MochiUiPrefs, systemMotion: Boolean = true): MochiNavSpec {
-    val style = PageTransitionStyle.from(prefs.pageTransition)
-    val instant = tween<Float>(0)
-    // 无动画：所有弹簧瞬时，且不缩放、不压暗，任何返回入口都不会出现中间帧。
-    if (!appTransitionsEnabled(style, systemMotion)) {
-        return MochiNavDefaults.spec(
-            open = instant,
-            close = instant,
-            cancel = instant,
-            push = instant,
-            openMove = instant,
-            closeMove = instant,
-            underScale = 1f,
-            backScale = 1f,
-            scrim = Color.Transparent,
-        )
-    }
-    val spring: AnimationSpec<Float> = when (style) {
-        PageTransitionStyle.SLIDE -> MochiSprings.crisp(320, visibilityThreshold = 0.0005f)
-        PageTransitionStyle.DEPTH -> MochiSprings.smooth(420, visibilityThreshold = 0.0005f)
-        PageTransitionStyle.APP -> MochiSprings.smooth(380, extraBounce = 0.08, visibilityThreshold = 0.0005f)
-        else -> MochiSprings.smooth(300, visibilityThreshold = 0.0005f)
-    }
-    val scale = when (prefs.backScale) {
-        "none" -> 1f
-        "deep" -> 0.88f
-        else -> 0.95f
-    }
-    return MochiNavDefaults.spec(
-        open = spring,
-        close = spring,
-        cancel = spring,
-        push = spring,
-        openMove = spring,
-        closeMove = spring,
-        // 「下层页缩放」作用在来源转场的背景页（underScale），而不是预测性返回的手势缩放。
-        // 交叉淡变不缩放，景深再收一点，各自与设置里的样式对应。
-        underScale = when (style) {
-            PageTransitionStyle.FADE -> 1f
-            PageTransitionStyle.DEPTH -> minOf(scale, 0.92f)
-            else -> scale
-        },
-        backScale = 0.86f,
-    )
-}
+internal fun mochiNavSpecFor(prefs: MochiUiPrefs, systemMotion: Boolean = true): MochiNavSpec =
+    AppTransitions.navSpec(prefs, systemMotion)
 
 /**
  * 当前样式是否允许播放页面转场：系统关掉动画、或设置选「无动画」时一律取消。

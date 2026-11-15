@@ -60,6 +60,12 @@ internal class NavGeometry(val nav: MochiNavigator) {
     /** 侧推时屏幕没有物理圆角（模拟器、直角屏）用的圆角（px），保证转场中始终是圆角 */
     var fallbackCorner: Float = 0f
 
+    /** 角落容器变换的小卡片距边距离（px），由 MochiNavHost 按 dp 换算 */
+    var cornerInset: Float = 0f
+
+    /** 角落容器变换的小卡片圆角（px） */
+    var cornerRadius: Float = 0f
+
     private fun slideCorner(c: Float): Float = if (c > 0.5f) c else fallbackCorner
 
     private val full get() = Rect(Offset.Zero, size)
@@ -343,21 +349,40 @@ internal class NavGeometry(val nav: MochiNavigator) {
         return Rect(c - half, c + half)
     }
 
+    /**
+     * 角落容器变换的目标：一张贴在角落的小卡片。方向按返回发起侧——
+     * 从右边缘手势返回缩回右上角；按钮点击、系统左边缘手势、应用内左缘右滑（backEdge 默认 0）
+     * 缩回左上角。进入（push）时没有手势信息，backEdge 为 0，天然从左上角展开。
+     * 没有来源画面可画，底色给透明：页面本体淡入淡出（frame 里 cover 保持 0）。
+     */
+    private fun cornerCard(e: MochiNavEntry): SourceInfo {
+        val w = size.width * CornerCardWidth
+        val h = size.height * CornerCardHeight
+        val left = if (e.backEdge == BackEventCompat.EDGE_RIGHT) size.width - w - cornerInset else cornerInset
+        return SourceInfo(Rect(left, cornerInset, left + w, cornerInset + h), cornerRadius, Color.Transparent)
+    }
+
     fun frame(e: MochiNavEntry, asOpen: Boolean = false): TopFrame {
         val p = e.progress.value
         val pc = p.coerceIn(0f, 1f)
         val u = openUnderScale(e)
         val src = source(e, u)
         var alpha = 1f
+        // 角落容器变换（spec.cornerWhenNoSource）：来源 key 在但卡片没登记 / 已销毁时，
+        // 把整屏向角落小卡片插值，几何映射完全复用来源分支（大小跟 progress、中心跟 move）。
+        val corner = if (src == null && spec.cornerWhenNoSource && e.source != null) cornerCard(e) else null
+        val shape = src ?: corner
         // 打开、关闭、掉头都是同一个映射：矩形只由进度决定，所以任何时候换方向画面都连续
-        val base = if (src != null) {
+        val base = if (shape != null) {
+            // 没有来源画面可画：页面本体淡入淡出，与旧的原地缩放兜底同语义
+            if (src == null) alpha = pc
             // 大小跟 progress（smooth），中心跟 move（带一点回弹）：两根弹簧，位移到位时轻轻冲过再落回
             // 全开静止的页若刚被 setTopSource 从「侧推」切成「来源变形」，move 还停在 0：
             // 中心按已到位算，页面不会突然平移到来源元素那里。
             val m = if (p >= 1f && e.move.value < 1f && !e.move.isRunning) 1f else e.move.value
-            val w = lerp(src.rect.width, full.width, p)
-            val h = lerp(src.rect.height, full.height, p)
-            val c = Offset(lerp(src.rect.center.x, full.center.x, m), lerp(src.rect.center.y, full.center.y, m))
+            val w = lerp(shape.rect.width, full.width, p)
+            val h = lerp(shape.rect.height, full.height, p)
+            val c = Offset(lerp(shape.rect.center.x, full.center.x, m), lerp(shape.rect.center.y, full.center.y, m))
             Rect(c.x - w / 2f, c.y - h / 2f, c.x + w / 2f, c.y + h / 2f)
         } else {
             // 来源不在了（被滚走 / 销毁）：原地缩放淡入淡出
@@ -371,14 +396,14 @@ internal class NavGeometry(val nav: MochiNavigator) {
         // 卡片画面渐隐、页面渐显，都只看进度：任何时候掉头都连续
         val cover = if (src != null) 1f - smoothstep(PageFadeFrom, PageFadeTo, pc) else 0f
         // 圆角：页面在整屏到中段之间时严格等于屏幕圆角；只在靠近来源的后半程过渡到来源的圆角
-        val w = if (src != null) {
-            val kSrc = src.rect.width / size.width
+        val w = if (shape != null) {
+            val kSrc = shape.rect.width / size.width
             val k = rect.width / size.width
             smoothstep(0f, 0.5f, ((k - kSrc) / (1f - kSrc).coerceAtLeast(1e-3f)).coerceIn(0f, 1f))
         } else {
             1f
         }
-        val sr = src?.radius ?: 0f
+        val sr = shape?.radius ?: 0f
         return TopFrame(
             rect = rect,
             tl = lerp(sr, corners.topLeft, w),
@@ -460,6 +485,11 @@ private val OccluderShadowReach = 40.dp
 
 /** 共享元素不再单独飞行 */
 private const val DisableSharedFlight = true
+
+/** 角落容器变换的小卡片大小（屏宽 / 屏高比例）：约一张首页天气卡的观感 */
+private const val CornerCardWidth = 0.34f
+
+private const val CornerCardHeight = 0.20f
 
 /** 容器变形里卡片画面淡出的进度区间（一开始就跟着容器长大并淡出） */
 private const val CardFadeFrom = 0.04f

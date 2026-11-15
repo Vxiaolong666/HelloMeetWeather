@@ -711,7 +711,8 @@ object SettingsRepository {
         store.data.map { it[KEY_MOCHI_PREDICTIVE_BACK] ?: true }.distinctUntilChanged()
     }
     val mochiPageTransition: Flow<String> by lazy {
-        store.data.map { it[KEY_MOCHI_PAGE_TRANSITION] ?: "fade" }.distinctUntilChanged()
+        // 默认「打开应用式」：来源卡片展开 / 缩回的转场是应用的招牌手感，未设置过就直接给。
+        store.data.map { it[KEY_MOCHI_PAGE_TRANSITION] ?: "app" }.distinctUntilChanged()
     }
     val mochiSwipeBack: Flow<Boolean> by lazy {
         store.data.map { it[KEY_MOCHI_SWIPE_BACK] ?: true }.distinctUntilChanged()

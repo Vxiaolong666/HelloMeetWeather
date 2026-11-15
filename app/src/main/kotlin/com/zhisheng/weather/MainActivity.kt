@@ -96,7 +96,7 @@ import com.zhisheng.weather.ui.MochiAppToastHost
 import com.zhisheng.weather.ui.PageTransitionStyle
 import com.zhisheng.weather.ui.rememberMochiUiPrefs
 import com.zhisheng.weather.ui.ApplyMochiUiPrefs
-import com.zhisheng.weather.ui.screenTransition
+import com.zhisheng.weather.ui.AppTransitions
 import com.zhisheng.weather.ui.LandscapeStandbyScreen
 import com.zhisheng.weather.ui.HistoryScreen
 import com.zhisheng.weather.ui.DailyForecastScreen
@@ -488,14 +488,12 @@ class MainActivity : ComponentActivity() {
                                 // 旧页滑走、新页推进来由库同时进行，不瞬切。
                                 if (nav.backStack.size > 1) nav.popTo(0)
                                 // 转场样式为「打开应用式」时，把首页来源元素（卡片 / 齿轮）的 key
-                                // 交给库：页面从那张卡长成整页、返回缩回卡片；其余样式走库的侧推。
-                                // 来源 key 与首页 mochiNavSource 的登记一一对应（含城市后缀），
-                                // 没登记的元素库会退回原地缩放淡入，不会出错。
-                                val from = if (appStyle == PageTransitionStyle.APP) {
-                                    dest.navSourceKey(uiState.selectedCity?.locationKey)
-                                } else {
-                                    null
-                                }
+                                // 交给库：页面从那张卡长成整页、返回缩回卡片；没有来源卡片的页面
+                                // 兜底成角落哨兵 key，走「从角落小卡展开 / 缩回小卡」；其余样式走库的侧推。
+                                // 来源 key 与首页 mochiNavSource 的登记一一对应（含城市后缀）。
+                                val from = AppTransitions.pushFrom(
+                                    appStyle, dest, uiState.selectedCity?.locationKey,
+                                )
                                 nav.push(target, from = from)
                             }
                         }
@@ -514,11 +512,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(appStyle) {
                     if (screen != AppScreen.HOME) {
                         nav.setTopSource(
-                            if (appStyle == PageTransitionStyle.APP) {
-                                screen.navSourceKey(uiState.selectedCity?.locationKey)
-                            } else {
-                                null
-                            }
+                            AppTransitions.pushFrom(appStyle, screen, uiState.selectedCity?.locationKey),
                         )
                     }
                 }
@@ -530,7 +524,7 @@ class MainActivity : ComponentActivity() {
                         targetState = standbyVisible,
                         transitionSpec = {
                             if (transitionsEnabled) {
-                                screenTransition(motionEnabled, appStyle, uiPrefs.swipeBack)
+                                AppTransitions.contentTransform(motionEnabled, appStyle, uiPrefs.swipeBack)
                             } else {
                                 androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
                             }

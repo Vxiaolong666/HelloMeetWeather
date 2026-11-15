@@ -67,6 +67,9 @@ import ui.feice.mochi.utils.lerp
  * @param backdrop 从来源打开的转场最底下的底色（下层页缩小后露出的四周和圆角外侧），像从桌面打开应用一样是黑的
  * @param pushBackdrop 侧推转场最底下的底色：任何一帧露出来的地方都用页面底色填上，不会闪黑。
  *   [Color.Unspecified] = iOS 分组样式的页面底色（MochiDefaults.groupedBackground）
+ * @param cornerWhenNoSource 有来源 key 但来源卡片没登记 / 已销毁时，是否向角落小卡片做容器变换
+ *   （「打开应用式」的兜底形态）：进入从左上角展开，返回按发起侧缩回左上 / 右上角；
+ *   false（默认）保持旧行为，原地缩放淡入淡出。
  */
 @Immutable
 public data class MochiNavSpec(
@@ -81,6 +84,7 @@ public data class MochiNavSpec(
     val pushBackdrop: Color = Color.Unspecified,
     val openMove: AnimationSpec<Float> = MochiSprings.snappy(300, visibilityThreshold = 0.0005f),
     val closeMove: AnimationSpec<Float> = MochiSprings.snappy(300, visibilityThreshold = 0.0005f),
+    val cornerWhenNoSource: Boolean = false,
 )
 
 public object MochiNavDefaults {
@@ -100,8 +104,10 @@ public object MochiNavDefaults {
         // 位移和放大分开：位置用 iOS 的 snappy 300ms（回弹 0.15），到位时轻轻冲过一点再落回；大小、圆角仍用上面的 smooth
         openMove: AnimationSpec<Float> = MochiSprings.snappy(300, visibilityThreshold = 0.0005f),
         closeMove: AnimationSpec<Float> = MochiSprings.snappy(300, visibilityThreshold = 0.0005f),
-    ): MochiNavSpec = remember(open, close, cancel, underScale, backScale, scrim, backdrop, push, pushBackdrop, openMove, closeMove) {
-        MochiNavSpec(open, close, cancel, underScale, backScale, scrim, backdrop, push, pushBackdrop, openMove, closeMove)
+        // 「打开应用式」的兜底形态：来源卡片没登记时向角落小卡片做容器变换，默认关闭保持原地缩放
+        cornerWhenNoSource: Boolean = false,
+    ): MochiNavSpec = remember(open, close, cancel, underScale, backScale, scrim, backdrop, push, pushBackdrop, openMove, closeMove, cornerWhenNoSource) {
+        MochiNavSpec(open, close, cancel, underScale, backScale, scrim, backdrop, push, pushBackdrop, openMove, closeMove, cornerWhenNoSource)
     }
 }
 
@@ -152,6 +158,9 @@ public fun MochiNavHost(
     geo.enclosingCorners = if (corners == null) surface?.corners else null
     geo.glassOpaque = surface?.takeIf { it.glass != null }?.opaque
     geo.fallbackCorner = if (corners == null && surface == null) with(LocalDensity.current) { SlideFallbackCorner.toPx() } else 0f
+    // 角落容器变换（cornerWhenNoSource）的小卡片尺寸：距边 16、圆角 26（与库卡片一致）
+    geo.cornerInset = with(LocalDensity.current) { CornerCardInset.toPx() }
+    geo.cornerRadius = with(LocalDensity.current) { CornerCardRadius.toPx() }
 
     BackHandler(enabled = !predictiveBack && navigator.canPop) { navigator.pop() }
     PredictiveBackHandler(enabled = predictiveBack && navigator.canPop) { events ->
@@ -464,6 +473,12 @@ private const val SlideBackFollow = 0.9f
 
 /** 屏幕没有物理圆角时侧推用的圆角 */
 internal val SlideFallbackCorner = 28.dp
+
+/** 「无来源缩回角落小卡片」：小卡片距屏幕边缘 */
+internal val CornerCardInset = 16.dp
+
+/** 「无来源缩回角落小卡片」：小卡片圆角，取库卡片圆角 26 */
+internal val CornerCardRadius = 26.dp
 
 /** 侧推页此刻的「可见打开程度」：打开进度和返回手势里滑得更远的那个 */
 internal fun slideProgress(e: MochiNavEntry): Float = 1f - max(1f - e.progress.value, SlideBackFollow * e.back.value)
