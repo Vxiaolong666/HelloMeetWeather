@@ -76,7 +76,7 @@ import ui.feice.mochi.theme.rememberCapBand
 
 /**
  * 一行（iOS 26 的列表单元格）：
- * - 行首图标（可选，[leadingStyle] 选「设置」式图标块还是无底块的符号图标）、标题 + 副标题；保留主题字号，长标题单行省略，副标题最多两行
+ * - 行首图标（可选，[leadingStyle] 选「设置」式图标块还是无底块的符号图标）、标题 + 副标题；保留主题字号，长标题默认单行省略（[titleMaxLines] 可放宽），副标题最多两行
  * - 行尾：灰色的值、转圈加载、自定义控件（开关等）、蓝色对勾、「›」
  * - 按下：整行灰底高亮（滚动时不闪：稍等一下才亮），松手后淡出
  *
@@ -85,6 +85,7 @@ import ui.feice.mochi.theme.rememberCapBand
  * 卡片不给首末行另外加白。
  *
  * @param value 行尾灰色的值（「WEP」「关闭」）
+ * @param titleMaxLines 标题最大行数，默认 1（单行省略）；长反馈文案可设大值完整展示
  * @param chevron 行尾的「›」，表示点进去是下一页
  * @param checked 行尾的对勾（单选列表）
  * @param loading 行尾转圈，表示这一行在加载
@@ -98,6 +99,7 @@ import ui.feice.mochi.theme.rememberCapBand
 public fun MochiListRow(
     title: String,
     modifier: Modifier = Modifier,
+    titleMaxLines: Int = 1,
     onClick: (() -> Unit)? = null,
     subtitle: String? = null,
     value: String? = null,
@@ -114,7 +116,7 @@ public fun MochiListRow(
     leadingStyle: MochiListLeadingStyle = MochiListLeadingStyle.Tile,
 ) {
     ListRowImpl(
-        title, modifier, onClick, subtitle, value, leading, trailing, chevron, checked, loading, enabled, destructive, colors,
+        title, modifier, titleMaxLines, onClick, subtitle, value, leading, trailing, chevron, checked, loading, enabled, destructive, colors,
         titleTrailing, status, leadingStyle,
     )
 }
@@ -127,6 +129,7 @@ public fun MochiListRow(
 internal fun ListRowImpl(
     title: String,
     modifier: Modifier = Modifier,
+    titleMaxLines: Int = 1,
     onClick: (() -> Unit)? = null,
     subtitle: String? = null,
     value: String? = null,
@@ -284,7 +287,7 @@ internal fun ListRowImpl(
                                 title,
                                 style = titleStyle,
                                 color = (if (destructive) colors.destructive else colors.content).copy(alpha = alpha),
-                                maxLines = 1,
+                                maxLines = titleMaxLines,
                                 modifier = Modifier.weight(1f, fill = false),
                             )
                             if (titleTrailing != null) {

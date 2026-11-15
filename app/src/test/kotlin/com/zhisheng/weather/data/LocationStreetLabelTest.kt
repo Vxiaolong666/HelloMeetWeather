@@ -36,6 +36,30 @@ class LocationStreetLabelTest {
     }
 
     @Test
+    fun systemAddressUsesDistrictWhenStreetIsMissing() {
+        val city = systemAddressCity(
+            locality = "茂名市", adminArea = "广东省", subAdminArea = "茂南区",
+            subLocality = null, thoroughfare = null, featureName = null,
+            latitude = 21.6, longitude = 110.9,
+        )
+        assertEquals("茂名市", city?.name)
+        assertEquals("茂南区", city?.street)
+        assertEquals("茂名市·茂南区", city?.displayName)
+        assertEquals("广东省", city?.affiliation)
+    }
+
+    @Test
+    fun systemAddressKeepsStreetWhenBothPresent() {
+        val city = systemAddressCity(
+            locality = "金昌市", adminArea = "甘肃省", subAdminArea = "金川区",
+            subLocality = "新华路街道", thoroughfare = "北京路", featureName = null,
+            latitude = 38.52, longitude = 102.19,
+        )
+        assertEquals("金昌市", city?.name)
+        assertEquals("新华路街道·北京路", city?.street)
+    }
+
+    @Test
     fun cityDisplayKeepsStreetSeparateFromWeatherLookupName() {
         val city = City("金川区", "甘肃省·金昌市", 38.52, 102.19, "101161401", "新华路街道")
 

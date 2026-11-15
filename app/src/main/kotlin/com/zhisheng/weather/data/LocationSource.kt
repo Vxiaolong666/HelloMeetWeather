@@ -12,6 +12,7 @@ import android.os.CancellationSignal
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import com.zhisheng.weather.model.City
+import com.zhisheng.weather.model.CoordinateKind
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.flow.first
 import java.util.Locale
@@ -155,10 +156,8 @@ object LocationSource {
             cached("system") {
                 if (!Geocoder.isPresent()) throw PlaceServiceException(PlaceFailure.UNAVAILABLE)
                 val address = geocodeAddress(context, lat, lon) ?: return@cached null
-                val label = preciseAddressCity(address.subAdminArea, address.locality, address.adminArea,
-                    address.featureName, null, null, lat, lon, source = "system") ?: return@cached null
-                label.copy(street = streetLabel(address.subLocality, address.thoroughfare,
-                    address.locality, address.subAdminArea, label.name))
+                systemAddressCity(address.locality, address.adminArea, address.subAdminArea,
+                    address.subLocality, address.thoroughfare, address.featureName, lat, lon) ?: return@cached null
             }
         }
         if (streets && credentials.baidu.isNotBlank()) providers += LocationEnginePref.BAIDU to {
@@ -290,6 +289,50 @@ internal fun streetLabel(
         .take(2)
         .joinToString("·")
         .ifBlank { null }
+}
+
+/**
+ * 系统 Geocoder 地址按 yunsong 尺度收敛：城市名（locality）作城市名，区/街道（subLocality ?: subAdminArea）
+ * 与路名/POI（thoroughfare ?: featureName）拼成详细地址；只有行政区名时区名也能兜底显示，不再整段丢失。
+ * 纯字段入参（不依赖 Android [Address])，便于单元测试；与高德/百度交叉校验用的 [streetLabel] 口径相互独立。
+ */
+internal fun systemAddressCity(
+    locality: String?,
+    adminArea: String?,
+    subAdminArea: String?,
+    subLocality: String?,
+    thoroughfare: String?,
+    featureName: String?,
+    latitude: Double,
+    longitude: Double,
+): City? {
+    if (!latitude.isFinite() || !longitude.isFinite() || latitude !in -90.0..90.0 || longitude !in -180.0..180.0) return null
+    fun clean(value: String?): String? = value?.trim()?.takeIf(String::isNotBlank)
+    val city = clean(locality)
+    val province = clean(adminArea)
+    val district = clean(subAdminArea)
+    val subDistrict = clean(subLocality)
+    // yunsong 的 fromParts：路名优先，空则用 POI（过滤纯数字/号/栋），不把楼栋房号拼进地址。
+    val road = clean(thoroughfare) ?: clean(featureName)?.takeUnless {
+        it.matches(Regex("[0-9０-９\\-号弄栋幢单元楼室层]+"))
+    }
+    val name = city ?: district ?: province ?: return null
+    val street = listOf(subDistrict ?: district, road)
+        .mapNotNull { clean(it) }
+        .filterNot { it == name || it == city || it == province }
+        .distinct()
+        .joinToString("·")
+        .ifBlank { null }
+    return City(
+        name = name,
+        affiliation = listOf(province).mapNotNull { clean(it) }.filterNot { it == name }.distinct().joinToString("·"),
+        latitude = latitude,
+        longitude = longitude,
+        locationKey = placeIdentity("system", null, name, street, latitude, longitude),
+        street = street,
+        coordinateKind = CoordinateKind.PLACE,
+        addressSource = "system",
+    )
 }
 
 /** Coordinates are enough for weather even when every reverse-geocoder is unavailable. */

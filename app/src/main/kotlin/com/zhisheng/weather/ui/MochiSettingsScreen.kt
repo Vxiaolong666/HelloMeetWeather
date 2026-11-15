@@ -709,7 +709,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiDataSection(
                             mochiCoordinateLabel(activeCityLatitude, activeCityLongitude) else null,
                     )
                 }
-                if (locateMessage != null) MochiListRow(title = "> $locateMessage")
+                if (locateMessage != null) MochiListRow(title = "> $locateMessage", titleMaxLines = Int.MAX_VALUE)
                 if (permDenied) {
                     MochiListRow(
                         title = "> 已拒绝位置权限，定位不可用（手动搜索城市不受影响）",
