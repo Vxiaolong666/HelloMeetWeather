@@ -1,5 +1,12 @@
 基于 [Z!SHENG WEATHER TERMINAL](https://github.com/zhishengplus/ZhishengWeather)（枳生天气）和组件库 [mochi-compose](https://github.com/feice11/mochi-compose) 二改的天气 APP。
 
+## 支持创作者
+
+如果这个项目对你有帮助，欢迎通过爱发电支持后续开发与维护：
+
+- 爱发电：[@yyyolala](https://afdian.com/a/hellowather)
+
+支持完全自愿，不影响任何功能的正常使用。
 ---
 
 ![枳生天气 · ZHISHENG WEATHER TERMINAL](assets/banner.png)
@@ -153,6 +160,14 @@ tianditu.token=<天地图移动端 Key>
 - 台风路径使用独立官方公开资料并保留最近有效缓存，超过时效时会明确提示
 - 跨数据源预警按标题去重，标题不同的同一条预警可能重复出现
 - 涉及防灾决策时请以当地气象部门信息为准
+
+## 支持创作者
+
+如果这个项目对你有帮助，欢迎通过爱发电支持后续开发与维护：
+
+- 爱发电：[@yyyolala](https://afdian.com/a/hellowather)
+
+支持完全自愿，不影响任何功能的正常使用。
 
 ## 致谢
 
