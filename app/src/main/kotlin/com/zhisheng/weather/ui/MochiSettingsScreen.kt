@@ -654,10 +654,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiDataSection(
             footer = if (isPhosphorVista) "天气来源、定位方式与数据接入。"
                 else mochiSourceHint(source, activeSource, activeSupplementSources, activeCityName, sourceLoading),
         ) {
-            MochiListRow(
+            MochiSettingsNavRow(
+                route = "settings.weatherSource",
                 title = "天气来源",
                 value = if (source == SourcePref.AUTO) "自动选择" else source.cn,
-                chevron = true, onClick = onWeatherSource,
+                onPush = { onWeatherSource() },
             )
             MochiListRow(
                 title = "当前使用",
@@ -678,11 +679,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiDataSection(
                 trailing = { MochiSettingSwitch(locationEnabled, toggleLocation) },
             )
             if (locationEnabled) {
-                MochiListRow(
+                MochiSettingsNavRow(
+                    route = "settings.locationEngine",
                     title = "位置服务引擎",
                     subtitle = "系统定位 / 高德 / 百度 / 枳生位置服务",
-                    chevron = true,
-                    onClick = onLocationEngine,
+                    onPush = { onLocationEngine() },
                 )
                 MochiListRow(
                     title = "街道级精确定位",
@@ -728,8 +729,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiDataSection(
                 trailing = { MochiSettingSwitch(developerMode, toggleDeveloper) },
             )
             if (!isPhosphorVista || developerMode) {
-                MochiListRow(title = "管理自有服务接入", chevron = true,
-                    enabled = developerMode, onClick = onProviders)
+                MochiSettingsNavRow(
+                    route = "settings.providers",
+                    title = "管理自有服务接入",
+                    enabled = developerMode,
+                    onPush = { onProviders() },
+                )
             }
         }
     }

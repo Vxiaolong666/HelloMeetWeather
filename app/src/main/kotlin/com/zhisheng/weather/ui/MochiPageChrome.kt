@@ -2,6 +2,7 @@ package com.zhisheng.weather.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -48,6 +49,8 @@ import ui.feice.mochi.basic.MochiDialogDefaults
 import ui.feice.mochi.basic.MochiToastHost
 import ui.feice.mochi.basic.MochiToastState
 import ui.feice.mochi.utils.rememberMochiHaptics
+import ui.feice.mochi.effect.glass.mochiBackdropSource
+import ui.feice.mochi.effect.glass.rememberMochiBarBackdrop
 import ui.feice.mochi.effect.overscroll.ProvideMochiOverscroll
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
@@ -182,6 +185,11 @@ internal fun MochiPageFrame(
  * 地图、图形预览这类「正文本身就是一整块、要靠 weight 吃掉剩余高度」的页面用它会多出一条空带。
  * 这里换成普通 [Column]，顶栏、主题、返回按钮与 [MochiPageFrame] 完全一致，只是正文不再滚动，
  * 子项可以用 `Modifier.weight(1f)` 占满顶栏以下的剩余高度。
+ *
+ * [glassBar] 为 true 时顶栏浮在正文之上（Box 叠层），并把正文录成顶栏玻璃的背景来源：
+ * 开启「液态玻璃」后栏与栏内按钮会模糊滚到下面的内容，关闭时栏按主题画纯色，页面本身不写分支。
+ * 这种模式下正文要自己留出状态栏 + [ui.feice.mochi.navigation.MochiTitleBarDefaults.Height] 的顶部空间，
+ * 并给滚动容器挂 `mochiScrollEdgeBlur`，否则第一张卡片会压到栏下面。
  */
 @Composable
 internal fun MochiColumnPageFrame(
@@ -190,20 +198,40 @@ internal fun MochiColumnPageFrame(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
+    glassBar: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = rememberMochiColorScheme()
+    val background = MochiDefaults.groupedBackground()
     MochiAppTheme(colors = colors) {
         ProvideMochiOverscroll {
-            Column(modifier.fillMaxSize().background(MochiDefaults.groupedBackground())) {
-                MochiTitleBar(
-                    title = title,
-                    subtitle = subtitle,
-                    navigationIcon = { MochiBackButton(onClick = onBack, history = ::mochiSettingsRouteTitle) },
-                    actions = actions,
-                    background = MochiDefaults.groupedBackground(),
-                )
-                content()
+            if (!glassBar) {
+                Column(modifier.fillMaxSize().background(background)) {
+                    MochiTitleBar(
+                        title = title,
+                        subtitle = subtitle,
+                        navigationIcon = { MochiBackButton(onClick = onBack, history = ::mochiSettingsRouteTitle) },
+                        actions = actions,
+                        background = background,
+                    )
+                    content()
+                }
+            } else {
+                // 录入正文当背景来源：玻璃关闭时 rememberMochiBarBackdrop 返回 null，两处调用都自动退化成纯色栏。
+                val backdrop = rememberMochiBarBackdrop(background)
+                Box(modifier.fillMaxSize().background(background)) {
+                    Column(Modifier.fillMaxSize().mochiBackdropSource(backdrop)) {
+                        content()
+                    }
+                    MochiTitleBar(
+                        title = title,
+                        subtitle = subtitle,
+                        navigationIcon = { MochiBackButton(onClick = onBack, history = ::mochiSettingsRouteTitle) },
+                        actions = actions,
+                        background = background,
+                        backdrop = backdrop,
+                    )
+                }
             }
         }
     }

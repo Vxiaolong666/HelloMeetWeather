@@ -75,6 +75,32 @@ object OpenMeteoApi {
         }
     }
 
+    // 16 天逐时（富逐日详情页专用）：主源逐时仅约 24h，未来日缺逐时会「无数据」，
+    // 此接口不带 forecast_hours（默认全量）、forecast_days=16 补齐未来 15 日逐时，
+    // 只由 DailyTrendDayDetailScreen 拉取，不影响其它页面的主源逐时。
+    suspend fun fetchHourlyFull(
+        lat: Double,
+        lon: Double,
+        preciseGps: Boolean = false,
+    ): OpenMeteoHourlyResponse? = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+                "&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code," +
+                "wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation_probability," +
+                "precipitation,surface_pressure,visibility,dew_point_2m,cloud_cover,uv_index" +
+                "&forecast_days=16&timezone=auto${openMeteoCellSelection(preciseGps)}"
+            val request = Request.Builder().url(url).build()
+            okHttp.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                json.decodeFromString<OpenMeteoHourlyResponse>(resp.body?.string() ?: return@withContext null)
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     // 16 天逐日（全球覆盖、免 key）：和风逐日上限 10 天、小米海外仅约 5 天，
     // 用此接口把逐日补齐到 15 天（v0.0.1 东京丢 15 天预报的修复）。timezone=auto 按城市本地日界
     suspend fun fetchDaily(

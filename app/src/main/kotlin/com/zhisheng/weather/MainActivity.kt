@@ -112,9 +112,12 @@ import com.zhisheng.weather.ui.AppTransitions
 import com.zhisheng.weather.ui.LandscapeStandbyScreen
 import com.zhisheng.weather.ui.HistoryScreen
 import com.zhisheng.weather.ui.DailyForecastScreen
+import com.zhisheng.weather.ui.DailyTrendScreen
+import com.zhisheng.weather.ui.Hourly48Screen
 import com.zhisheng.weather.ui.RadarScreen
 import com.zhisheng.weather.ui.TyphoonScreen
 import com.zhisheng.weather.ui.AirQualityScreen
+import com.zhisheng.weather.ui.WeatherDetailScreen
 import com.zhisheng.weather.ui.FeatureHubScreen
 import com.zhisheng.weather.ui.NearbyCityAqi
 import com.zhisheng.weather.ui.UpdateOpeningHandledKey
@@ -147,6 +150,19 @@ private data class ShortcutCommand(val action: String? = null, val sequence: Lon
 
 // 问题4：城市管理页选城时的扩散请求——被点卡片的屏幕矩形 + 目标城市 key。
 private data class CityExpandRequest(val rect: Rect, val cityKey: String)
+
+/**
+ * 停用全屏「应用内右滑返回」的页面：它们的正文有整片的横向拖动内容，与右滑返回手势
+ * 互相抢事件（和台风页的原生地图同一个冲突）。48 小时天气、多日天气预报、富逐日详情
+ * 的图表卡片都是横向滚动的 Canvas，右滑返回会把图表的横向拖动抢走、导致图表无法左右
+ * 滑动；停用后顶栏返回按钮与系统返回键照常退出（见 AGENTS.md 统一返回语义）。
+ */
+private val noSwipeBackScreens = setOf(
+    AppScreen.TYPHOON,
+    AppScreen.HOURLY_48,
+    AppScreen.DAILY_TREND,
+    AppScreen.DAILY_TREND_DAY_DETAIL,
+)
 
 class MainActivity : ComponentActivity() {
     private var hostResumed by mutableStateOf(false)
@@ -500,6 +516,19 @@ class MainActivity : ComponentActivity() {
                 val nav = rememberMochiNavigator(AppScreen.HOME.route)
                 // 城市管理页「点城市卡 → 卡片从页面中部扩散长成整屏首页」的请求（问题4）。
                 var cityExpand by remember { mutableStateOf<CityExpandRequest?>(null) }
+                // 富逐日详情由「多日天气预报」页的某张「查看该日完整详情」卡片进入：
+                // 「打开应用式」转场用按天登记的来源 key（与 DailyTrendScreen 的 mochiNavSource
+                // 一致），返回时缩回那张卡片；读 state 所以每次调用取当前选中日。
+                // 此处位于协程内不能调 @Composable 的 weatherPresentationTime()，
+                // 用真实时钟兜底（forecastDate 进入时必已设置，兜底仅在异常时命中）。
+                fun trendDayDetailFrom(style: PageTransitionStyle): String? {
+                    if (style != PageTransitionStyle.APP) return null
+                    val now = System.currentTimeMillis()
+                    val date = forecastDate
+                        ?: uiState.weather?.todayDaily(now)?.dateMillis
+                        ?: now
+                    return AppTransitions.dailyTrendDaySourceKey(date, uiState.selectedCity?.locationKey)
+                }
                 // screen 仍是应用导航的唯一事实（意图、小组件、页面回调都写它）；
                 // 这里把它单向同步进库导航，库导航自己退回根（返回键 / 侧推手势）时再写回 screen。
                 LaunchedEffect(Unit) {
@@ -508,16 +537,25 @@ class MainActivity : ComponentActivity() {
                         if (nav.current != target) {
                             if (target == AppScreen.HOME.route) nav.popTo(0)
                             else {
-                                // 应用是「单层覆盖」语义：换覆盖页先回根再推，
-                                // 旧页滑走、新页推进来由库同时进行，不瞬切。
-                                if (nav.backStack.size > 1) nav.popTo(0)
-                                // 转场样式为「打开应用式」时，把首页来源元素（卡片 / 齿轮）的 key
-                                // 交给库：页面从那张卡长成整页、返回缩回卡片；没有来源卡片的页面
-                                // 兜底成角落哨兵 key，走「从角落小卡展开 / 缩回小卡」；其余样式走库的侧推。
-                                // 来源 key 与首页 mochiNavSource 的登记一一对应（含城市后缀）。
-                                val from = AppTransitions.pushFrom(
-                                    currentAppStyle, dest, uiState.selectedCity?.locationKey,
-                                )
+                                // 富逐日详情是唯一嵌套页：从「多日天气预报」进入时保留父页，
+                                // 库栈为 [HOME, DAILY_TREND, 富页]，返回（系统返回 / 返回按钮 /
+                                // 应用内右滑）退到「多日天气预报」而非首页；其余页面仍是
+                                // 「单层覆盖」语义：换覆盖页先回根再推，旧页滑走、新页推进来
+                                // 由库同时进行，不瞬切。
+                                val nested = target == AppScreen.DAILY_TREND_DAY_DETAIL.route &&
+                                    nav.current == AppScreen.DAILY_TREND.route
+                                if (!nested && nav.backStack.size > 1) nav.popTo(0)
+                                // 转场样式为「打开应用式」时，把来源元素（卡片 / 齿轮 / 按天详情卡）
+                                // 的 key 交给库：页面从那张卡长成整页、返回缩回卡片；没有来源卡片的
+                                // 页面兜底成角落哨兵 key，走「从角落小卡展开 / 缩回小卡」；其余样式
+                                // 走库的侧推。来源 key 与各页 mochiNavSource 的登记一一对应（含城市后缀）。
+                                val from = if (dest == AppScreen.DAILY_TREND_DAY_DETAIL) {
+                                    trendDayDetailFrom(currentAppStyle)
+                                } else {
+                                    AppTransitions.pushFrom(
+                                        currentAppStyle, dest, uiState.selectedCity?.locationKey,
+                                    )
+                                }
                                 nav.push(target, from = from)
                             }
                         }
@@ -528,6 +566,11 @@ class MainActivity : ComponentActivity() {
                         // 库导航自己退回根（系统返回手势 / 应用内右滑 / 返回按钮触发的 pop）
                         // 也写回统一状态，保证 screen 与导航栈始终一致。
                         if (route == AppScreen.HOME.route && screen != AppScreen.HOME) returnHome()
+                        // 富逐日详情由「多日天气预报」嵌套进入：库返回退到多日页（而非首页），
+                        // 把 screen 同步回去，与 UI 返回按钮走同一条库 pop 语义。
+                        else if (route == AppScreen.DAILY_TREND.route && screen == AppScreen.DAILY_TREND_DAY_DETAIL) {
+                            screen = AppScreen.DAILY_TREND
+                        }
                     }
                 }
                 // 「应用转场」设置一变，已打开页面的关闭形态立刻跟着变：之后无论从哪个
@@ -536,7 +579,11 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(appStyle) {
                     if (screen != AppScreen.HOME) {
                         nav.setTopSource(
-                            AppTransitions.pushFrom(appStyle, screen, uiState.selectedCity?.locationKey),
+                            if (screen == AppScreen.DAILY_TREND_DAY_DETAIL) {
+                                trendDayDetailFrom(appStyle)
+                            } else {
+                                AppTransitions.pushFrom(appStyle, screen, uiState.selectedCity?.locationKey)
+                            },
                         )
                     }
                 }
@@ -591,8 +638,11 @@ class MainActivity : ComponentActivity() {
                         predictiveBack = transitionsEnabled && uiPrefs.predictiveBack && uiPrefs.swipeBack,
                         // 台风页整页是原生地图：地图横向拖动与应用内右滑返回互相抢事件，
                         // 台风页停用应用内右滑返回；顶栏返回按钮与系统返回键照常退出。
+                        // 48 小时天气 / 多日天气预报 / 富逐日详情的图表卡片也是横向滑动：
+                        // 全屏右滑返回会与图表的横向拖动抢事件，导致图表无法左右滑动，
+                        // 同样停用应用内右滑返回（见 noSwipeBackScreens）。
                         swipeBackEnabled = transitionsEnabled && uiPrefs.swipeBack &&
-                            AppScreen.fromRoute(nav.current) != AppScreen.TYPHOON,
+                            AppScreen.fromRoute(nav.current) !in noSwipeBackScreens,
                         // 首页天空是不间断动画、雷达页是原生地图视图：整页录进离屏图层给浮层玻璃
                         // 取样会每帧重录（原生视图甚至可能取样崩溃）。浮层玻璃退回各页自己的
                         // 正文来源，与迁移前的行为一致。
@@ -630,14 +680,20 @@ class MainActivity : ComponentActivity() {
                                         forecastDate = null
                                         screen = AppScreen.DAILY_FORECAST
                                     },
+                                    onDailyMoreClick = {
+                                        forecastDate = null
+                                        screen = AppScreen.DAILY_TREND
+                                    },
                                     onOpenDailyDay = { millis ->
                                         forecastDate = millis
                                         screen = AppScreen.DAILY_DAY_DETAIL
                                     },
                                     onPrecipitationClick = { screen = AppScreen.PRECIPITATION },
                                     onHourlyClick = { screen = AppScreen.HOURLY_DETAIL },
+                                    onHourly48Click = { screen = AppScreen.HOURLY_48 },
                                     onTyphoonClick = { if (ReleaseFeatures.typhoon) screen = AppScreen.TYPHOON },
                                     onAirQualityClick = { screen = AppScreen.AIR_QUALITY },
+                                    onWeatherDetailClick = { screen = AppScreen.WEATHER_DETAIL },
                                     onYesterdayClick = { screen = AppScreen.YESTERDAY_DETAIL },
                                     onFeatureHubClick = { screen = AppScreen.FEATURES },
                                     onCityManagerClick = { screen = AppScreen.CITY_MANAGER },
@@ -683,6 +739,34 @@ class MainActivity : ComponentActivity() {
                                         hourly = uiState.weather?.hourly.orEmpty(),
                                         initialDateMillis = forecastDate,
                                     )
+                                    AppScreen.DAILY_TREND -> DailyTrendScreen(
+                                        city = uiState.selectedCity,
+                                        days = uiState.weather?.currentAndFutureDaily(weatherPresentationTime()).orEmpty(),
+                                        tempUnit = uiState.tempUnit,
+                                        windUnit = uiState.prefs.windUnit,
+                                        utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
+                                        onBack = { returnHome() },
+                                        onOpenDay = { millis ->
+                                            forecastDate = millis
+                                            screen = AppScreen.DAILY_TREND_DAY_DETAIL
+                                        },
+                                    )
+                                    AppScreen.DAILY_TREND_DAY_DETAIL -> com.zhisheng.weather.ui.DailyTrendDayDetailScreen(
+                                        city = uiState.selectedCity,
+                                        days = uiState.weather?.currentAndFutureDaily(weatherPresentationTime()).orEmpty(),
+                                        yesterday = uiState.weather?.yesterday,
+                                        dateMillis = forecastDate
+                                            ?: uiState.weather?.todayDaily(weatherPresentationTime())?.dateMillis
+                                            ?: weatherPresentationTime(),
+                                        tempUnit = uiState.tempUnit,
+                                        windUnit = uiState.prefs.windUnit,
+                                        utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
+                                        hourly = uiState.weather?.hourly.orEmpty(),
+                                        // 富逐日详情由「多日天气预报」嵌套进入：返回走库 pop，退到
+                                        // 多日天气预报页（系统返回 / 返回按钮 / 应用内右滑同一条语义）；
+                                        // nav.current 观察者把 screen 同步回 DAILY_TREND。
+                                        onBack = { nav.pop() },
+                                    )
                                     AppScreen.DAILY_DAY_DETAIL -> com.zhisheng.weather.ui.DailyDayDetailScreen(
                                         city = uiState.selectedCity,
                                         days = uiState.weather?.currentAndFutureDaily(weatherPresentationTime()).orEmpty(),
@@ -708,6 +792,14 @@ class MainActivity : ComponentActivity() {
                                         windUnit = uiState.prefs.windUnit,
                                         onBack = { returnHome() },
                                     )
+                                    AppScreen.HOURLY_48 -> Hourly48Screen(
+                                        city = uiState.selectedCity,
+                                        hours = com.zhisheng.weather.ui.detailHourly48(uiState.weather, weatherPresentationTime()),
+                                        tempUnit = uiState.tempUnit,
+                                        windUnit = uiState.prefs.windUnit,
+                                        utcOffsetSeconds = uiState.weather?.utcOffsetSeconds,
+                                        onBack = { returnHome() },
+                                    )
                                     AppScreen.HISTORY -> HistoryScreen(
                                         city = uiState.selectedCity,
                                         weather = uiState.weather,
@@ -728,6 +820,26 @@ class MainActivity : ComponentActivity() {
                                     AppScreen.AIR_QUALITY -> AirQualityScreen(
                                         weather = uiState.weather,
                                         cityName = uiState.selectedCity?.displayName,
+                                        // 全国排名按「城市」发布，街道级 displayName 匹配不到，单独传城市名。
+                                        rankingCity = uiState.selectedCity?.name,
+                                        rankingAffiliation = uiState.selectedCity?.affiliation,
+                                        nearby = buildList {
+                                            uiState.selectedCity?.let {
+                                                add(NearbyCityAqi(it.displayName, uiState.weather?.aqi?.value, it.latitude, it.longitude))
+                                            }
+                                            uiState.cities.forEach { c ->
+                                                if (c.locationKey != uiState.selectedCity?.locationKey) {
+                                                    add(NearbyCityAqi(c.displayName, uiState.citySnapshots[c.locationKey]?.data?.aqi?.value, c.latitude, c.longitude))
+                                                }
+                                            }
+                                        }.take(5),
+                                        onBack = { returnHome() },
+                                    )
+                                    AppScreen.WEATHER_DETAIL -> WeatherDetailScreen(
+                                        weather = uiState.weather,
+                                        city = uiState.selectedCity,
+                                        prefs = uiState.prefs,
+                                        tempUnit = uiState.tempUnit,
                                         nearby = buildList {
                                             uiState.selectedCity?.let {
                                                 add(NearbyCityAqi(it.displayName, uiState.weather?.aqi?.value, it.latitude, it.longitude))

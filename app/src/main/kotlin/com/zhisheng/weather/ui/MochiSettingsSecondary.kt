@@ -58,12 +58,15 @@ import ui.feice.mochi.basic.MochiButtonStyle
 import ui.feice.mochi.basic.MochiListTextFieldRow
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.effect.content.MochiBlurText
+import ui.feice.mochi.list.MochiListDefaults
 import ui.feice.mochi.list.MochiListDisclosure
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
 import ui.feice.mochi.list.MochiSelectableRow
 import ui.feice.mochi.list.rememberMochiListEditState
 import ui.feice.mochi.navigation.MochiBackButton
+import ui.feice.mochi.navigation.mochiNavSource
+import ui.feice.mochi.theme.MochiDefaults
 import ui.feice.mochi.theme.MochiTheme
 
 /*
@@ -225,6 +228,15 @@ fun MochiWeatherSourceScreen(
                     leading = { PhosphorIcon(R.drawable.ph_database, null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                     chevron = true,
                     enabled = !saving,
+                    modifier = Modifier.mochiNavSource(
+                        mochiSettingsSourceKey("settings.providers"),
+                        MochiListDefaults.SectionCorner,
+                        if (MochiTransitionConfig.sourceHighlight) {
+                            MochiTheme.colorScheme.primaryContainer
+                        } else {
+                            MochiDefaults.groupedContainer()
+                        },
+                    ),
                     onClick = onManageProviders,
                 )
                 MochiListRow(
@@ -349,6 +361,15 @@ fun MochiLocationEngineScreen(
                     leading = { PhosphorIcon(R.drawable.ph_database, null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                     chevron = true,
                     enabled = !saving,
+                    modifier = Modifier.mochiNavSource(
+                        mochiSettingsSourceKey("settings.providers"),
+                        MochiListDefaults.SectionCorner,
+                        if (MochiTransitionConfig.sourceHighlight) {
+                            MochiTheme.colorScheme.primaryContainer
+                        } else {
+                            MochiDefaults.groupedContainer()
+                        },
+                    ),
                     onClick = onManageProviders,
                 )
             }

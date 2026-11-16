@@ -344,11 +344,14 @@ fun HomeScreen(
     onHistoryClick: () -> Unit,
     onRadarClick: () -> Unit,
     onDailyForecastClick: () -> Unit,
+    onDailyMoreClick: () -> Unit = {},
     onOpenDailyDay: (Long) -> Unit = {},
     onPrecipitationClick: () -> Unit = {},
     onHourlyClick: () -> Unit = {},
+    onHourly48Click: () -> Unit = {},
     onTyphoonClick: () -> Unit,
     onAirQualityClick: () -> Unit = {},
+    onWeatherDetailClick: () -> Unit = {},
     onYesterdayClick: () -> Unit = {},
     onFeatureHubClick: () -> Unit = {},
     onCityManagerClick: () -> Unit = {},
@@ -551,10 +554,13 @@ fun HomeScreen(
                             indicator = { CityPageIndicator(uiState.cities, city, pager) },
                             onHistoryClick = { openCityDetail(onHistoryClick) }, onRadarClick = { openCityDetail(onRadarClick) },
                             onDailyForecastClick = { openCityDetail(onDailyForecastClick) },
+                            onDailyMoreClick = { openCityDetail(onDailyMoreClick) },
                             onOpenDailyDay = { millis -> openCityDetail { onOpenDailyDay(millis) } },
                             onPrecipitationClick = { openCityDetail(onPrecipitationClick) }, onHourlyClick = { openCityDetail(onHourlyClick) },
+                            onHourly48Click = { openCityDetail(onHourly48Click) },
                             onTyphoonClick = { openCityDetail(onTyphoonClick) },
                             onAirQualityClick = { openCityDetail(onAirQualityClick) },
+                            onWeatherDetailClick = { openCityDetail(onWeatherDetailClick) },
                             onYesterdayClick = { openCityDetail(onYesterdayClick) },
                             onFeatureHubClick = { openCityDetail(onFeatureHubClick) },
                             onScenePage = { page -> openCityDetail { onScenePage(page) } },
@@ -662,8 +668,10 @@ internal fun HomeCityPage(
     onMenu: () -> Unit, onRefresh: () -> Unit, onSettings: () -> Unit,
     indicator: @Composable () -> Unit,
     onHistoryClick: () -> Unit, onRadarClick: () -> Unit, onDailyForecastClick: () -> Unit,
-    onPrecipitationClick: () -> Unit, onHourlyClick: () -> Unit, onTyphoonClick: () -> Unit,
-    onAirQualityClick: () -> Unit, onYesterdayClick: () -> Unit,
+    onDailyMoreClick: () -> Unit = {},
+    onPrecipitationClick: () -> Unit, onHourlyClick: () -> Unit, onHourly48Click: () -> Unit = {},
+    onTyphoonClick: () -> Unit,
+    onAirQualityClick: () -> Unit, onWeatherDetailClick: () -> Unit, onYesterdayClick: () -> Unit,
     onFeatureHubClick: () -> Unit = {},
     onScenePage: (AtlasPage) -> Unit = {},
     onOpenDailyDay: (Long) -> Unit = {},
@@ -750,8 +758,10 @@ internal fun HomeCityPage(
                     topInset = bodyInset,
                     onHistoryClick = onHistoryClick, onRadarClick = onRadarClick,
                     onDailyForecastClick = onDailyForecastClick, onPrecipitationClick = onPrecipitationClick,
-                    onHourlyClick = onHourlyClick, onTyphoonClick = onTyphoonClick,
-                    onAirQualityClick = onAirQualityClick, onYesterdayClick = onYesterdayClick,
+                    onDailyMoreClick = onDailyMoreClick,
+                    onHourlyClick = onHourlyClick, onHourly48Click = onHourly48Click, onTyphoonClick = onTyphoonClick,
+                    onAirQualityClick = onAirQualityClick, onWeatherDetailClick = onWeatherDetailClick,
+                    onYesterdayClick = onYesterdayClick,
                     onFeatureHubClick = onFeatureHubClick,
                     onScenePage = onScenePage,
                     onOpenDailyDay = onOpenDailyDay,
@@ -1272,11 +1282,14 @@ private fun WeatherContent(
     onHistoryClick: () -> Unit = {},
     onRadarClick: () -> Unit = {},
     onDailyForecastClick: () -> Unit = {},
+    onDailyMoreClick: () -> Unit = {},
     onOpenDailyDay: (Long) -> Unit = {},
     onPrecipitationClick: () -> Unit = {},
     onHourlyClick: () -> Unit = {},
+    onHourly48Click: () -> Unit = {},
     onTyphoonClick: () -> Unit = {},
     onAirQualityClick: () -> Unit = {},
+    onWeatherDetailClick: () -> Unit = {},
     onYesterdayClick: () -> Unit = {},
     onFeatureHubClick: () -> Unit = {},
     onScenePage: (AtlasPage) -> Unit = {},
@@ -1343,12 +1356,37 @@ private fun WeatherContent(
             val animationIndex = nextStagger()
             val n = nextIndex()
             item(key = "title_${module.key}") {
+                val detailEntry = module == HomeModule.TELEMETRY || module == HomeModule.DAILY || module == HomeModule.HOURLY
+                val detailNavSourceKey = when (module) {
+                    // 遥测入口长成「天气详情」八类可视化页。
+                    HomeModule.TELEMETRY -> com.zhisheng.weather.ui.AppScreen.WEATHER_DETAIL.navSourceKey(null)
+                    // 「五天天气」标题行右侧的「更多」入口长成多日天气预报页。
+                    HomeModule.DAILY -> com.zhisheng.weather.ui.AppScreen.DAILY_TREND.navSourceKey(null)
+                    // 「逐时预报」标题行右侧的「详情」入口长成 48 小时天气页。
+                    HomeModule.HOURLY -> com.zhisheng.weather.ui.AppScreen.HOURLY_48.navSourceKey(null)
+                    else -> null
+                }
+                val detailClick = when (module) {
+                    HomeModule.TELEMETRY -> onWeatherDetailClick
+                    HomeModule.DAILY -> onDailyMoreClick
+                    HomeModule.HOURLY -> onHourly48Click
+                    else -> null
+                }
                 if (module == HomeModule.SPACETIME) AtlasSectionHeading(n) else SectionTitle(
                     index = n,
                     title = module.cn,
                     en = module.en,
                     prominent = module.isPrimaryHomeModule(),
                     compactLeading = compactLeading,
+                    // 「天气详情」标题行右侧入口：八类可视化详情页从这颗入口长成整页。
+                    // 城市后缀由 SectionDetailEntry 统一补，和 push 侧 pushFrom 的 key 一致。
+                    detailNavSourceKey = detailNavSourceKey,
+                    onDetailClick = if (detailEntry) detailClick else null,
+                    detailLabel = when (module) {
+                        HomeModule.DAILY -> "更多"
+                        HomeModule.HOURLY -> "详情"
+                        else -> "查看详情"
+                    },
                 )
             }
             item(key = "module_${module.key}") {
@@ -2171,7 +2209,16 @@ private fun WeatherToolEntry(
 }
 
 @Composable
-internal fun SectionTitle(index: Int, title: String, en: String, prominent: Boolean, compactLeading: Boolean = false) {
+internal fun SectionTitle(
+    index: Int,
+    title: String,
+    en: String,
+    prominent: Boolean,
+    compactLeading: Boolean = false,
+    detailNavSourceKey: String? = null,
+    onDetailClick: (() -> Unit)? = null,
+    detailLabel: String = "查看详情",
+) {
     if (isPhosphorVista) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(
@@ -2191,6 +2238,10 @@ internal fun SectionTitle(index: Int, title: String, en: String, prominent: Bool
                     color = ZhishengText,
                     fontWeight = FontWeight.Medium,
                 )
+                if (onDetailClick != null) {
+                    Spacer(Modifier.weight(1f))
+                    SectionDetailEntry(detailNavSourceKey, onDetailClick, detailLabel)
+                }
             }
         }
         return
@@ -2230,6 +2281,41 @@ internal fun SectionTitle(index: Int, title: String, en: String, prominent: Bool
             drawLine(ruleColor, Offset(size.width - length, size.height / 2f),
                 Offset(size.width, size.height / 2f), strokeWidth = 1.dp.toPx())
         }
+        if (onDetailClick != null) {
+            Spacer(Modifier.width(8.dp))
+            SectionDetailEntry(detailNavSourceKey, onDetailClick, detailLabel)
+        }
+    }
+}
+
+/** 首页分组标题右侧的二级页入口：文字 + 箭头，登记「打开应用式」来源后从这枚胶囊长成整页。 */
+@Composable
+private fun SectionDetailEntry(
+    navSourceKey: String?,
+    onClick: () -> Unit,
+    label: String = "查看详情",
+) {
+    Row(
+        modifier = Modifier
+            .then(
+                if (navSourceKey != null) {
+                    Modifier.mochiNavSource(
+                        navSourceKey + LocalNavSourceSuffix.current,
+                        0.dp,
+                        MochiDefaults.groupedBackground(),
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .clip(RoundedCornerShape(50))
+            .clickable(role = Role.Button, onClickLabel = "打开天气详情", onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = ZhishengMint)
+        Text("›", style = MaterialTheme.typography.titleMedium, color = ZhishengMint)
     }
 }
 

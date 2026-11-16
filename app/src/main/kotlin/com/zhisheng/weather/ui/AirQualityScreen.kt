@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -73,6 +76,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.zhisheng.weather.R
 import com.zhisheng.weather.data.ChineseAqi2026
+import com.zhisheng.weather.data.MeeAirQualityRankRepository
 import com.zhisheng.weather.model.AqiInfo
 import com.zhisheng.weather.model.WeatherData
 import com.zhisheng.weather.ui.components.PhosphorIcon
@@ -170,8 +174,12 @@ fun AirQualityScreen(
     cityName: String?,
     onBack: () -> Unit,
     nearby: List<NearbyCityAqi> = emptyList(),
+    // 全国排名查的是「城市」这一级（生态环境部实时报按城市发布），
+    // 不能带 street；不传时退回 cityName 的「·」前缀。
+    rankingCity: String? = null,
+    // 区/县/街道在地名库里通常只有上级城市，传入 affiliation 才能回退（光明区 → 深圳市）。
+    rankingAffiliation: String? = null,
 ) {
-    val aqi = weather?.aqi
     val utcOffset = weather?.utcOffsetSeconds
     val publishLabel = weather?.updateTime?.let { "${Fmt.clock(it, utcOffset)} 发布" } ?: "更新时间未知"
     var showLegend by remember { mutableStateOf(false) }
@@ -184,115 +192,171 @@ fun AirQualityScreen(
         actions = { MochiBarButton("图例", onClick = { showLegend = true }) },
         overlay = { if (showLegend) AqiLegendDialog { showLegend = false } },
     ) {
-        // 参考首页空气质量卡片：大数字 + 等级 + 首要污染物 + 六档污染指数指示器
-        item {
-            PanelCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+        aqiDetailItems(
+            weather = weather,
+            nearby = nearby,
+            rankingCity = rankingCity,
+            rankingAffiliation = rankingAffiliation,
+            onShowLegend = { showLegend = true },
+        )
+    }
+}
+
+/**
+ * 空气质量正文（懒加载列表版）：独立空气质量页自己的卡片顺序与口径。
+ * 天气详情页的「空气质量」一页是独立实现（见 WeatherDetailAqi.kt），两者不共用正文。
+ */
+private fun LazyListScope.aqiDetailItems(
+    weather: WeatherData?,
+    nearby: List<NearbyCityAqi> = emptyList(),
+    rankingCity: String? = null,
+    rankingAffiliation: String? = null,
+    onShowLegend: () -> Unit,
+) {
+    val aqi = weather?.aqi
+    val utcOffset = weather?.utcOffsetSeconds
+    // 参考首页空气质量卡片：大数字 + 等级 + 首要污染物 + 六档污染指数指示器
+    item {
+        PanelCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    aqi?.value?.toString() ?: "—",
+                    fontSize = 64.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = aqiColor(aqi?.value),
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
                     Text(
-                        aqi?.value?.toString() ?: "—",
-                        fontSize = 64.sp,
-                        fontWeight = FontWeight.Bold,
+                        Fmt.aqiLevelLabel(aqi?.value, aqi?.level),
+                        style = MaterialTheme.typography.titleLarge,
                         color = aqiColor(aqi?.value),
                     )
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
+                    Text(
+                        if (aqi?.estimated == true) Fmt.AQI_ESTIMATION_LABEL else Fmt.aqiBasisLabel(aqi?.standard),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ZhishengTextSecondary,
+                    )
+                    aqi?.primary?.takeIf { it.isNotBlank() }?.let {
                         Text(
-                            Fmt.aqiLevelLabel(aqi?.value, aqi?.level),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = aqiColor(aqi?.value),
-                        )
-                        Text(
-                            if (aqi?.estimated == true) Fmt.AQI_ESTIMATION_LABEL else Fmt.aqiBasisLabel(aqi?.standard),
+                            "首要污染物 $it",
                             style = MaterialTheme.typography.bodySmall,
                             color = ZhishengTextSecondary,
+                            maxLines = 1,
                         )
-                        aqi?.primary?.takeIf { it.isNotBlank() }?.let {
-                            Text(
-                                "首要污染物 $it",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = ZhishengTextSecondary,
-                                maxLines = 1,
-                            )
-                        }
                     }
                 }
-                Spacer(Modifier.height(18.dp))
-                AqiIndicator(aqi?.value)
-                Spacer(Modifier.height(18.dp))
-                PollutantGrid(aqi)
             }
+            Spacer(Modifier.height(18.dp))
+            AqiIndicator(aqi?.value)
+            Spacer(Modifier.height(18.dp))
+            PollutantGrid(aqi)
         }
+    }
 
-        // 健康提示：说明段落，放进带渐变遮罩的库卡片
-        item {
-            MochiFadeNote(
-                text = aqiAdvice(aqi?.value, aqi?.level, aqi?.suggest),
-                title = "健康提示",
-                iconRes = R.drawable.ph_leaf,
-                accent = aqiColor(aqi?.value),
+    // 信息摘要：未来 24 小时 AQI 区间 + 与昨日同期对比 + 分级建议（口径与 yunsong 一致）
+    item {
+        val future = weather?.hourly.orEmpty()
+            .asSequence()
+            .filter { it.aqi != null }
+            .take(24)
+            .mapNotNull { it.aqi }
+            .toList()
+        PanelCard {
+            Text("信息摘要", style = MaterialTheme.typography.titleMedium, color = ZhishengText)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                buildAqiSummary(aqi?.value, future, weather?.yesterday?.aqi),
+                style = MaterialTheme.typography.bodyMedium,
+                color = ZhishengTextSecondary,
             )
-        }
-
-        // Open-Meteo 空气质量扩展：EU/US AQI、CO₂、甲烷、气溶胶、沙尘、UV、花粉
-        item {
-            PanelCard {
-                Text("空气质量扩展指标", style = MaterialTheme.typography.titleMedium, color = ZhishengText)
-                Spacer(Modifier.height(14.dp))
-                ExtensionGrid(aqi)
-                Spacer(Modifier.height(14.dp))
-                Text("花粉（CAMS 欧洲域）", style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
-                Spacer(Modifier.height(10.dp))
-                PollenGrid(aqi)
+            if (aqi?.estimated == true) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    Fmt.AQI_ESTIMATION_LABEL,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ZhishengTextTertiary,
+                )
             }
         }
-        item {
-            MochiFadeNote("EU/US AQI 与 CO₂/甲烷/气溶胶/沙尘/UV 来自 Open-Meteo CAMS；氨与花粉仅欧洲域提供，国内显示为—。")
-        }
+    }
 
-        // 24 小时空气质量预报（逐时 / 逐日切换）
-        item {
-            PanelCard {
-                var mode by remember { mutableIntStateOf(0) }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "24小时空气质量预报",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = ZhishengText,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
+    // 健康提示：说明段落，放进带渐变遮罩的库卡片
+    item {
+        MochiFadeNote(
+            text = aqiAdvice(aqi?.value, aqi?.level, aqi?.suggest),
+            title = "健康提示",
+            iconRes = R.drawable.ph_leaf,
+            accent = aqiColor(aqi?.value),
+        )
+    }
+
+    // Open-Meteo 空气质量扩展：EU/US AQI、CO₂、甲烷、气溶胶、沙尘、UV、花粉
+    item {
+        PanelCard {
+            Text("空气质量扩展指标", style = MaterialTheme.typography.titleMedium, color = ZhishengText)
+            Spacer(Modifier.height(14.dp))
+            ExtensionGrid(aqi)
+            Spacer(Modifier.height(14.dp))
+            Text("花粉（CAMS 欧洲域）", style = MaterialTheme.typography.labelMedium, color = ZhishengTextSecondary)
+            Spacer(Modifier.height(10.dp))
+            PollenGrid(aqi)
+        }
+    }
+    item {
+        MochiFadeNote("EU/US AQI 与 CO₂/甲烷/气溶胶/沙尘/UV 来自 Open-Meteo CAMS；氨与花粉仅欧洲域提供，国内显示为—。")
+    }
+
+    // 24 小时空气质量预报（逐时 / 逐日切换）
+    item {
+        PanelCard {
+            var mode by remember { mutableIntStateOf(0) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "24小时空气质量预报",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ZhishengText,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+                IconButton(onClick = onShowLegend, modifier = Modifier.size(34.dp)) {
+                    PhosphorIcon(R.drawable.ph_info, "查看颜色图例与帮助", Modifier.size(17.dp), ZhishengTextSecondary)
+                }
+                ModeToggle(mode) { mode = it }
+            }
+            Spacer(Modifier.height(14.dp))
+            if (mode == 0) HourlyAqiChart(weather, utcOffset) else DailyAqiChart(weather)
+        }
+    }
+
+    // 附近城市空气质量：地图 + 数值徽标排
+    item {
+        PanelCard {
+            Text("附近空气质量", style = MaterialTheme.typography.titleMedium, color = ZhishengText)
+            Spacer(Modifier.height(14.dp))
+            if (nearby.isEmpty()) {
+                Text("暂无附近城市数据", style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
+            } else {
+                val markers = nearby.filter { it.latitude != null && it.longitude != null }
+                if (markers.isNotEmpty()) {
+                    NearbyAqiMap(
+                        items = markers,
+                        modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(14.dp)),
                     )
-                    IconButton(onClick = { showLegend = true }, modifier = Modifier.size(34.dp)) {
-                        PhosphorIcon(R.drawable.ph_info, "查看颜色图例与帮助", Modifier.size(17.dp), ZhishengTextSecondary)
-                    }
-                    ModeToggle(mode) { mode = it }
+                    Spacer(Modifier.height(12.dp))
                 }
-                Spacer(Modifier.height(14.dp))
-                if (mode == 0) HourlyAqiChart(weather, utcOffset) else DailyAqiChart(weather)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    nearby.take(4).forEach { NearbyBadge(it.cityName, it.aqi, Modifier.weight(1f)) }
+                }
             }
         }
+    }
 
-        // 附近城市空气质量：地图 + 数值徽标排
-        item {
-            PanelCard {
-                Text("附近空气质量", style = MaterialTheme.typography.titleMedium, color = ZhishengText)
-                Spacer(Modifier.height(14.dp))
-                if (nearby.isEmpty()) {
-                    Text("暂无附近城市数据", style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
-                } else {
-                    val markers = nearby.filter { it.latitude != null && it.longitude != null }
-                    if (markers.isNotEmpty()) {
-                        NearbyAqiMap(
-                            items = markers,
-                            modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(14.dp)),
-                        )
-                        Spacer(Modifier.height(12.dp))
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        nearby.take(4).forEach { NearbyBadge(it.cityName, it.aqi, Modifier.weight(1f)) }
-                    }
-                }
-            }
-        }
+    // 全国排名：生态环境部城市 AQI 实时报，同一批次发布数据内按 AQI 由低到高排名
+    item {
+        AqiNationalRankCard(
+            candidates = MeeAirQualityRankRepository.rankCandidateChain(rankingCity, rankingAffiliation),
+        )
     }
 }
 
@@ -989,4 +1053,110 @@ private fun aqiAdvice(value: Int?, level: String?, suggest: String?): String {
         value <= 300 -> "重度污染，尽量留在室内，减少外出"
         else -> "严重污染，避免户外活动，做好防护"
     }
+}
+
+/**
+ * 信息摘要文案：未来 24 小时 AQI 区间 + 与昨日同期对比 + 分级建议。
+ * 与 yunsong 的 buildSummary 同一口径（与昨日差值小于 3 视为持平）。
+ */
+internal fun buildAqiSummary(current: Int?, future: List<Int>, yesterday: Int?): String {
+    if (current == null || future.isEmpty()) {
+        return "暂未取得完整空气质量数据；联网后会自动补齐未来 24 小时趋势。"
+    }
+    val min = future.minOrNull() ?: current
+    val max = future.maxOrNull() ?: current
+    val compare = yesterday?.let {
+        when {
+            abs(current - it) < 3 -> "与昨日同期基本持平"
+            current > it -> "较昨日同期升${current - it}"
+            else -> "较昨日同期降${it - current}"
+        }
+    } ?: "昨日同期数据待补充"
+    val advice = aqiLevelIndex(max)?.let { AqiLevels[it].advice }.orEmpty()
+    return "未来24小时 AQI 为 $min–$max，$compare。$advice"
+}
+
+/**
+ * 全国排名卡：读取生态环境部城市 AQI 实时报的同一批次发布数据。
+ * [candidates] 由调用方给出（通常是「区/县 → 上级市 → 省」），一次抓取里逐个匹配，
+ * 避免区级地名直接显示「暂未覆盖」；页面改版、网络失败或全部未覆盖时明确说明不可用。
+ */
+@Composable
+private fun AqiNationalRankCard(candidates: List<String>) {
+    var result by remember(candidates) { mutableStateOf<MeeAirQualityRankRepository.Result?>(null) }
+    LaunchedEffect(candidates) {
+        result = if (candidates.isEmpty()) {
+            MeeAirQualityRankRepository.Result.CityNotCovered
+        } else {
+            MeeAirQualityRankRepository.fetch(candidates)
+        }
+    }
+    val available = result as? MeeAirQualityRankRepository.Result.Available
+    PanelCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "全国排名",
+                style = MaterialTheme.typography.titleMedium,
+                color = ZhishengText,
+                modifier = Modifier.weight(1f),
+            )
+            if (available != null) {
+                Text(
+                    "全国前 ${available.topPercent}%",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = rankPercentColor(available.topPercent),
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        when {
+            available != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("全国第", style = MaterialTheme.typography.titleLarge, color = ZhishengText)
+                Text(
+                    " ${available.rank} ",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = ZhishengText,
+                )
+                Text("/ ${available.total}", style = MaterialTheme.typography.titleLarge, color = ZhishengText)
+            }
+            result == null -> Text(
+                "正在获取生态环境部实时报…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = ZhishengTextSecondary,
+            )
+            result == MeeAirQualityRankRepository.Result.CityNotCovered -> Text(
+                "生态环境部实时报暂未覆盖该城市",
+                style = MaterialTheme.typography.bodyMedium,
+                color = ZhishengTextSecondary,
+            )
+            else -> Text(
+                "全国排名暂不可用",
+                style = MaterialTheme.typography.bodyMedium,
+                color = ZhishengTextSecondary,
+            )
+        }
+        if (available != null && available.matchedCity != available.requestedCity) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "按上级城市 ${available.matchedCity} 的实时报统计",
+                style = MaterialTheme.typography.labelMedium,
+                color = ZhishengTextSecondary,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "数据来自生态环境部城市 AQI 实时报，按同一发布时间内 AQI 由低到高计算。",
+            style = MaterialTheme.typography.labelMedium,
+            color = ZhishengTextTertiary,
+        )
+    }
+}
+
+/** 排名百分位配色：越靠前越绿，越靠后越暖（与 yunsong 的三档一致）。 */
+private fun rankPercentColor(percent: Int): Color = when {
+    percent <= 30 -> Color(0xFF57D380)
+    percent <= 70 -> Color(0xFFFFD247)
+    else -> Color(0xFFFFA04C)
 }

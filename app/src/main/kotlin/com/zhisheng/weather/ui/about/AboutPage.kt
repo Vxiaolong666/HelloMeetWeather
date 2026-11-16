@@ -46,6 +46,8 @@ import ui.feice.mochi.basic.MochiAvatarButton
 import ui.feice.mochi.basic.MochiToastHost
 import ui.feice.mochi.basic.Text
 import ui.feice.mochi.basic.rememberMochiToastState
+import com.zhisheng.weather.ui.MochiTransitionConfig
+import com.zhisheng.weather.ui.mochiSettingsSourceKey
 import com.zhisheng.weather.ui.about.common.AppIcon
 import com.zhisheng.weather.ui.about.common.DemoIcon
 import com.zhisheng.weather.ui.about.common.IconColors
@@ -60,7 +62,9 @@ import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
 import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.navigation.MochiLazyCompactTitleScaffold
+import ui.feice.mochi.navigation.mochiNavSource
 import ui.feice.mochi.shape.MochiCapsule
+import ui.feice.mochi.theme.MochiDefaults
 import ui.feice.mochi.theme.MochiTheme
 import ui.feice.mochi.theme.emphasized
 import ui.feice.mochi.utils.rememberMochiHaptics
@@ -210,6 +214,15 @@ internal fun AboutPage(modifier: Modifier = Modifier, onBack: () -> Unit, onOpen
                         subtitle = "版本通知与使用提醒",
                         onClick = onOpenNotices,
                         chevron = true,
+                        modifier = Modifier.mochiNavSource(
+                            mochiSettingsSourceKey("settings.notice"),
+                            MochiListDefaults.SectionCorner,
+                            if (MochiTransitionConfig.sourceHighlight) {
+                                MochiTheme.colorScheme.primaryContainer
+                            } else {
+                                MochiDefaults.groupedContainer()
+                            },
+                        ),
                         leading = {
                             AppIcon(
                                 Icons.BELL,

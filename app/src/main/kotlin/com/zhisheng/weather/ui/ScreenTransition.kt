@@ -1,8 +1,8 @@
 package com.zhisheng.weather.ui
 
 internal enum class AppScreen {
-    HOME, SEARCH, DAILY_FORECAST, DAILY_DAY_DETAIL, HISTORY, RADAR, TYPHOON, PRECIPITATION,
-    HOURLY_DETAIL, AIR_QUALITY, YESTERDAY_DETAIL, FEATURES, CITY_MANAGER,
+    HOME, SEARCH, DAILY_FORECAST, DAILY_TREND, DAILY_DAY_DETAIL, DAILY_TREND_DAY_DETAIL, HISTORY, RADAR, TYPHOON, PRECIPITATION,
+    HOURLY_DETAIL, HOURLY_48, AIR_QUALITY, WEATHER_DETAIL, YESTERDAY_DETAIL, FEATURES, CITY_MANAGER,
     MOCHI_SETTINGS, SCENE_GLOW, SCENE_STARS, SCENE_COAST;
 
     /** 库导航用的路由名（rememberMochiNavigator / MochiNavHost 的 route）。 */
@@ -10,13 +10,17 @@ internal enum class AppScreen {
         HOME -> "home"
         SEARCH -> "search"
         DAILY_FORECAST -> "daily_forecast"
+        DAILY_TREND -> "daily_trend"
         DAILY_DAY_DETAIL -> "daily_day"
+        DAILY_TREND_DAY_DETAIL -> "daily_trend_day"
         HISTORY -> "history"
         RADAR -> "radar"
         TYPHOON -> "typhoon"
         PRECIPITATION -> "precipitation"
         HOURLY_DETAIL -> "hourly"
+        HOURLY_48 -> "hourly_48"
         AIR_QUALITY -> "air_quality"
+        WEATHER_DETAIL -> "weather_detail"
         YESTERDAY_DETAIL -> "yesterday"
         FEATURES -> "features"
         CITY_MANAGER -> "city_manager"
@@ -48,10 +52,12 @@ internal enum class AppScreen {
             MOCHI_SETTINGS -> "settings"
             HISTORY -> "history$suffix"
             RADAR -> "radar$suffix"
-            DAILY_FORECAST, DAILY_DAY_DETAIL -> "daily_forecast$suffix"
+            DAILY_FORECAST, DAILY_TREND, DAILY_DAY_DETAIL, DAILY_TREND_DAY_DETAIL -> "daily_forecast$suffix"
             PRECIPITATION -> "precipitation$suffix"
             HOURLY_DETAIL -> "hourly$suffix"
+            HOURLY_48 -> "hourly_48$suffix"
             AIR_QUALITY -> "air_quality$suffix"
+            WEATHER_DETAIL -> "weather_detail$suffix"
             YESTERDAY_DETAIL -> "yesterday$suffix"
             FEATURES -> "features$suffix"
             TYPHOON -> "typhoon$suffix"

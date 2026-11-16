@@ -30,6 +30,13 @@ import ui.feice.mochi.navigation.MochiNavSpec
  */
 internal object AppTransitions {
 
+    /** 富逐日详情页的来源 key：多日天气预报页上按天登记的「查看该日完整详情」卡片。
+     * 含城市后缀防跨城串位；key 与 DailyTrendScreen 的 mochiNavSource 登记完全一致。 */
+    fun dailyTrendDaySourceKey(dateMillis: Long, cityKey: String?): String {
+        val suffix = cityKey?.let { ":$it" } ?: ""
+        return "daily_trend_day:$dateMillis$suffix"
+    }
+
     /**
      * 「打开应用式」下没有可返回的已登记来源卡片时的角落容器变换哨兵 key：
      * 库导航收到未登记的 key 会把整页向角落小卡片插值（进入从左上角展开，
