@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">枳生天气</string>
+    <string name="app_name">遇见天气</string>
     <string name="shortcut_refresh_short">刷新天气</string>
     <string name="shortcut_refresh_long">刷新天气</string>
     <string name="shortcut_search_short">搜索城市</string>

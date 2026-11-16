@@ -1,0 +1,42 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+
+package com.HelloMeet.weather.ui.components
+
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import com.HelloMeet.weather.ui.theme.isPhosphorVista
+
+internal data class WeatherContinuity(
+    val shared: SharedTransitionScope,
+    val visibility: AnimatedVisibilityScope,
+)
+
+internal val LocalWeatherContinuity = staticCompositionLocalOf<WeatherContinuity?> { null }
+
+/** Only real, matching weather content moves between orientations. */
+@Composable
+internal fun Modifier.weatherSharedBounds(key: String): Modifier {
+    val continuity = LocalWeatherContinuity.current
+    if (continuity == null || !isPhosphorVista) return this
+    return with(continuity.shared) {
+        this@weatherSharedBounds.sharedBounds(
+            rememberSharedContentState(key),
+            animatedVisibilityScope = continuity.visibility,
+            boundsTransform = { _, _ -> tween(420, easing = FastOutSlowInEasing) },
+        )
+    }
+}
+
+/**
+ * Scope a shared-bounds key to one city page so adjacent HorizontalPager pages never
+ * register the same key at once. Duplicate active keys make the shared-element system
+ * match two live pages as one element, overlaying both cities' numbers mid-swipe.
+ */
+@Composable
+internal fun Modifier.cityScopedSharedBounds(key: String, cityKey: String): Modifier =
+    weatherSharedBounds(key + "|" + cityKey)

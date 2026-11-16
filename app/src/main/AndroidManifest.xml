@@ -52,9 +52,9 @@
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:icon="@mipmap/ic_launcher_character"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_character_round"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.ZhishengWeather">
@@ -79,15 +79,15 @@
 
         <!--
           桌面图标通过互斥 activity-alias 切换。先启用目标别名、再禁用旧别名，
-          可在不重装 App 的前提下刷新桌面入口；默认使用角色图标。
+          可在不重装 App 的前提下刷新桌面入口；默认使用默认图标。
         -->
         <activity-alias
-            android:name=".IconCharacter"
+            android:name=".IconDefault"
             android:enabled="true"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_character"
+            android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_character_round"
+            android:roundIcon="@mipmap/ic_launcher_round"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -99,7 +99,7 @@
         </activity-alias>
 
         <activity-alias android:name=".IconMinimal" android:enabled="false" android:exported="true"
-            android:icon="@mipmap/ic_launcher_minimal" android:roundIcon="@mipmap/ic_launcher_minimal"
+            android:icon="@mipmap/ic_launcher_minimal" android:roundIcon="@mipmap/ic_launcher_minimal_round"
             android:label="@string/app_name" android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -131,43 +131,26 @@
             </intent-filter>
         </receiver>
 
-        <receiver android:name=".widget.VistaPulseWidgetProvider" android:label="枳生天气 · 澄空 · 时光气象" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_pulse" /></receiver>
-        <receiver android:name=".widget.VistaNowWidgetProvider" android:label="枳生天气 · 澄空 · 天气小窗" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_now" /></receiver>
-        <receiver android:name=".widget.VistaBandWidgetProvider" android:label="枳生天气 · 澄空 · 逐时天光" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_band" /></receiver>
-        <receiver android:name=".widget.VistaWeekWidgetProvider" android:label="枳生天气 · 澄空 · 日历天气" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_week" /></receiver>
-        <receiver android:name=".widget.VistaSceneWidgetProvider" android:label="枳生天气 · 澄空 · 天气全景" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_scene" /></receiver>
-        <receiver android:name=".widget.ClassicPulseWidgetProvider" android:label="枳生天气 · 经典 · 时间信号" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_pulse" /></receiver>
-        <receiver android:name=".widget.ClassicNowWidgetProvider" android:label="枳生天气 · 经典 · 微型观测站" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_now" /></receiver>
-        <receiver android:name=".widget.ClassicBandWidgetProvider" android:label="枳生天气 · 经典 · 出行监测" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_band" /></receiver>
-        <receiver android:name=".widget.ClassicWeekWidgetProvider" android:label="枳生天气 · 经典 · 五日趋势" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_week" /></receiver>
-        <receiver android:name=".widget.ClassicSceneWidgetProvider" android:label="枳生天气 · 经典 · 气象终端" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_scene" /></receiver>
-        <receiver android:name=".widget.VistaComboWidgetProvider" android:label="枳生天气 · 澄空 · 时日预报" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_combo" /></receiver>
-        <receiver android:name=".widget.ClassicComboWidgetProvider" android:label="枳生天气 · 经典 · 时日预报" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_combo" /></receiver>
+        <receiver android:name=".widget.VistaPulseWidgetProvider" android:label="遇见天气 · 澄空 · 时光气象" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_pulse" /></receiver>
+        <receiver android:name=".widget.VistaNowWidgetProvider" android:label="遇见天气 · 澄空 · 天气小窗" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_now" /></receiver>
+        <receiver android:name=".widget.VistaBandWidgetProvider" android:label="遇见天气 · 澄空 · 逐时天光" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_band" /></receiver>
+        <receiver android:name=".widget.VistaWeekWidgetProvider" android:label="遇见天气 · 澄空 · 日历天气" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_week" /></receiver>
+        <receiver android:name=".widget.VistaSceneWidgetProvider" android:label="遇见天气 · 澄空 · 天气全景" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_scene" /></receiver>
+        <receiver android:name=".widget.ClassicPulseWidgetProvider" android:label="遇见天气 · 经典 · 时间信号" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_pulse" /></receiver>
+        <receiver android:name=".widget.ClassicNowWidgetProvider" android:label="遇见天气 · 经典 · 微型观测站" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_now" /></receiver>
+        <receiver android:name=".widget.ClassicBandWidgetProvider" android:label="遇见天气 · 经典 · 出行监测" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_band" /></receiver>
+        <receiver android:name=".widget.ClassicWeekWidgetProvider" android:label="遇见天气 · 经典 · 五日趋势" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_week" /></receiver>
+        <receiver android:name=".widget.ClassicSceneWidgetProvider" android:label="遇见天气 · 经典 · 气象终端" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_scene" /></receiver>
+        <receiver android:name=".widget.VistaComboWidgetProvider" android:label="遇见天气 · 澄空 · 时日预报" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vista_combo" /></receiver>
+        <receiver android:name=".widget.ClassicComboWidgetProvider" android:label="遇见天气 · 经典 · 时日预报" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_classic_combo" /></receiver>
 
         <activity-alias
-            android:name=".IconClassic"
+            android:name=".IconColorful"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
+            android:icon="@mipmap/ic_launcher_colorful"
             android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:targetActivity=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-        </activity-alias>
-
-        <activity-alias
-            android:name=".IconLight"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_light"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_light_round"
+            android:roundIcon="@mipmap/ic_launcher_colorful_round"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

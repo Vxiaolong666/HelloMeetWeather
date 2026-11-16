@@ -126,7 +126,7 @@ for (const style of ['vista','classic']) for (const kind of ['pulse','now','band
  }
  const [w,h,c,r]=kind==='pulse'?[250,60,4,1]:kind==='now'?[110,110,2,2]:kind==='scene'?[250,280,4,4]:[250,kind==='week'?140:120,4,2];
  fs.writeFileSync(path.join(base,'xml','widget_'+style+'_'+kind+'.xml'),'<?xml version="1.0" encoding="utf-8"?>\n<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" '+attrs({
- minWidth:w+'dp',minHeight:h+'dp',minResizeWidth:(kind==='scene'?180:w)+'dp',minResizeHeight:(kind==='scene'?180:h)+'dp',targetCellWidth:c,targetCellHeight:r,updatePeriodMillis:'0',resizeMode:'horizontal|vertical',widgetCategory:'home_screen',widgetFeatures:'reconfigurable',initialLayout:'@layout/widget_'+style+'_'+kind,previewLayout:'@layout/widget_'+style+'_'+kind,configure:'com.zhisheng.weather.widget.WidgetConfigActivity'
+ minWidth:w+'dp',minHeight:h+'dp',minResizeWidth:(kind==='scene'?180:w)+'dp',minResizeHeight:(kind==='scene'?180:h)+'dp',targetCellWidth:c,targetCellHeight:r,updatePeriodMillis:'0',resizeMode:'horizontal|vertical',widgetCategory:'home_screen',widgetFeatures:'reconfigurable',initialLayout:'@layout/widget_'+style+'_'+kind,previewLayout:'@layout/widget_'+style+'_'+kind,configure:'com.HelloMeet.weather.widget.WidgetConfigActivity'
  })+' />\n');
 }
 const hour=col('widget_forecast_cell','0dp','match_parent',{layout_weight:'1',gravity:'center'},text('widget_cell_label',10,{gravity:'center'})+image('widget_cell_icon','30dp','30dp',{layout_marginTop:'1dp'})+text('widget_cell_temp',11,{layout_marginTop:'1dp'})+text('widget_cell_extra',9,{layout_marginTop:'1dp'}));

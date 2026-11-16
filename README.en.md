@@ -335,6 +335,14 @@ After location is enabled and permission is granted, the app rechecks the city a
 - Alerts are deduplicated by exact title, so differently worded copies of one alert may both appear
 - This is an early release. For safety decisions, follow your local meteorological authority
 
+## Support the creator
+
+If this project helps you, you can support its ongoing development and maintenance on Afdian:
+
+- Afdian: [@yyyolala](https://afdian.com/a/hellowather)
+
+Supporting is entirely voluntary and does not affect any feature.
+
 ## Changelog
 
 <details open>

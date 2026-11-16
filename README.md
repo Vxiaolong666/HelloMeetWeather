@@ -175,6 +175,7 @@ tianditu.token=<天地图移动端 Key>
 
 - **[枳生天气 ZhishengWeather](https://github.com/zhishengplus/ZhishengWeather)** —— 本项目的基础，MIT 许可。原版的界面设计、数据链路、终端氛围效果和桌面小组件均来自该项目。
 - **[mochi-compose](https://github.com/feice11/mochi-compose)** —— 设置页与二级页面重构所用的组件库，Apache 2.0 许可。软、弹、跟手的交互体验来自这个库。
+- **[yunsong-weather](https://github.com/SIAKNG/yunsong-weather)** —— 部分页面的布局与交互参考借鉴该项目。
 - [Kyant0/Capsule](https://github.com/Kyant0/Capsule) —— Mochi 使用的形状库。
 - [Kyant0/Backdrop](https://github.com/Kyant0/Backdrop) —— Liquid Glass 背景玻璃效果。
 - [MapLibre Native Android](https://github.com/maplibre/maplibre-native-android) —— 地图渲染。

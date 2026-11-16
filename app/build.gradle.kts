@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.gradle.api.file.RegularFileProperty
 
 plugins {
     alias(libs.plugins.android.application)
@@ -33,17 +34,17 @@ val communityQqGroup = "562847192"
 val communityQqGroup1 = "1106284779"
 
 android {
-    namespace = "com.zhisheng.weather"
+    namespace = "com.HelloMeet.weather"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.zhisheng.weather"
+        applicationId = "com.HelloMeet.weather"
         minSdk = 26
         targetSdk = 34
         // Beta 14：全站转场统一入口与定位地址收敛；保持公开包名与签名。
         versionCode = 20261184
         versionName = "0.1-Beta14"
-        resValue("string", "shortcut_target_package", "com.zhisheng.weather")
+        resValue("string", "shortcut_target_package", "com.HelloMeet.weather")
 
         // 发行渠道面向实体手机；去掉仅供 Intel 模拟器使用的 x86/x86_64 MapLibre 库。
         // 同时保留现代 ARM64 与 Android 8 时代的 32 位 ARM 设备。
@@ -89,8 +90,8 @@ android {
             val previewSuffix = providers.gradleProperty("previewSuffix").orElse(".preview").get()
             require(Regex("\\.[a-z][a-z0-9_]*").matches(previewSuffix)) { "Invalid preview application suffix" }
             applicationIdSuffix = previewSuffix
-            resValue("string", "shortcut_target_package", "com.zhisheng.weather$previewSuffix")
-            resValue("string", "app_name", if (previewSuffix == ".preview") "枳生天气 澄空体验" else "枳生天气 分层验证")
+            resValue("string", "shortcut_target_package", "com.HelloMeet.weather$previewSuffix")
+            resValue("string", "app_name", if (previewSuffix == ".preview") "遇见天气 澄空体验" else "遇见天气 分层验证")
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
             buildConfigField("String", "QW_HOST", "\"\"")
@@ -130,8 +131,27 @@ android {
     }
 }
 
+// 把仓库根目录的 CHANGELOG.md 打进 APK，历史更新日志可离线查看。
+abstract class CopyChangelogAsset : DefaultTask() {
+    @get:InputFile abstract val changelog: RegularFileProperty
+    @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction fun copy() {
+        val target = outputDirectory.file("CHANGELOG.md").get().asFile
+        target.parentFile.mkdirs()
+        changelog.get().asFile.copyTo(target, overwrite = true)
+    }
+}
+
 // 每个变体生成对应 applicationId 的小组件配置入口串（preview 变体带后缀，必须按变体生成）。
 androidComponents.onVariants { variant ->
+    val copyChangelogAsset = tasks.register<CopyChangelogAsset>(
+        "copy${variant.name.replaceFirstChar(Char::uppercase)}ChangelogAsset",
+    ) {
+        changelog.set(rootProject.layout.projectDirectory.file("CHANGELOG.md"))
+    }
+    variant.sources.assets?.addGeneratedSourceDirectory(copyChangelogAsset, CopyChangelogAsset::outputDirectory)
+
     val generateWidgetConfiguration = tasks.register<GenerateWidgetConfiguration>(
         "generate${variant.name.replaceFirstChar(Char::uppercase)}WidgetConfiguration",
     ) {

@@ -3,16 +3,16 @@ param(
     [ValidateRange(128, 2048)]
     [int]$Size = 512,
     [ValidateRange(0.0, 0.3)]
-    [double]$Inset = 0.14
+    [double]$Inset = 0.06
 )
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$SourcePath = Join-Path $ProjectRoot 'assets\branding\ic_launcher_character_source.png'
+$SourcePath = Join-Path $ProjectRoot 'assets\branding\ic_launcher_default_source.png'
 $OutputPath = Join-Path $ProjectRoot 'assets\app-icon.png'
 
 if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
-    throw "Missing character icon source: $SourcePath"
+    throw "Missing launcher icon source: $SourcePath"
 }
 
 Add-Type -AssemblyName System.Drawing
@@ -26,7 +26,7 @@ $canvas = New-Object Drawing.Bitmap(
 $graphics = [Drawing.Graphics]::FromImage($canvas)
 
 try {
-    $graphics.Clear([Drawing.Color]::Black)
+    $graphics.Clear([Drawing.Color]::Transparent)
     $graphics.CompositingMode = [Drawing.Drawing2D.CompositingMode]::SourceOver
     $graphics.CompositingQuality = [Drawing.Drawing2D.CompositingQuality]::HighQuality
     $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic

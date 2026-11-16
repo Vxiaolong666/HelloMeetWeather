@@ -1,0 +1,27 @@
+package com.HelloMeet.weather.ui.home
+
+import java.io.File
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class AqiLayoutTest {
+    @Test
+    fun classicPrimaryPollutantHasItsOwnResponsiveColumn() {
+        val projectDir = File(requireNotNull(System.getProperty("user.dir")))
+        val home = File(
+            projectDir,
+            "src/main/kotlin/com/HelloMeet/weather/ui/home/HomeScreen.kt",
+        ).readText().replace("\r\n", "\n")
+            .substringAfter("internal fun AqiCard(")
+            // Vista gives the primary pollutant a full-width wrapping line.
+            // This regression protects the classic header's narrow right column.
+            .substringAfter("        return\n    }")
+            .substringBefore("private fun PollutantChip(")
+
+        assertTrue(home.contains("Column(Modifier.weight(1f))"))
+        assertTrue(home.contains("modifier = Modifier.widthIn(max = 112.dp)"))
+        assertTrue(home.contains("\"首要污染物\","))
+        assertTrue(home.contains("textAlign = TextAlign.End"))
+        assertTrue("Large fonts move the primary pollutant onto a full-width line", home.contains("if (stackedPrimary)"))
+    }
+}
