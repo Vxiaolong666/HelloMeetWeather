@@ -29,7 +29,7 @@
 ### 更新系统
 
 - 检查更新改为全新卡片式页面：状态图标、版本说明、下载进度与百分比，失败可直接重试或跳转发布页
-- 更新源切换到 HelloWeather 仓库（GitHub / Gitee 互为备用），新增 update.json 清单，支持 Gitee 优先读取
+- 更新源切换到 HelloMeetWeather（GitHub）与 HelloWeather（Gitee），两者互为备用，新增 update.json 清单，支持 Gitee 优先读取
 - 历史更新日志直接读取随包内置的 CHANGELOG，离线可查全部历史版本；当前版本更新说明与历史日志彼此独立
 
 ## v0.1-Beta14
