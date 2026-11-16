@@ -51,19 +51,20 @@ sealed class AppUpdateCheck {
 }
 
 object AppUpdate {
-    const val RELEASES_PAGE = "https://github.com/Vxiaolong666/HelloWeather/releases"
+    const val RELEASES_PAGE = "https://github.com/Vxiaolong666/HelloMeetWeather/releases"
     const val GITEE_RELEASES_PAGE = "https://gitee.com/loong66688/HelloWeather/releases"
     private const val MANIFEST_PRIMARY =
-        "https://raw.githubusercontent.com/Vxiaolong666/HelloWeather/main/update.json"
+        "https://raw.githubusercontent.com/Vxiaolong666/HelloMeetWeather/main/update.json"
     private const val MANIFEST_MIRROR =
-        "https://cdn.jsdelivr.net/gh/Vxiaolong666/HelloWeather@main/update.json"
+        "https://cdn.jsdelivr.net/gh/Vxiaolong666/HelloMeetWeather@main/update.json"
     private const val GITHUB_LATEST =
-        "https://api.github.com/repos/Vxiaolong666/HelloWeather/releases/latest"
+        "https://api.github.com/repos/Vxiaolong666/HelloMeetWeather/releases/latest"
     private const val GITHUB_RELEASE_FEED =
-        "https://api.github.com/repos/Vxiaolong666/HelloWeather/releases?per_page=8"
+        "https://api.github.com/repos/Vxiaolong666/HelloMeetWeather/releases?per_page=8"
     private val GITEE_MANIFESTS = listOf(
         "https://gitee.com/loong66688/HelloWeather/raw/main/update.json",
         "https://gitee.com/loong66688/HelloWeather/raw/master/update.json",
+        "https://gitee.com/loong66688/ZhishengWeather/raw/main/update.json",
     )
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true }
