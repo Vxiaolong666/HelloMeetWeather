@@ -200,16 +200,16 @@ internal fun AboutPage(
                     footer = "免费开源、无广告、简单优雅",
                 ) {
                     MochiListRow(
-                        "稽品飞车",
-                        subtitle = "Mochi 作者（feice11）",
+                        "开发者信息",
+                        subtitle = "作者Vxiaolong666、727w7w8w",
                         leading = {
                             MochiAvatarButton(onClick = { open(GitHub) }, size = 48.dp) {
                                 Text("飞", style = MochiTheme.textStyles.titleSmall.emphasized(), color = cs.onSecondaryContainer)
                             }
                         },
                     )
-                    LinkRow("GitHub", "feice11", Icons.GITHUB, IconColors(Color(0xFF24292F), Color.White)) { open(GitHub) }
-                    LinkRow("爱发电", "hellowather", Icons.HEART, IconColors(Color(0xFF946CE6), Color.White)) { open(AfdianCreator) }
+                    LinkRow("GitHub", "Vxiaolong666", Icons.GITHUB, IconColors(Color(0xFF24292F), Color.White)) { open(GitHub) }
+                    LinkRow("爱发电", "yyyolala", Icons.HEART, IconColors(Color(0xFF946CE6), Color.White)) { open(AfdianCreator) }
                 }
             }
             // —— 软件更新：检查新版本与查看更新日志，直接在设置内弹层 ——

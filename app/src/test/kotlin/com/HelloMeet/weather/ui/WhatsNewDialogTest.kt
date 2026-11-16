@@ -9,8 +9,8 @@ import org.junit.Test
 class WhatsNewDialogTest {
     @Test
     fun `release notes show current changes without forced empty page height`() {
-        assertEquals("0.1-beta14", WhatsNewVersion)
-        assertEquals("10.8 → 14", WhatsNewVersionRange)
+        assertEquals("1.0", WhatsNewVersion)
+        assertEquals("BETA 14 → 1.0", WhatsNewVersionRange)
         val projectDir = File(requireNotNull(System.getProperty("user.dir")))
         val dialog = File(projectDir, "src/main/kotlin/com/HelloMeet/weather/ui/WhatsNewDialog.kt").readText()
         val activity = File(projectDir, "src/main/kotlin/com/HelloMeet/weather/MainActivity.kt").readText()

@@ -47,8 +47,8 @@ import com.HelloMeet.weather.ui.theme.LocalZhishengPalette
 import com.HelloMeet.weather.ui.theme.isPhosphorVista
 import kotlinx.coroutines.launch
 
-internal const val WhatsNewVersion = "0.1-beta14"
-internal val WhatsNewVersionRange = "10.8 → 14"
+internal const val WhatsNewVersion = "1.0"
+internal val WhatsNewVersionRange = "BETA 14 → 1.0"
 internal const val WhatsNewPreferenceFile = "zhisheng_whats_new"
 internal const val WhatsNewSeenKey = "last_seen_version"
 
@@ -98,7 +98,7 @@ internal fun WhatsNewDialogContent(
                     Text("遇见天气", color = p.textSecondary, fontSize = 13.sp, fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 }
-                Text("BETA ${WhatsNewVersion.substringAfter("beta")}", color = p.cyan, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                Text(if ("beta" in WhatsNewVersion.lowercase()) "BETA ${WhatsNewVersion.substringAfter("beta")}" else "v$WhatsNewVersion", color = p.cyan, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
                     modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(p.cyan.copy(alpha = .07f))
                         .padding(horizontal = 9.dp, vertical = 6.dp))
                 if (largeText) Spacer(Modifier.weight(1f))

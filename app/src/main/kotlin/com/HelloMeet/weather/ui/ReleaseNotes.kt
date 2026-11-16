@@ -8,17 +8,17 @@ internal data class ReleaseNotesSection(
     val id: String, val category: ReleaseNotesCategory, val title: String, val notes: List<ReleaseNote>,
 )
 
-/** Implementation changes since public beta10.5. Keep the current release summary short. */
+/** Implementation changes since public beta14. Keep the current release summary short. */
 internal val WhatsNewSections = listOf(
     ReleaseNotesSection("release", ReleaseNotesCategory.EXPERIENCE, "本次更新", listOf(
-        ReleaseNote("应用更名", "应用名称改为「遇见天气」，包名迁移到 com.HelloMeet.weather，并新增默认、多彩、简约三款启动图标。"),
-        ReleaseNote("页面转场", "全站统一转场入口，默认「打开应用式」；上一级没有可返回卡片时从角落展开与缩回，来源卡片可原路缩回。"),
-        ReleaseNote("更新与赞助", "关于页新增检查更新与更新日志入口，赞助者支持通过爱发电查看。"),
-        ReleaseNote("定位与设置", "定位反馈完整展示识别地址、精度与时间，设置页说明文字与图标选项一并整理。"),
+        ReleaseNote("应用更名", "应用名称改为「遇见天气」，包名迁移到 com.HelloMeet.weather，启动图标提供默认、多彩、简约三款。"),
+        ReleaseNote("页面转场", "霞光、星空拍摄、海岸气象改为路由页，首页天气回看、雷达、降水与城市管理统一从来源卡片展开与缩回。"),
+        ReleaseNote("检查更新", "检查更新改为全新卡片页面，显示版本说明、下载进度与百分比，失败可直接重试。"),
+        ReleaseNote("更新日志", "关于页新增当前版本更新与历史更新日志两个独立入口，历史版本随包内置、离线可查。"),
     )),
     ReleaseNotesSection("weather", ReleaseNotesCategory.WEATHER, "天气与空气", listOf(
-        ReleaseNote("天气详情", "新增八类可视化详情页、48 小时天气、多日天气预报与未来 15 日逐日详情。"),
-        ReleaseNote("空气质量", "新增未来 24 小时摘要、昨日同期对比与全国排名卡片。"),
+        ReleaseNote("全国排名", "新增生态环境部空气质量全国排名，按城市上级匹配并显示全国排名与百分比。"),
+        ReleaseNote("天气详情", "新增 48 小时天气页与未来 15 日逐日详情，八类指标支持渐变图表与选点交互。"),
         ReleaseNote("公告", "公告列表支持下拉刷新，正文支持 Markdown 与 HTML 混排及图片预览。"),
     )),
 )
