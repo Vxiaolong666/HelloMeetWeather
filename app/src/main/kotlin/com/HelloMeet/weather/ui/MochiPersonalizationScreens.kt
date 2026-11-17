@@ -316,6 +316,22 @@ internal fun MochiGlassSettingsPage(prefs: MochiUiPrefs) {
                             )
                         },
                     )
+                    if (ios27) {
+                        MochiListSliderRow(
+                            value = prefs.glassLight,
+                            onValueChange = { scope.launch { SettingsRepository.setMochiGlassLight(it) } },
+                            valueRange = -1f..1f,
+                            title = "日间亮度",
+                            valueText = "${(prefs.glassLight * 100).roundToInt()}%",
+                        )
+                        MochiListSliderRow(
+                            value = prefs.glassDark,
+                            onValueChange = { scope.launch { SettingsRepository.setMochiGlassDark(it) } },
+                            valueRange = -1f..1f,
+                            title = "夜间亮度",
+                            valueText = "${(prefs.glassDark * 100).roundToInt()}%",
+                        )
+                    }
                     MochiListSliderRow(
                         value = prefs.glassTint,
                         onValueChange = { scope.launch { SettingsRepository.setMochiGlassTint(it) } },
@@ -918,14 +934,14 @@ internal fun MochiTabBarSettingsPage(prefs: MochiUiPrefs) {
     }
 }
 
-private val MochiGraphicsLevels = listOf("中" to "mid", "高" to "high", "极致" to "extra")
+internal val MochiGraphicsLevels = listOf("中" to "mid", "高" to "high", "超高" to "extra")
 
 /**
  * 三档各自的填充渐变，保留项目原有的「蓝 → 紫流动渐变 + 星点」设计：
- * 中档补齐柔和的磷光青 → 蓝，高档是库 CodexBlue → 紫，极致把这套蓝紫推到更浓。
+ * 中档补齐柔和的磷光青 → 蓝，高档是库 CodexBlue → 紫，超高把这套蓝紫推到更浓。
  * 每档三个色标，切换档位时用 animateColorAsState 让渐变平滑过渡。
  */
-private val GraphicsGradients = listOf(
+internal val GraphicsGradients = listOf(
     listOf(Color(0xFF2E9FB8), Color(0xFF3189C9), Color(0xFF3D7FD1)),
     listOf(Color(0xFF339CFF), Color(0xFF5C82F2), Color(0xFF8B55EF)),
     listOf(Color(0xFF2E86FF), Color(0xFF7A4BF0), Color(0xFFB45CF7)),
@@ -972,8 +988,8 @@ internal fun MochiGraphicsSettingsPage(prefs: MochiUiPrefs) {
             MochiListSection(
                 header = "档位",
                 footer = "点哪去哪、拖动跟手，每过一档轻震并带回弹吸附。三档各有自己的填充渐变：" +
-                    "中是磷光青蓝，高是蓝紫（原设计），极致是更浓的蓝紫。中：关闭 AGSL 着色器；" +
-                    "高（默认）：全部开启；极致：模糊半径 ×1.5 并选择最高刷新率，不打开 HDR。",
+                    "中是磷光青蓝，高是蓝紫（原设计），超高是更浓的蓝紫。中：关闭 AGSL 着色器；" +
+                    "高（默认）：全部开启；超高：模糊半径 ×1.5 并选择最高刷新率，不打开 HDR。",
             ) {
                 MochiListRow(
                     title = "当前档位",

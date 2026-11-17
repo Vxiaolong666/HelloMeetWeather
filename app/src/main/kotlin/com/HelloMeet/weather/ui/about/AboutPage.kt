@@ -42,7 +42,8 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.sin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import ui.feice.mochi.basic.MochiAvatarButton
+// 开发者信息行改用图标块后不再需要文字头像
+
 import ui.feice.mochi.basic.MochiToastHost
 import ui.feice.mochi.basic.Text
 import ui.feice.mochi.basic.rememberMochiToastState
@@ -202,10 +203,14 @@ internal fun AboutPage(
                     MochiListRow(
                         "开发者信息",
                         subtitle = "作者Vxiaolong666、727w7w8w",
+                        onClick = { open(GitHub) },
                         leading = {
-                            MochiAvatarButton(onClick = { open(GitHub) }, size = 48.dp) {
-                                Text("飞", style = MochiTheme.textStyles.titleSmall.emphasized(), color = cs.onSecondaryContainer)
-                            }
+                            AppIcon(
+                                Icons.CODE,
+                                Tone.Primary.tile(),
+                                MochiListDefaults.LeadingSize,
+                                corner = MochiListDefaults.LeadingCorner,
+                            )
                         },
                     )
                     LinkRow("GitHub", "Vxiaolong666", Icons.GITHUB, IconColors(Color(0xFF24292F), Color.White)) { open(GitHub) }

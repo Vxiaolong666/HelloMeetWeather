@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import com.HelloMeet.weather.model.City
 import com.HelloMeet.weather.model.CoordinateKind
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.flow.first
 import java.util.Locale
@@ -72,8 +73,8 @@ object LocationSource {
 
     // Native coordinates become usable before the bounded address lookup starts.
     suspend fun locate(context: Context, onCoordinatesReady: suspend (Result.Ok) -> Boolean = { true }): Result {
-        if (!hasPermission(context)) { ServiceDiagnostics.noteLocation("permission_denied"); return Result.Failed("未授予位置权限") }
-        if (!locationEnabledOnDevice(context)) { ServiceDiagnostics.noteLocation("provider_disabled"); return Result.Failed("系统定位服务未开启") }
+        if (!hasPermission(context)) { ServiceDiagnostics.noteLocation("permission_denied"); LocationServiceLog.warn("定位", "未授予位置权限"); return Result.Failed("未授予位置权限") }
+        if (!locationEnabledOnDevice(context)) { ServiceDiagnostics.noteLocation("provider_disabled"); LocationServiceLog.warn("定位", "系统定位服务未开启"); return Result.Failed("系统定位服务未开启") }
         // First-run consent/precision writes can overlap city initialization.
         // Wait for them instead of making the first explicit tap fail immediately.
         val startVersion = reminderDeliveryGate.awaitContextVersion()
@@ -83,8 +84,9 @@ object LocationSource {
         val preciseRequested = SettingsRepository.preciseLocationEnabled.first()
         val preciseGranted = preciseRequested && hasPrecisePermission(context)
         val loc = currentLocation(context, preferGps = preciseGranted)
-            ?: run { ServiceDiagnostics.noteLocation("timeout"); return Result.Failed("暂未取得位置，请检查系统定位及网络后重试，也可手动选择城市") }
+            ?: run { ServiceDiagnostics.noteLocation("timeout"); LocationServiceLog.error("定位", "暂未取得位置（超时）"); return Result.Failed("暂未取得位置，请检查系统定位及网络后重试，也可手动选择城市") }
         ServiceDiagnostics.noteLocation("success")
+        LocationServiceLog.info("定位", "取得坐标 provider=${loc.provider ?: "未知"} 精度=${loc.accuracyMeters?.let { "${it.toInt()}m" } ?: "未知"}")
         if (!hasPermission(context)) return Result.Failed("位置权限已关闭，已保留原地点")
         if (reminderDeliveryGate.contextVersion() != startVersion ||
             SettingsRepository.preciseLocationEnabled.first() != preciseRequested ||
@@ -92,6 +94,8 @@ object LocationSource {
         val granted = preciseGranted && hasPrecisePermission(context)
         val currentFix = LocationFixPolicy.isCurrent(loc, System.currentTimeMillis(), android.os.SystemClock.elapsedRealtimeNanos())
         val canStreet = granted && currentFix && LocationFixPolicy.canResolveStreet(loc)
+        if (preciseRequested && !canStreet) LocationServiceLog.warn("定位",
+            "街道级前置未满足：精确权限=${if (granted) "已授" else "未授"} 定位新鲜=${if (currentFix) "是" else "否"} 精度≤100m=${LocationFixPolicy.canResolveStreet(loc)}")
         val measured = measuredLocationCity(loc, granted)
         fun result(city: City, resolved: Boolean) = Result.Ok(city, when {
             !preciseRequested -> StreetStatus.NOT_REQUESTED
@@ -116,7 +120,20 @@ object LocationSource {
         } ?: measured
         val finalCity = enriched.copy(precisePermissionGranted = stillFine,
             street = enriched.street.takeIf { stillFine })
-        return result(finalCity, finalCity.street != null)
+        val finalResult = result(finalCity, finalCity.street != null)
+        val ok = finalResult as Result.Ok
+        LocationServiceLog.info("定位", "生效：${ok.city.name}${ok.city.street?.let { "·$it" } ?: ""} " +
+            "服务商=${ok.city.addressSource ?: "system"} 街道状态=${ok.streetStatus}")
+        LocationServiceLog.recordResolution(LocationServiceLog.Resolution(
+            timeMillis = System.currentTimeMillis(),
+            engine = SettingsRepository.locationEngine.first().cn,
+            source = ok.city.addressSource ?: "system",
+            street = ok.city.street,
+            streetStatus = ok.streetStatus,
+            accuracyMeters = ok.accuracyMeters,
+            fixAgeSeconds = ok.fixAgeSeconds,
+        ))
+        return finalResult
     }
 
     private suspend fun resolveLabel(context: Context, measured: City, streets: Boolean, credentials: PlaceCredentials): City? {
@@ -142,17 +159,28 @@ object LocationSource {
         val pref = SettingsRepository.locationEngine.first()
         fun engineRank(engine: LocationEnginePref): Int =
             if (pref == LocationEnginePref.AUTO || engine == pref) 0 else 1
-        if (credentials.amap.isNotBlank() && (streets || credentials.sharedPlace.enabled)) providers += LocationEnginePref.AMAP to {
+        LocationServiceLog.info("逆地理", "引擎偏好=${pref.cn} 街道级=${if (streets) "需要" else "仅行政区"}")
+        if (credentials.amap.isBlank()) {
+            LocationServiceLog.info("逆地理", "高德未尝试：" +
+                if (SettingsRepository.developerMode.first()) "未配置 Web 服务 Key" else "开发者模式未开启，凭据不加载")
+        } else if (!streets && !credentials.sharedPlace.enabled) {
+            LocationServiceLog.info("逆地理", "高德未尝试：未开启街道级定位，且未启用遇见位置服务")
+        }
+        if (credentials.amap.isNotBlank() && (streets || credentials.sharedPlace.enabled)) providers += LocationEnginePref.AMAP to logged(LocationEnginePref.AMAP) {
             cached("amap:" + credentials.amap) {
                 val r = AmapApi.reverseStreetFromWgs84(credentials.amap, lat, lon, null)
-                if (!r.ok) throw PlaceServiceException(r.failure ?: amapFailure(r.infocode))
+                r.detail?.let { LocationServiceLog.info("逆地理", "高德返回：$it") }
+                if (!r.ok) {
+                    LocationServiceLog.warn("逆地理", "高德失败：${r.info ?: "未知原因"}${r.infocode?.let { "（$it）" } ?: ""}")
+                    throw PlaceServiceException(r.failure ?: amapFailure(r.infocode))
+                }
                 preciseAddressCity(r.district, r.city, r.province, r.street, null, null, lat, lon, source = "amap")
             }
         }
-        if (credentials.sharedPlace.enabled) providers += LocationEnginePref.SHARED to {
+        if (credentials.sharedPlace.enabled) providers += LocationEnginePref.SHARED to logged(LocationEnginePref.SHARED) {
             cached("shared") { SharedPlaceApi.reverse(context, measured, streets, credentials.sharedPlace) }
         }
-        providers += LocationEnginePref.SYSTEM to {
+        providers += LocationEnginePref.SYSTEM to logged(LocationEnginePref.SYSTEM) {
             cached("system") {
                 if (!Geocoder.isPresent()) throw PlaceServiceException(PlaceFailure.UNAVAILABLE)
                 val address = geocodeAddress(context, lat, lon) ?: return@cached null
@@ -160,7 +188,7 @@ object LocationSource {
                     address.subLocality, address.thoroughfare, address.featureName, lat, lon) ?: return@cached null
             }
         }
-        if (streets && credentials.baidu.isNotBlank()) providers += LocationEnginePref.BAIDU to {
+        if (streets && credentials.baidu.isNotBlank()) providers += LocationEnginePref.BAIDU to logged(LocationEnginePref.BAIDU) {
             cached("baidu:" + credentials.baidu) {
                 val r = BaiduApi.reverseStreetFromWgs84(credentials.baidu, lat, lon)
                 if (!r.ok) throw PlaceServiceException(PlaceFailure.UNAVAILABLE)
@@ -169,8 +197,26 @@ object LocationSource {
         }
         val outcome = coordinatePlaceSearch(providers.sortedBy { engineRank(it.first) }.map { it.second },
             isCurrent = { currentPlaceCredentials() == credentials })
+        if (outcome.cities.isEmpty() && outcome.failure != PlaceFailure.CONFIG_CHANGED) {
+            LocationServiceLog.warn("逆地理", "所有引擎均未返回新结果，保留行政区或坐标")
+        }
         return if (outcome.failure == PlaceFailure.CONFIG_CHANGED) null
             else outcome.cities.firstOrNull() ?: administrativeLabel
+    }
+
+    /** 日志包装：记录每个逆地理引擎的尝试与失败降级，异常原样抛出交给协调器。 */
+    private fun logged(engine: LocationEnginePref, block: suspend () -> List<City>): suspend () -> List<City> = {
+        LocationServiceLog.info("逆地理", "尝试 ${engine.cn}…")
+        try {
+            val list = block()
+            if (list.isNotEmpty()) LocationServiceLog.info("逆地理", "${engine.cn} 命中：${list.first().name}")
+            list
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            LocationServiceLog.warn("逆地理", "${engine.cn} 失败：${e.message ?: e.javaClass.simpleName}")
+            throw e
+        }
     }
 
     @Suppress("MissingPermission")

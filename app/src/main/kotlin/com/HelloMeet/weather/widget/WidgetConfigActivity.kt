@@ -19,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.HelloMeet.weather.data.CityRepository
+import com.HelloMeet.weather.ui.AppTransitions
 import kotlinx.coroutines.*
 
 class WidgetLaunchActivity : ComponentActivity() {
@@ -172,6 +173,12 @@ class WidgetConfigActivity : ComponentActivity() {
         // pausing/resuming it when returning from the launcher's confirmation.
         monitorPin()
     }
+    override fun finish() {
+        super.finish()
+        // 退出按当前「应用转场」设置执行：打开应用式 / 无动画不再走系统默认的左右侧滑。
+        AppTransitions.applyActivityExit(this)
+    }
+
     private fun requestNotification(value: NotificationSettings) {
         // Editing a place or icon must not repeatedly reopen permission settings.
         if (value.enabled == notification.enabled && value.alertsEnabled == notification.alertsEnabled) {

@@ -50,6 +50,7 @@ MochiLinearGauge(used, range = 0f..128f, label = "Storage", valueSuffix = " GB")
   - Ticks run around the inside of the arc
   - The value and unit sit in the middle
   - The minimum and maximum labels sit on either side of the opening
+  - For a gradient arc (e.g. a continuous color scale), pass `progressBrush` to `MochiGauge` / `MochiProgressRing` and optionally override `trackColor`; `numberColor` / `labelColor` override the center text colors and `valueText` shows a fixed string (like "--") instead of the counter. All of these are off by default
 - `MochiLinearGauge`: a capacity bar with rounded ends
   - A title and the current value sit above the bar
   - The minimum and maximum labels sit below its two ends

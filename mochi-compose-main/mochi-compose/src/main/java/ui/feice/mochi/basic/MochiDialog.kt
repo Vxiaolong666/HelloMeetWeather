@@ -91,6 +91,7 @@ public enum class MochiDialogActionRole {
  *
  * @param holdToConfirm 要按住才生效（[MochiHoldButton]）：按住时一层颜色从左往右填满，填满才执行、关闭；
  *   用在「看完再关」的提示或危险操作上
+ * @param closeOnClick 点完之后是否自动关闭。表单类对话框在校验失败时要保持打开，传 false 由调用方自己控制 visible
  */
 @Immutable
 public class MochiDialogAction(
@@ -98,6 +99,7 @@ public class MochiDialogAction(
     public val role: MochiDialogActionRole = MochiDialogActionRole.Default,
     public val enabled: Boolean = true,
     public val holdToConfirm: Boolean = false,
+    public val closeOnClick: Boolean = true,
     public val onClick: () -> Unit = {},
 )
 
@@ -351,7 +353,7 @@ public fun MochiDialog(
                         }
                         DialogButtons(actions, colors, inset) { a ->
                             a.onClick()
-                            currentOnDismiss()
+                            if (a.closeOnClick) currentOnDismiss()
                         }
                     }
                 }

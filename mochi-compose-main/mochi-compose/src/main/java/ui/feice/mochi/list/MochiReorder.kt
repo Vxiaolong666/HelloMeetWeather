@@ -57,6 +57,9 @@ import ui.feice.mochi.utils.MochiHaptics
 public class MochiReorderState internal constructor() {
     internal var onMove: (Int, Int) -> Unit = { _, _ -> }
 
+    /** 浮起时的放大倍数；1 = 和原来一样大（浮起行保持卡片原宽，不会溢出卡片） */
+    internal var liftScale: Float = 1.03f
+
     /** 各行在父布局里的位置（key → 顶部 / 高度 / 下标） */
     internal val geoms = HashMap<Any, RowGeom>()
 
@@ -82,6 +85,12 @@ public class MochiReorderState internal constructor() {
 
     /** 每次松手 +1：别的行的让位偏移在这一帧直接归零（布局已经换了顺序，偏移由新位置接上） */
     internal var epoch by mutableIntStateOf(0)
+
+    /** 行被回收 / 手势被打断时把这行的拖动状态直接作废，避免它一直停在浮起状态 */
+    internal fun abandon(key: Any) {
+        if (draggingKey == key) draggingKey = null
+        if (settleKey == key && draggingKey == null) settleKey = null
+    }
 
     internal fun start(key: Any) {
         val g = geoms[key] ?: return
@@ -152,20 +161,28 @@ public class MochiReorderState internal constructor() {
         dragDy = 0f
         val s = settle
         val spring = MochiMotions.responseSpring(0.36f, 0.86f)
-        kotlinx.coroutines.coroutineScope {
-            launch { lift.animateTo(0f, MochiMotions.responseSpring(0.3f, 1f)) }
-            s.animateTo(0f, spring)
+        try {
+            kotlinx.coroutines.coroutineScope {
+                launch { lift.animateTo(0f, MochiMotions.responseSpring(0.3f, 1f)) }
+                s.animateTo(0f, spring)
+            }
+        } finally {
+            // 动画被取消（页面重组、行被回收）时也必须收尾，否则这一行会一直停在浮起状态。
+            abandon(key)
         }
-        if (settleKey == key && draggingKey == null) settleKey = null
     }
 }
 
 internal class RowGeom(var top: Float, var height: Float, var index: Int)
 
-/** 创建拖动排序状态；[onMove] 在松手时调用，把 from 处的数据挪到 to */
+/** 创建拖动排序状态；[onMove] 在松手时调用，把 from 处的数据挪到 to；[liftScale] 是浮起时的放大倍数（1 = 不放大） */
 @Composable
-public fun rememberMochiReorderState(onMove: (from: Int, to: Int) -> Unit): MochiReorderState {
+public fun rememberMochiReorderState(
+    liftScale: Float = 1.03f,
+    onMove: (from: Int, to: Int) -> Unit,
+): MochiReorderState {
     val state = remember { MochiReorderState() }
+    state.liftScale = liftScale
     val current by rememberUpdatedState(onMove)
     state.onMove = { a, b -> current(a, b) }
     return state
@@ -225,6 +242,8 @@ private class ReorderNode(var state: MochiReorderState, var key: Any, var index:
 
     override fun onDetach() {
         if (state.geoms[key]?.index == index) state.geoms.remove(key)
+        // 行在拖动/落位途中被回收时，手势协程不会走 release()，这里兜底把状态收干净。
+        state.abandon(key)
     }
 
     override fun onPlaced(coordinates: LayoutCoordinates) {
@@ -290,7 +309,7 @@ private class ReorderNode(var state: MochiReorderState, var key: Any, var index:
                     else -> shift.value
                 }
                 val l = if (lifting || settling) state.lift.value else 0f
-                val s = 1f + 0.03f * l
+                val s = 1f + (state.liftScale - 1f) * l
                 scaleX = s
                 scaleY = s
                 // 系统阴影的底边实影（spot）压到四成：拖起来的行只要一圈淡淡的浮起感，不要底下一道又硬又重的影子

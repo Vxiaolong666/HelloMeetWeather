@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -36,6 +37,7 @@ import ui.feice.mochi.theme.MochiTheme
  * - [progress] = null：不确定进度，一段弧绕圈转（App Store「等待中」那种）
  * - 轨道默认是进度色的 30%
  * - [sweep] < 360：开口的仪表（iOS 的 Gauge），开口朝下，轨道和进度都在这段弧里
+ * - [progressBrush] 给值：进度弧改用画笔填充（如 sweepGradient 的连续色阶），[color] 不再参与进度弧
  *
  * @param content 圈中间的内容（停止方块、数值）
  */
@@ -48,6 +50,7 @@ public fun MochiProgressRing(
     color: Color = MochiTheme.colorScheme.primary,
     trackColor: Color = color.copy(alpha = color.alpha * MochiProgressDefaults.TrackAlpha),
     sweep: Float = 360f,
+    progressBrush: Brush? = null,
     content: (@Composable () -> Unit)? = null,
 ) {
     val p by animateFloatAsState((progress ?: 0f).coerceIn(0f, 1f), MochiMotions.responseSpring(0.5f, 0.9f), label = "ring")
@@ -73,7 +76,8 @@ public fun MochiProgressRing(
                     // 不确定进度：四分之一圈的弧一直绕着转
                     drawArc(color, angle - 90f, 90f, false, topLeft, arcSize, style = stroke)
                 } else if (p > 0f) {
-                    drawArc(color, start, sweep * p, false, topLeft, arcSize, style = stroke)
+                    if (progressBrush != null) drawArc(progressBrush, start, sweep * p, false, topLeft, arcSize, style = stroke)
+                    else drawArc(color, start, sweep * p, false, topLeft, arcSize, style = stroke)
                 }
             },
         contentAlignment = Alignment.Center,

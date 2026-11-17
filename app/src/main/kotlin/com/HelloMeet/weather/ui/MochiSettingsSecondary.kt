@@ -1,5 +1,6 @@
 package com.HelloMeet.weather.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -28,13 +30,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.HelloMeet.weather.R
 import com.HelloMeet.weather.data.AmbienceLevel
 import com.HelloMeet.weather.data.CityRepository
 import com.HelloMeet.weather.data.LocationEnginePref
+import com.HelloMeet.weather.data.LocationServiceLog
+import com.HelloMeet.weather.data.LocationSource
 import com.HelloMeet.weather.data.ModuleSourcePolicy
 import com.HelloMeet.weather.data.SecretStore
 import com.HelloMeet.weather.data.SettingsRepository
@@ -50,6 +55,7 @@ import com.HelloMeet.weather.ui.home.SimulatedWeatherSurface
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ui.feice.mochi.basic.MochiBarButton
 import ui.feice.mochi.basic.MochiButton
@@ -59,6 +65,7 @@ import ui.feice.mochi.basic.MochiListTextFieldRow
 import ui.feice.mochi.basic.MochiSegmentedControl
 import ui.feice.mochi.effect.content.MochiBlurText
 import ui.feice.mochi.list.MochiListDefaults
+import ui.feice.mochi.list.MochiListCard
 import ui.feice.mochi.list.MochiListDisclosure
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
@@ -285,6 +292,7 @@ fun MochiWeatherSourceScreen(
 fun MochiLocationEngineScreen(
     onBack: () -> Unit,
     onManageProviders: () -> Unit = {},
+    onOpenLog: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val current by SettingsRepository.locationEngine.collectAsState(initial = LocationEnginePref.AUTO)
@@ -325,6 +333,17 @@ fun MochiLocationEngineScreen(
                     title = current.cn,
                     subtitle = "定位地理数据当前优先从此服务获取",
                     leading = { PhosphorIcon(locationEngineIcon(current), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
+                )
+                val resolution = LocationServiceLog.lastResolution
+                MochiListRow(
+                    title = "当前服务商",
+                    value = resolution?.let { locationSourceCn(it.source) } ?: "尚未定位",
+                    subtitle = resolution?.let {
+                        locationStreetStatusCn(it.streetStatus) +
+                            " · ${LocationServiceLog.formatTime(it.timeMillis)}" +
+                            (it.street?.let { street -> " · $street" } ?: "")
+                    } ?: "完成一次定位后在此显示实际返回地址的服务商",
+                    leading = { PhosphorIcon(R.drawable.ph_map_pin, null, Modifier.size(22.dp), mochiLeadingIconTint()) },
                 )
             }
         }
@@ -374,7 +393,129 @@ fun MochiLocationEngineScreen(
                 )
             }
         }
+        item {
+            MochiListSection(header = "诊断") {
+                MochiListRow(
+                    title = "定位服务日志",
+                    subtitle = "查看定位与逆地理的尝试、失败与降级记录",
+                    leading = { PhosphorIcon(R.drawable.ph_list, null, Modifier.size(22.dp), mochiLeadingIconTint()) },
+                    chevron = true,
+                    modifier = Modifier.mochiNavSource(
+                        mochiSettingsSourceKey("settings.locationLog"),
+                        MochiListDefaults.SectionCorner,
+                        if (MochiTransitionConfig.sourceHighlight) {
+                            MochiTheme.colorScheme.primaryContainer
+                        } else {
+                            MochiDefaults.groupedContainer()
+                        },
+                    ),
+                    onClick = onOpenLog,
+                )
+            }
+        }
     }
+}
+
+/**
+ * 定位服务日志页：展示最近一次生效的服务商与内存中的定位/逆地理运行日志，
+ * 每 2 秒自动刷新，便于在「立即重新定位」后直接观察新增条目。
+ */
+@Composable
+fun MochiLocationLogScreen(onBack: () -> Unit) {
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2_000)
+            tick++
+        }
+    }
+    val entries = remember(tick) { LocationServiceLog.snapshot() }
+    val resolution = remember(tick) { LocationServiceLog.lastResolution }
+    val clipboard = LocalClipboardManager.current
+    fun reportText(): String = buildString {
+        append("遇见天气 定位诊断 ${LocationServiceLog.formatTime(System.currentTimeMillis())}\n")
+        append("当前服务商：")
+        append(resolution?.let { res ->
+            locationSourceCn(res.source) + "（" + locationStreetStatusCn(res.streetStatus) +
+                (res.street?.let { street -> " · $street" } ?: "") + "）"
+        } ?: "尚未定位")
+        append('\n')
+        LocationServiceLog.snapshot().forEach { entry ->
+            append("[${LocationServiceLog.formatTime(entry.timeMillis)} ${entry.level} ${entry.tag}] ${entry.message}\n")
+        }
+    }
+    MochiPageFrame(title = "定位服务日志", onBack = onBack, subtitle = "LOCATION LOG") {
+        item {
+            MochiListSection(header = "当前服务商") {
+                if (resolution == null) {
+                    MochiListRow(title = "尚未定位", subtitle = "完成一次定位后在此显示实际返回地址的服务商")
+                } else {
+                    MochiListRow(
+                        title = locationSourceCn(resolution.source),
+                        subtitle = locationStreetStatusCn(resolution.streetStatus) +
+                            " · ${LocationServiceLog.formatTime(resolution.timeMillis)}" +
+                            (resolution.street?.let { " · $it" } ?: ""),
+                    )
+                }
+            }
+        }
+        item {
+            MochiListSection(
+                header = "运行日志（${entries.size} 条）",
+                footer = "仅保存在本次运行内存中，不含 Key 与坐标；重启应用后清空。",
+            ) {
+                MochiListRow(
+                    title = "复制诊断信息",
+                    subtitle = "复制当前服务商与全部日志文本，便于反馈问题",
+                    onClick = { clipboard.setText(AnnotatedString(reportText())) },
+                )
+                MochiListRow(
+                    title = "清空日志",
+                    destructive = true,
+                    onClick = {
+                        LocationServiceLog.clear()
+                        tick++
+                    },
+                )
+            }
+        }
+        if (entries.isEmpty()) {
+            item {
+                MochiListSection {
+                    MochiListRow(title = "暂无日志：可在「数据与位置 → 立即重新定位」后返回本页查看")
+                }
+            }
+        } else {
+            // 每条日志都是卡片里的一行：按 8 条一张卡片分组，避免 200 条日志各画一张卡。
+            items(entries.asReversed().chunked(8)) { chunk ->
+                MochiListCard {
+                    chunk.forEach { entry ->
+                        MochiListRow(
+                            title = "${LocationServiceLog.formatTime(entry.timeMillis)} · ${entry.tag}",
+                            subtitle = entry.message,
+                            destructive = entry.level == LocationServiceLog.Level.ERROR,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun locationSourceCn(source: String): String = when (source) {
+    "amap" -> "高德定位"
+    "baidu" -> "百度定位"
+    "shared" -> "遇见位置服务"
+    else -> "系统定位"
+}
+
+private fun locationStreetStatusCn(status: LocationSource.StreetStatus?): String = when (status) {
+    null -> "尚未定位"
+    LocationSource.StreetStatus.NOT_REQUESTED -> "未开启街道级"
+    LocationSource.StreetStatus.RESOLVED -> "街道级已生效"
+    LocationSource.StreetStatus.APPROXIMATE_PERMISSION -> "仅大致位置权限"
+    LocationSource.StreetStatus.INSUFFICIENT_ACCURACY -> "定位精度不足"
+    LocationSource.StreetStatus.UNAVAILABLE -> "街道服务不可用"
 }
 
 /**
@@ -625,8 +766,17 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
             onDismiss = { pendingClear = null },
         )
     }
-    wizard?.let { kind ->
-        MochiProviderWizard(kind = kind, onClose = { wizard = null })
+    // 服务接入引导是叠在「服务接入」页上的整页（非库导航），进入 / 退出统一走 AppTransitions
+    // 的 contentTransform：打开应用式从小容器展开、缩回；无动画时立即切换，不再突然出现 / 消失。
+    val uiPrefs = rememberMochiUiPrefs()
+    val wizardStyle = PageTransitionStyle.from(uiPrefs.pageTransition)
+    val wizardMotion = MochiTransitionConfig.motionEnabled && systemAnimationsEnabled()
+    AnimatedContent(
+        targetState = wizard,
+        transitionSpec = { AppTransitions.contentTransform(wizardMotion, wizardStyle, uiPrefs.swipeBack) },
+        label = "provider-wizard",
+    ) { wizardKind ->
+        if (wizardKind != null) MochiProviderWizard(kind = wizardKind, onClose = { wizard = null })
     }
 }
 
@@ -639,19 +789,23 @@ fun MochiProviderAccessScreen(onBack: () -> Unit) {
 private fun MochiMapServiceSection() {
     val scope = rememberCoroutineScope()
     val saved by SettingsRepository.tiandituToken.collectAsState(initial = null)
-    var draft by rememberSaveable { mutableStateOf(saved.orEmpty()) }
+    // draft 为 null 表示还没开始编辑：回填已保存的 Key；之前只靠键盘 Done 提交，
+    // 不打 Done 直接返回就丢改动，现在输入即保存。
+    var draft by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(saved) { if (draft == null) draft = saved.orEmpty() }
+    val value = draft ?: saved.orEmpty()
     MochiListSection(
         header = "地图底图",
         footer = "填写天地图 Key 后，台风路径页改用官方天地图；留空回落 OpenFreeMap 公共底图。",
     ) {
         MochiListTextFieldRow(
-            value = draft,
-            onValueChange = { draft = it },
+            value = value,
+            onValueChange = {
+                draft = it
+                scope.launch { SettingsRepository.setTiandituToken(it) }
+            },
             label = "天地图 Key",
             placeholder = "留空使用 OpenFreeMap",
-            keyboardActions = KeyboardActions(onDone = {
-                scope.launch { SettingsRepository.setTiandituToken(draft) }
-            }),
         )
     }
 }

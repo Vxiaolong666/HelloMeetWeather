@@ -23,6 +23,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -56,6 +57,9 @@ public object MochiGaugeDefaults {
  *
  * @param value 当前值（在 [range] 里）
  * @param format 中间显示的整数，默认四舍五入
+ * @param progressBrush / [trackColor] 给值：进度弧用画笔填充（如连续色阶）、轨道用指定颜色，默认关闭
+ * @param numberColor / [labelColor] 给值：覆盖中心数值 / 标签文字颜色，默认走主题
+ * @param valueText 给值：中心显示这个固定文字（如「--」），代替计数器
  */
 @Composable
 public fun MochiGauge(
@@ -68,6 +72,11 @@ public fun MochiGauge(
     minLabel: String? = null,
     maxLabel: String? = null,
     color: Color = MochiTheme.colorScheme.primary,
+    progressBrush: Brush? = null,
+    trackColor: Color? = null,
+    numberColor: Color? = null,
+    labelColor: Color? = null,
+    valueText: String? = null,
     format: (Float) -> Long = { it.roundToLong() },
 ) {
     val span = (range.endInclusive - range.start).takeIf { it > 0f } ?: 1f
@@ -80,7 +89,9 @@ public fun MochiGauge(
             size = size,
             strokeWidth = strokeWidth,
             color = color,
+            trackColor = trackColor ?: color.copy(alpha = color.alpha * MochiProgressDefaults.TrackAlpha),
             sweep = MochiGaugeDefaults.Sweep,
+            progressBrush = progressBrush,
         )
         Canvas(Modifier.size(size)) {
             val sw = strokeWidth.toPx()
@@ -97,15 +108,17 @@ public fun MochiGauge(
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            MochiCounterText(
-                format(value),
-                style = MochiTheme.textStyles.body.copy(fontSize = (size.value * 0.24f).sp, fontWeight = FontWeight.SemiBold),
-                color = MochiTheme.colorScheme.onSurface,
-            )
+            val numberStyle = MochiTheme.textStyles.body.copy(fontSize = (size.value * 0.24f).sp, fontWeight = FontWeight.SemiBold)
+            val numberInk = numberColor ?: MochiTheme.colorScheme.onSurface
+            if (valueText != null) {
+                Text(valueText, style = numberStyle, color = numberInk, maxLines = 1)
+            } else {
+                MochiCounterText(format(value), style = numberStyle, color = numberInk)
+            }
             if (label !=
                 null
             ) {
-                Text(label, style = MochiTheme.textStyles.footnote, color = MochiTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(label, style = MochiTheme.textStyles.footnote, color = labelColor ?: MochiTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
         if (minLabel != null || maxLabel != null) {

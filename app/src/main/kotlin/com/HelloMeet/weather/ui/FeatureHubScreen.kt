@@ -68,6 +68,7 @@ import ui.feice.mochi.basic.MochiDialogAction
 import ui.feice.mochi.basic.MochiDialogActionRole
 import ui.feice.mochi.basic.MochiSkeleton
 import ui.feice.mochi.list.MochiListSection
+import ui.feice.mochi.navigation.rememberMochiNavSettled
 import ui.feice.mochi.shape.MochiCapsule
 import ui.feice.mochi.shape.MochiRoundedRectangle
 import ui.feice.mochi.theme.MochiTheme
@@ -93,7 +94,10 @@ fun FeatureHubScreen(
     var refreshTick by remember { mutableIntStateOf(0) }
     var selectedMetric by remember { mutableStateOf<FeatureMetric?>(null) }
     var state by remember { mutableStateOf(FeatureHubState(loading = true)) }
-    LaunchedEffect(latitude, longitude, refreshTick) {
+    // 照 demo 的骨架预载：转场没落定前只铺骨架、不发请求，落定后再取数并原位淡入。
+    val navSettled by rememberMochiNavSettled()
+    LaunchedEffect(latitude, longitude, refreshTick, navSettled) {
+        if (!navSettled) return@LaunchedEffect
         state = FeatureHubState(loading = true)
         state = FeatureHubFetcher.fetch(latitude, longitude)
     }
@@ -477,25 +481,38 @@ private fun LoadingBlock() {
         MochiSkeleton(loading = true, shape = MochiCapsule) {
             Text("正在获取特色数据", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
         }
-        MochiSkeleton(loading = true, shape = MochiRoundedRectangle(18.dp)) {
-            Box(Modifier.fillMaxWidth().height(170.dp))
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            repeat(3) {
-                MochiSkeleton(loading = true, modifier = Modifier.weight(1f), shape = MochiRoundedRectangle(10.dp)) {
-                    Box(Modifier.fillMaxWidth().height(62.dp))
+        // 照真实内容铺骨架：每一组都是「标题行 + 圆角卡片 + 指标网格」，尺寸与 FeaturePanel 一致，
+        // 数据回来时同一位置直接换上真内容，不会跳版。
+        repeat(4) {
+            Column {
+                MochiSkeleton(
+                    loading = true,
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
+                    shape = MochiCapsule,
+                ) {
+                    Box(Modifier.fillMaxWidth(0.42f).height(14.dp))
+                }
+                MochiListSection {
+                    Column(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        repeat(2) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                repeat(3) {
+                                    MochiSkeleton(
+                                        loading = true,
+                                        modifier = Modifier.weight(1f),
+                                        shape = MochiRoundedRectangle(10.dp),
+                                    ) {
+                                        Box(Modifier.fillMaxWidth().height(52.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            repeat(3) {
-                MochiSkeleton(loading = true, modifier = Modifier.weight(1f), shape = MochiRoundedRectangle(10.dp)) {
-                    Box(Modifier.fillMaxWidth().height(62.dp))
-                }
-            }
-        }
-        MochiSkeleton(loading = true, shape = MochiRoundedRectangle(18.dp)) {
-            Box(Modifier.fillMaxWidth().height(120.dp))
         }
     }
 }

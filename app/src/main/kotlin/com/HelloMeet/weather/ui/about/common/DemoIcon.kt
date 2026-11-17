@@ -109,6 +109,7 @@ internal object Icons {
 
     // 关于页
     val GITHUB = DemoIcon("logo-github")
+    val CODE = DemoIcon("code-slash")
     val BILIBILI = DemoIcon("tv")
     val GROUP = DemoIcon("people")
     val GIFT = DemoIcon("gift")

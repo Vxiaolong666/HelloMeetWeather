@@ -440,6 +440,25 @@ enum class HomeModule(val key: String, val cn: String, val en: String) {
     }
 }
 
+/** 「气象视界」模块内部可排序的小节：天空与星空（霞光/星空）、海岸。 */
+enum class AtlasContent(val key: String, val cn: String) {
+    SKY("sky", "天空与星空"),
+    COAST("coast", "海岸");
+
+    companion object {
+        val defaultOrder: List<AtlasContent> = listOf(SKY, COAST)
+
+        // 缺项（旧版本只存了一个、或之后新增小节）按默认序补在后面，读出来的永远是完整序列。
+        fun orderFrom(raw: String?): List<AtlasContent> {
+            if (raw.isNullOrBlank()) return defaultOrder
+            val parsed = raw.split(',')
+                .mapNotNull { key -> entries.firstOrNull { it.key == key.trim() } }
+                .distinct()
+            return parsed + defaultOrder.filterNot(parsed::contains)
+        }
+    }
+}
+
 // 设置仓储
 object SettingsRepository {
     /** 液态玻璃默认对全部浮层生效；单项关闭后该处退回纯色（菜单、警告框、面板按组件库的回退顺序取上一档）。 */
@@ -515,6 +534,7 @@ object SettingsRepository {
     private val KEY_HOME_SURFACE_STYLE = stringPreferencesKey("home_surface_style")
     private val KEY_LAST_AUTO_LOCATE = longPreferencesKey("last_auto_locate_at")
     private val KEY_MODULE_ORDER = stringPreferencesKey("home_module_order")
+    private val KEY_ATLAS_CONTENT_ORDER = stringPreferencesKey("atlas_content_order")
     private val KEY_RADAR_SOURCE = stringPreferencesKey("radar_source")
     private val KEY_DEVELOPER = booleanPreferencesKey("developer_mode")
     private val KEY_LANDSCAPE_STANDBY = booleanPreferencesKey("landscape_standby")
@@ -590,7 +610,8 @@ object SettingsRepository {
     }
     // 街道级定位为单独的可选能力；关闭时仍只使用粗略位置。
     val preciseLocationEnabled: Flow<Boolean> by lazy {
-        store.data.map { it[KEY_PRECISE_LOCATION] ?: false }.distinctUntilChanged()
+        // 默认开启高精度定位：首次引导里也把它放在定位这一步；用户主动关掉后仍按存档值。
+        store.data.map { it[KEY_PRECISE_LOCATION] ?: true }.distinctUntilChanged()
     }
     val preciseLocationPermissionAsked: Flow<Boolean> by lazy {
         store.data.map { it[KEY_PRECISE_LOCATION_ASKED] ?: false }.distinctUntilChanged()
@@ -681,6 +702,11 @@ object SettingsRepository {
     }
     val moduleOrder: Flow<List<HomeModule>> by lazy {
         store.data.map { HomeModule.orderFrom(it[KEY_MODULE_ORDER]) }.distinctUntilChanged()
+    }
+
+    // 「气象视界」内部小节顺序：天空与星空 / 海岸，首页按这个顺序排。
+    val atlasContentOrder: Flow<List<AtlasContent>> by lazy {
+        store.data.map { AtlasContent.orderFrom(it[KEY_ATLAS_CONTENT_ORDER]) }.distinctUntilChanged()
     }
 
     // 雷达页数据源：RainViewer / 彩云拼图，用户选择后持久化
@@ -926,5 +952,10 @@ object SettingsRepository {
         it[KEY_MODULE_ORDER] = HomeModule.ORDER_MARKER + HomeModule.orderFrom(
             HomeModule.ORDER_MARKER + order.joinToString(",") { module -> module.key })
             .joinToString(",") { module -> module.key }
+    }
+
+    suspend fun setAtlasContentOrder(order: List<AtlasContent>) = store.edit {
+        it[KEY_ATLAS_CONTENT_ORDER] = AtlasContent.orderFrom(order.joinToString(",") { item -> item.key })
+            .joinToString(",") { item -> item.key }
     }
 }

@@ -27,6 +27,8 @@ internal data class AmapLookupResult(
     val city: String? = null,
     val province: String? = null,
     val failure: PlaceFailure? = null,
+    /** 诊断用：解析出的关键字段摘要，不含 Key 与坐标。 */
+    val detail: String? = null,
 )
 
 internal data class AmapPlaceResult(
@@ -72,12 +74,10 @@ internal object AmapApi {
                     "coordsys" to "gps",
                 ),
             )
-            if (!converted.result.ok) {
-                PlaceServiceGate.record(candidate, "amap:reverse", amapFailure(converted.result.infocode))
-                return converted.result
-            }
+            // 坐标转换失败不再中止链路：直接用原始 WGS 坐标尝试逆地理，
+            // 高德可容忍约百米级偏移，避免 regeo 请求根本不发出。
             val location = converted.result.formattedAddress?.takeIf(::validCoordinatePair)
-                ?: return AmapLookupResult(false, info = "坐标转换未返回有效结果")
+                ?: coordinate(longitude, latitude)
             reverseGcj(candidate, location, cityName).also { result ->
                 if (result.ok) PlaceServiceGate.clear(candidate, "amap:reverse")
                 else PlaceServiceGate.record(candidate, "amap:reverse", amapFailure(result.infocode))
@@ -160,7 +160,7 @@ internal object AmapApi {
             query = mapOf(
                 "key" to key,
                 "location" to location,
-                "extensions" to "base",
+                "extensions" to "all",
                 "radius" to "1000",
                 "roadlevel" to "0",
             ),
@@ -170,13 +170,19 @@ internal object AmapApi {
         val regeocode = root["regeocode"]?.asObject()
             ?: return AmapLookupResult(false, info = "高德未返回逆地理结果")
         val component = regeocode["addressComponent"]?.asObject()
-        val township = component?.string("township")
-        val street = component?.get("streetNumber")?.asObject()?.string("street")
+        val township = component?.textValue("township")
+        // 高德在 streetNumber.street 无数据时返回空数组 []，有值时返回字符串，两种都要兼容。
+        val street = component?.get("streetNumber")?.asObject()?.textValue("street")
         val formatted = regeocode.string("formatted_address")
         val adcode = component?.string("adcode")
+        // 乡镇与街道号皆空时（城区常见），用最近的 POI/AOI 名称兜底成街道级标签。
+        val poiName = (regeocode["pois"] as? JsonArray)
+            ?.mapNotNull { it.asObject()?.string("name") }?.firstOrNull()
+        val aoiName = (regeocode["aois"] as? JsonArray)
+            ?.mapNotNull { it.asObject()?.string("name") }?.firstOrNull()
         return AmapLookupResult(
             ok = true,
-            street = amapStreetLabel(township, street, cityName),
+            street = amapStreetLabel(township, street ?: poiName ?: aoiName, cityName),
             formattedAddress = formatted,
             info = raw.result.info,
             infocode = raw.result.infocode,
@@ -184,6 +190,8 @@ internal object AmapApi {
             district = component?.string("district"),
             city = component?.string("city") ?: component?.string("province"),
             province = component?.string("province"),
+            detail = "完整地址=${formatted ?: "无"} 乡镇=${township ?: "空"} 街道号=${street ?: "空"} " +
+                "POI=${poiName ?: "空"} AOI=${aoiName ?: "空"}",
         )
     }
 
@@ -232,6 +240,16 @@ private fun JsonElement.asObject(): JsonObject? = this as? JsonObject
 private fun JsonObject.string(name: String): String? =
     runCatching { get(name)?.jsonPrimitive?.contentOrNull?.trim() }
         .getOrNull()?.takeIf(String::isNotBlank)
+
+/** 高德 v3 的空字段可能返回 []，有值时返回字符串；两种形态都收敛为首个非空文本。 */
+private fun JsonElement.textValueOrNull(): String? = when (this) {
+    is kotlinx.serialization.json.JsonPrimitive -> runCatching { contentOrNull?.trim() }.getOrNull()
+        ?.takeIf(String::isNotBlank)
+    is JsonArray -> firstOrNull()?.textValueOrNull()
+    else -> null
+}
+
+private fun JsonObject.textValue(name: String): String? = get(name)?.textValueOrNull()
 
 internal fun amapStreetLabel(township: String?, street: String?, cityName: String?): String? =
     listOf(township, street)

@@ -31,12 +31,17 @@ import com.HelloMeet.weather.data.WeatherReminderNotification
 import com.HelloMeet.weather.data.WeatherReminderSchedule
 import com.HelloMeet.weather.ui.components.WeatherOverlayDialog
 import com.HelloMeet.weather.widget.WidgetRefresh
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import ui.feice.mochi.basic.MochiStepper
+import ui.feice.mochi.basic.MochiDialog
+import ui.feice.mochi.basic.MochiDialogAction
+import ui.feice.mochi.basic.MochiDialogActionRole
 import ui.feice.mochi.basic.MochiSwitch
+import ui.feice.mochi.list.MochiListPickerRow
 import ui.feice.mochi.list.MochiListRow
 import ui.feice.mochi.list.MochiListSection
 
@@ -52,6 +57,8 @@ internal fun MochiAutomationSettingsPage() {
     val city by CityRepository.selectedCity.collectAsState(initial = null)
     val source by SettingsRepository.sourcePref.collectAsState(initial = SourcePref.AUTO)
     val revision by WeatherReminderNotification.revision.collectAsState()
+    // 照 demo「滚筒与时间日期」表单里「重复」那一行：行尾灰色胶囊点开菜单选择。
+    val intervalOptions = remember { (5..30 step 5).map { "$it 分钟" }.toImmutableList() }
 
     fun access(): ReminderNotificationAccess {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
@@ -71,8 +78,11 @@ internal fun MochiAutomationSettingsPage() {
     var testing by remember { mutableStateOf(false) }
     var testFeedback by rememberSaveable { mutableStateOf<String?>(null) }
     var editingTime by rememberSaveable { mutableStateOf<String?>(null) }
-    var pickingBackground by rememberSaveable { mutableStateOf(false) }
     var details by rememberSaveable { mutableStateOf(false) }
+    val backgroundMinutes = remember { listOf(15, 30, 60, 120) }
+    val backgroundOptions = remember {
+        backgroundMinutes.map { "$it 分钟" }.toImmutableList()
+    }
 
     LaunchedEffect(settings, city, source, revision, notificationAccess) {
         try {
@@ -147,18 +157,15 @@ internal fun MochiAutomationSettingsPage() {
     ) {
         item {
             MochiListSection(header = "天气刷新", footer = "使用应用时，每隔一段时间自动更新当前地点。") {
-                // 步进器：照 demo「专注时长」的写法，5 分钟一格，点一下轻震、按住连发。
-                MochiListRow(
+                // 菜单式选择行：照 demo「滚筒与时间日期」里「重复」那一行，
+                // 行尾灰色胶囊点开菜单，选中项带对勾。
+                MochiListPickerRow(
                     title = "天气刷新间隔",
-                    subtitle = "天气数据刷新间隔",
-                    trailing = {
-                        MochiStepper(
-                            value = settings.foregroundMinutes,
-                            onValueChange = { onChange(settings.copy(foregroundMinutes = it)) },
-                            range = 5..30,
-                            step = 5,
-                            format = { "$it 分钟" },
-                        )
+                    options = intervalOptions,
+                    selectedIndex = ((settings.foregroundMinutes - 5) / 5)
+                        .coerceIn(0, intervalOptions.lastIndex),
+                    onSelect = { index ->
+                        onChange(settings.copy(foregroundMinutes = 5 + index * 5))
                     },
                 )
                 MochiListRow(
@@ -172,11 +179,16 @@ internal fun MochiAutomationSettingsPage() {
                     },
                 )
                 if (settings.needsBackground) {
-                    MochiListRow(
+                    MochiListPickerRow(
                         title = if (settings.backgroundEnabled) "后台刷新间隔" else "提醒检查间隔",
-                        value = "${settings.backgroundMinutes} 分钟",
-                        chevron = true,
-                        onClick = { pickingBackground = true },
+                        options = backgroundOptions,
+                        selectedIndex = backgroundMinutes.indexOf(settings.backgroundMinutes)
+                            .coerceAtLeast(0),
+                        onSelect = { index ->
+                            backgroundMinutes.getOrNull(index)?.let { minutes ->
+                                onChange(settings.copy(backgroundMinutes = minutes))
+                            }
+                        },
                     )
                     MochiListRow(
                         title = if (settings.remindersEnabled && settings.checkMinutes < settings.backgroundMinutes) {
@@ -323,28 +335,26 @@ internal fun MochiAutomationSettingsPage() {
         item {
             MochiListSection(header = "说明") {
                 MochiListRow(
-                    title = if (details) "收起刷新与提醒说明" else "了解刷新与提醒",
+                    title = "了解刷新与提醒",
                     chevron = true,
-                    onClick = { details = !details },
+                    onClick = { details = true },
                 )
-                if (details) {
-                    MochiListRow(
-                        title = "后台只使用已保存的地点，不申请后台定位。早晚提醒会按地点时区安排到时检查，"
-                            + "90 分钟内使用有效预报；系统省电、后台限制或断网可能延后检查。",
-                    )
-                }
             }
         }
     }
 
-    MochiChoiceDialog(
-        visible = pickingBackground,
-        title = if (settings.backgroundEnabled) "后台刷新间隔" else "提醒检查间隔",
-        options = listOf(15, 30, 60, 120).map { "${it} 分钟" to it.toString() },
-        selected = settings.backgroundMinutes.toString(),
-        onSelect = { onChange(settings.copy(backgroundMinutes = it.toInt())) },
-        onDismiss = { pickingBackground = false },
+    // 说明改用组件库对话框，不再在列表里展开长文本。
+    MochiDialog(
+        visible = details,
+        onDismissRequest = { details = false },
+        title = "刷新与提醒说明",
+        message = "后台只使用已保存的地点，不申请后台定位。早晚提醒会按地点时区安排到时检查，"
+            + "90 分钟内使用有效预报；系统省电、后台限制或断网可能延后检查。",
+        actions = persistentListOf(
+            MochiDialogAction("知道了", MochiDialogActionRole.Primary),
+        ),
     )
+
     editingTime?.let { kind ->
         val minute = if (kind == "morning") settings.morningMinute else settings.eveningMinute
         WeatherOverlayDialog(onDismiss = { editingTime = null }, maxWidth = 420.dp) { modifier ->

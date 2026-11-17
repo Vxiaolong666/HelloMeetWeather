@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.HelloMeet.weather.data.AmbienceLevel
+import com.HelloMeet.weather.data.AtlasContent
 import com.HelloMeet.weather.data.CachedWeather
 import com.HelloMeet.weather.data.CityRepository
 import com.HelloMeet.weather.data.FavoriteToggleResult
@@ -59,6 +60,7 @@ data class DisplayPrefs(
     val homeBriefingStyle: HomeBriefingStyle = HomeBriefingStyle.TIPS,
     val homeSurfaceStyle: HomeSurfaceStyle = HomeSurfaceStyle.CURRENT,
     val moduleOrder: List<HomeModule> = HomeModule.defaultOrder,
+    val atlasContentOrder: List<AtlasContent> = AtlasContent.defaultOrder,
     val telemetryMetrics: Set<TelemetryMetric> = TelemetryMetric.defaultSelection,
     val lifeIndexMetrics: Set<LifeIndexMetric> = LifeIndexMetric.defaultSelection,
 )
@@ -229,6 +231,8 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         )
     }.combine(SettingsRepository.moduleOrder) { prefs, order ->
         prefs.copy(moduleOrder = order)
+    }.combine(SettingsRepository.atlasContentOrder) { prefs, order ->
+        prefs.copy(atlasContentOrder = order)
     }.combine(SettingsRepository.homeBriefingStyle) { prefs, style ->
         prefs.copy(homeBriefingStyle = style)
     }.combine(SettingsRepository.homeSurfaceStyle) { prefs, style ->

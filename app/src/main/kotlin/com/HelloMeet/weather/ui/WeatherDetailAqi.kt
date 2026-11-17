@@ -42,10 +42,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
@@ -72,6 +71,7 @@ import com.HelloMeet.weather.ui.theme.LocalZhishengPalette
 import com.HelloMeet.weather.ui.theme.ZhishengText
 import com.HelloMeet.weather.ui.theme.ZhishengTextSecondary
 import com.HelloMeet.weather.ui.theme.ZhishengTextTertiary
+import ui.feice.mochi.basic.MochiGauge
 import ui.feice.mochi.effect.mask.mochiScrollEdgeBlur
 import ui.feice.mochi.navigation.MochiScrollEdgeDefaults
 import ui.feice.mochi.theme.MochiDefaults
@@ -335,6 +335,11 @@ internal fun AqiDetailPage(
 
 // ── 仪表 ──────────────────────────────────────────────────
 
+/**
+ * 组件库圆形仪表（MochiGauge）+ 保留原连续色阶：270° 弧用 sweepGradient 填充。
+ * 弧从 135° 起顺时针扫 270°，sweepGradient 的 0° 朝右，弧位 f（AQI = 500f）
+ * 映射为色标 s = 0.375 + 0.75f；底部 45°–135° 是开口，不参与绘制。
+ */
 @Composable
 private fun AqiGauge(value: Int?) {
     val light = LocalZhishengPalette.current.isLight
@@ -342,74 +347,31 @@ private fun AqiGauge(value: Int?) {
     val numberColor = if (light) Color(0xFF141818) else Color.White
     // 与 yunsong 一致：等级字用连续色阶，再对卡片底色做对比度收敛，保证任一主题下可读。
     val levelColor = readableAqiLevelColor(value, !light, MochiDefaults.groupedContainer())
-    val measurer = rememberTextMeasurer()
-
+    val gradient = remember {
+        Brush.sweepGradient(
+            0f to smoothAqiColor(416.7),
+            0.125f to smoothAqiColor(500.0),
+            0.375f to smoothAqiColor(0.0),
+            0.5f to smoothAqiColor(83.3),
+            0.625f to smoothAqiColor(166.7),
+            0.75f to smoothAqiColor(250.0),
+            0.875f to smoothAqiColor(333.3),
+            1f to smoothAqiColor(416.7),
+        )
+    }
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        // 与 yunsong 布局一致：仪表固定 216×144 并水平居中；数值与等级直接画在画布上，
-        // 基线锚定弧心（cy − radius×0.03 + 7dp / cy + radius×0.23 + 6dp），不再用居中 Column 叠字。
-        Canvas(Modifier.width(216.dp).height(144.dp)) {
-            val w = size.width
-            val h = size.height
-            val diameter = min(w * .88f, h * 1.10f)
-            val stroke = diameter * .078f
-            val radius = diameter * .42f
-            if (radius <= stroke) return@Canvas
-            val center = Offset(w / 2f, h * .57f)
-            val arcSize = Size(radius * 2f, radius * 2f)
-            val arcTopLeft = Offset(center.x - radius, center.y - radius)
-            drawArc(
-                color = track,
-                startAngle = 135f,
-                sweepAngle = 270f,
-                useCenter = false,
-                topLeft = arcTopLeft,
-                size = arcSize,
-                style = Stroke(stroke, cap = StrokeCap.Round),
-            )
-            // 0–500 切成 108 段，逐段取连续色阶的对应颜色：弧线平滑渐变。
-            val progress = ((value ?: 0) / 500f).coerceIn(0f, 1f)
-            val segments = (progress * 108f).toInt()
-            if (segments > 0) {
-                val unit = 270f / 108f
-                repeat(segments) { index ->
-                    val level = (index + 1) * 500.0 / 108.0
-                    drawArc(
-                        color = smoothAqiColor(level),
-                        startAngle = 135f + index * unit,
-                        sweepAngle = unit + 0.8f,
-                        useCenter = false,
-                        topLeft = arcTopLeft,
-                        size = arcSize,
-                        style = Stroke(stroke, cap = StrokeCap.Butt),
-                    )
-                }
-            }
-            // 数值 = 直径×0.225，等级 = 直径×0.080（yunsong 的 textSize 口径）。
-            val numberLayout = measurer.measure(
-                value?.toString() ?: "--",
-                TextStyle(fontSize = (diameter * .225f / density).sp, fontWeight = FontWeight.Bold, color = numberColor),
-            )
-            val numberBaseline = center.y - radius * .03f + 7.dp.toPx()
-            drawText(
-                numberLayout,
-                topLeft = Offset(
-                    center.x - numberLayout.size.width / 2f,
-                    numberBaseline - numberLayout.getLineBaseline(0),
-                ),
-            )
-            val levelLayout = measurer.measure(
-                aqiDetailLevelLabel(value),
-                TextStyle(fontSize = (diameter * .08f / density).sp, color = levelColor),
-            )
-            val levelBaseline = center.y + radius * .23f + 6.dp.toPx()
-            drawText(
-                levelLayout,
-                topLeft = Offset(
-                    center.x - levelLayout.size.width / 2f,
-                    levelBaseline - levelLayout.getLineBaseline(0),
-                ),
-            )
-        }
+        MochiGauge(
+            value = (value ?: 0).toFloat(),
+            range = 0f..500f,
+            size = 144.dp,
+            strokeWidth = 12.dp,
+            label = aqiDetailLevelLabel(value),
+            progressBrush = gradient,
+            trackColor = track,
+            numberColor = numberColor,
+            labelColor = levelColor,
+            valueText = if (value == null) "--" else null,
+        )
     }
 }
 

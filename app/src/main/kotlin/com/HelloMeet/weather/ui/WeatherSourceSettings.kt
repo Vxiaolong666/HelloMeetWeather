@@ -1,5 +1,6 @@
 package com.HelloMeet.weather.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -24,15 +25,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.HelloMeet.weather.data.*
+import com.HelloMeet.weather.R
 import com.HelloMeet.weather.model.City
 import com.HelloMeet.weather.model.WeatherData
-import com.HelloMeet.weather.ui.theme.zhishengDialogPanel
-import com.HelloMeet.weather.ui.components.PhosphorIcon
-import com.HelloMeet.weather.ui.components.WeatherOverlayDialog
-import androidx.compose.ui.graphics.Color
 import com.HelloMeet.weather.ui.theme.LocalZhishengPalette
+import com.HelloMeet.weather.ui.components.PhosphorIcon
+import androidx.compose.ui.graphics.Color
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import ui.feice.mochi.basic.MochiDialog
+import ui.feice.mochi.basic.MochiDialogAction
+import ui.feice.mochi.basic.MochiDialogActionRole
+import ui.feice.mochi.basic.Text as MochiText
+import ui.feice.mochi.theme.MochiTheme
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -179,7 +185,7 @@ private fun moduleEvidenceTime(millis: Long, offsetSeconds: Int?): String {
         if (offset == null) "（手机时间）" else "（地点时间）"
 }
 
-/** Closing the dialog cancels its effect and the batch of provider calls. */
+/** 关闭对话框即取消其 effect 与这一批来源请求。 */
 @Composable
 fun WeatherSourceComparison(city: City, onDismiss: () -> Unit) {
     var rows by remember(city.locationKey, city.latitude, city.longitude) { mutableStateOf<List<WeatherRepository.SourceComparison>?>(null) }
@@ -191,72 +197,217 @@ fun WeatherSourceComparison(city: City, onDismiss: () -> Unit) {
         catch (cancel: CancellationException) { throw cancel }
         catch (_: Exception) { error = "暂时无法完成比较，请检查网络后重试" }
     }
-    WeatherOverlayDialog(onDismiss) { modifier ->
-        WeatherSourceComparisonPanel(city, rows, error, onRetry = { retry++ }, onDismiss = onDismiss, modifier = modifier)
+    val loading = rows == null && error == null
+    MochiDialog(
+        visible = true,
+        onDismissRequest = onDismiss,
+        title = "比较天气来源",
+        message = "同一地点同时查询，各源观测时刻不同。数值是真实返回值，只作参照，不作准确率排名。",
+        icon = {
+            PhosphorIcon(R.drawable.ph_eye, null, Modifier.size(34.dp), MochiTheme.colorScheme.primary)
+        },
+        actions = persistentListOf(
+            MochiDialogAction(
+                label = if (error == null) "重新比较" else "重试",
+                enabled = !loading,
+                closeOnClick = false,
+            ) { retry++ },
+            MochiDialogAction("关闭", MochiDialogActionRole.Primary),
+        ),
+    ) {
+        when {
+            error != null -> SourceComparisonHint(R.drawable.ph_warning, error.orEmpty(), MochiTheme.colorScheme.error)
+            loading -> Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(
+                    color = MochiTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp), strokeWidth = 2.dp,
+                )
+                MochiText(
+                    "正在查询，关闭即可取消",
+                    style = MochiTheme.textStyles.footnote,
+                    color = MochiTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            rows.isNullOrEmpty() -> SourceComparisonHint(
+                R.drawable.ph_info,
+                "没有可比较的来源，请先在开发者模式里接入天气服务。",
+                MochiTheme.colorScheme.onSurfaceVariant,
+            )
+            else -> WeatherSourceComparisonBody(city, rows.orEmpty())
+        }
+    }
+}
+
+/** 比较结果：每个来源一张卡，三个指标各自带图标与相对第一行来源的差值。 */
+@Composable
+private fun WeatherSourceComparisonBody(city: City, items: List<WeatherRepository.SourceComparison>) {
+    val scheme = MochiTheme.colorScheme
+    val caption = MochiTheme.textStyles.footnote
+    val requestedAt = items.firstOrNull()?.requestedAt
+    val commonHour = remember(items) {
+        commonComparisonHour(items, requestedAt ?: System.currentTimeMillis())
+    }
+    // 第一行有实况的来源作为差值基准，避免「和谁比」说不清。
+    val baseline = remember(items) {
+        items.firstOrNull { row ->
+            row.data?.current?.let { it.temperature != null || it.humidity != null || it.windSpeed != null } == true
+        }?.data?.current
+    }
+    Column(
+        Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            MochiText(
+                "请求时刻 ${comparisonTime(requestedAt, city)}",
+                style = caption, color = scheme.onSurfaceVariant,
+            )
+            MochiText(
+                commonHour?.let { "共同预报时刻 ${comparisonTime(it, city)}" }
+                    ?: "暂无两个来源共同返回的未来小时，缺失值不补画。",
+                style = caption, color = scheme.onSurfaceVariant,
+            )
+        }
+        items.forEach { row ->
+            val data = row.data
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(scheme.surfaceContainerHighest.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PhosphorIcon(
+                        weatherSourceIcon(row.source), null, Modifier.size(18.dp),
+                        scheme.onSurfaceVariant,
+                    )
+                    MochiText(
+                        row.source.cn,
+                        style = MochiTheme.textStyles.subhead.copy(fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    MochiText(
+                        data?.let { "观测 ${comparisonTime(it.updateTime, city)}" } ?: "未返回",
+                        style = caption, color = scheme.onSurfaceVariant, maxLines = 1,
+                    )
+                }
+                if (data == null) {
+                    MochiText(
+                        row.diagnostic ?: "未返回数据",
+                        style = caption, color = scheme.onSurfaceVariant,
+                    )
+                } else if (data.current == null) {
+                    MochiText("未返回当前实况", style = caption, color = scheme.onSurfaceVariant)
+                } else {
+                    val current = data.current
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SourceComparisonMetric(
+                            R.drawable.ph_thermometer, "温度",
+                            comparisonValue(current.temperature, "℃", "—"),
+                            sourceComparisonDiff(current.temperature, baseline?.temperature, 1, "℃", current === baseline),
+                            Modifier.weight(1f),
+                        )
+                        SourceComparisonMetric(
+                            R.drawable.ph_drop, "湿度",
+                            comparisonValue(current.humidity, "%", "—"),
+                            sourceComparisonDiff(current.humidity, baseline?.humidity, 0, "%", current === baseline),
+                            Modifier.weight(1f),
+                        )
+                        SourceComparisonMetric(
+                            R.drawable.ph_wind, "风速",
+                            comparisonValue(current.windSpeed, "km/h", "—"),
+                            sourceComparisonDiff(current.windSpeed, baseline?.windSpeed, 1, "", current === baseline),
+                            Modifier.weight(1f),
+                        )
+                    }
+                    val facts = buildList {
+                        add(current.weatherText ?: current.condition?.label ?: "天气现象缺失")
+                        data.aqi?.let { aqi ->
+                            add("AQI ${Fmt.aqiValueLabel(aqi.value, aqi.estimated)}" +
+                                if (aqi.estimated) " · ${Fmt.AQI_ESTIMATION_LABEL}" else "")
+                        }
+                        add("逐时 ${data.hourly.size} · 逐日 ${data.daily.size} · 预警 ${data.alerts.size}")
+                    }
+                    MochiText(
+                        facts.joinToString(" · "),
+                        style = caption, color = scheme.onSurfaceVariant, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        MochiText(
+            "箭头表示与第一行有实况的来源的差值；AQI 估算值与不同标准不能直接横比。",
+            style = caption, color = scheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 单个指标小卡：图标 + 名称、主值、与基准的差值。 */
+@Composable
+private fun SourceComparisonMetric(
+    icon: Int, label: String, value: String, diff: String?, modifier: Modifier = Modifier,
+) {
+    val scheme = MochiTheme.colorScheme
+    Column(
+        modifier.background(scheme.surfaceContainerHigh.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 6.dp, vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+            PhosphorIcon(icon, null, Modifier.size(12.dp), scheme.onSurfaceVariant)
+            MochiText(label, style = MochiTheme.textStyles.footnote, color = scheme.onSurfaceVariant, maxLines = 1)
+        }
+        MochiText(
+            value,
+            style = MochiTheme.textStyles.subhead.copy(fontWeight = FontWeight.SemiBold),
+            maxLines = 1,
+        )
+        MochiText(
+            diff ?: " ",
+            style = MochiTheme.textStyles.footnote,
+            color = scheme.secondary,
+            maxLines = 1,
+        )
     }
 }
 
 @Composable
-internal fun WeatherSourceComparisonPanel(city: City, rows: List<WeatherRepository.SourceComparison>?,
-    error: String?, onRetry: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
-    val palette = LocalZhishengPalette.current
-    val body = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 21.sp)
-    val caption = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp)
-    val loading = rows == null && error == null
-    Surface(modifier.zhishengDialogPanel(glass = true), color = Color.Transparent, contentColor = palette.text) {
-        ProvideTextStyle(body) {
-            Column {
-                Text("来源比较 · ${city.displayName}", Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 25.sp))
-                HorizontalDivider(color = palette.cardBorder.copy(alpha = .35f))
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text("同一地点同时查询；各源观测时刻不同。以下是真实返回值，不作准确率排名。心知和墨迹仅在明确选用时查询，不参与这里的额外比较。", color = palette.textSecondary)
-                    when {
-                        error != null -> Text(error, color = palette.textSecondary)
-                        loading -> {
-                            CircularProgressIndicator(color = palette.mint, modifier = Modifier.size(24.dp))
-                            Text("正在查询，关闭即可取消", color = palette.textSecondary)
-                        }
-                        else -> {
-                            val items = rows.orEmpty()
-                            val commonHour = commonComparisonHour(items, items.firstOrNull()?.requestedAt ?: System.currentTimeMillis())
-                            Text("请求时刻：${comparisonTime(items.firstOrNull()?.requestedAt, city)}", color = palette.textSecondary, style = caption)
-                            Text(if (commonHour == null) "暂无两个来源共同返回的未来小时，缺失值不补画。" else "共同预报时刻：${comparisonTime(commonHour, city)}", color = palette.textSecondary)
-                            items.forEach { row ->
-                                val data = row.data
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(row.source.cn, color = palette.mint, fontWeight = FontWeight.SemiBold)
-                                    if (data == null) Text(row.diagnostic ?: "未返回数据", color = palette.textSecondary)
-                                    else {
-                                        Text("观测：${comparisonTime(data.updateTime, city)} · 取得：${comparisonTime(data.fetchedAt, city)}", color = palette.textSecondary, style = caption)
-                                        data.current?.let { current ->
-                                            Text("温度 ${comparisonValue(current.temperature, "℃")} · 湿度 ${comparisonValue(current.humidity, "%")}")
-                                            Text("风速 ${comparisonValue(current.windSpeed, "km/h")} · ${current.weatherText ?: current.condition?.label ?: "天气现象缺失"}")
-                                        } ?: Text("未返回当前实况", color = palette.textSecondary)
-                                        data.aqi?.let { Text("AQI ${Fmt.aqiValueLabel(it.value, it.estimated)} · " +
-                                            if (it.estimated) Fmt.AQI_ESTIMATION_LABEL
-                                            else it.standard ?: "标准未标注，不能直接横比", color = palette.textSecondary) }
-                                        Text("逐时 ${data.hourly.size} · 逐日 ${data.daily.size} · 短时 ${data.rainMinutes.size} · 预警 ${data.alerts.size}", color = palette.textSecondary, style = caption)
-                                        val hour = commonHour?.let { time -> data.hourly.firstOrNull { it.timeMillis == time } }
-                                        if (commonHour != null) Text("共同小时温度：${comparisonValue(hour?.temperature, "℃", "未返回")}")
-                                        data.moduleEvidence["current"]?.locationScope?.let { Text(it, color = palette.textSecondary, style = caption) }
-                                        WeatherSourceCapabilities.map.getValue(row.source).note.takeIf(String::isNotBlank)?.let { Text(it, color = palette.textSecondary, style = caption) }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                HorizontalDivider(color = palette.cardBorder.copy(alpha = .35f))
-                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onRetry, enabled = !loading) { Text(if (error == null) "重新比较" else "重试", color = if (loading) palette.textTertiary else palette.mint) }
-                    Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = palette.mint, contentColor = palette.bg)) { Text("关闭") }
-                }
-            }
-        }
+private fun SourceComparisonHint(icon: Int, text: String, tint: Color) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PhosphorIcon(icon, null, Modifier.size(18.dp), tint)
+        MochiText(text, style = MochiTheme.textStyles.footnote, color = MochiTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+/**
+ * 与基准来源的差值标签：基准行显示「基准」，其余显示 ↑/↓ + 差值（四舍五入到 [decimals] 位）。
+ */
+private fun sourceComparisonDiff(
+    value: Double?, base: Double?, decimals: Int, suffix: String, isBaseline: Boolean,
+): String? {
+    if (isBaseline) return "基准"
+    if (value == null || base == null || !value.isFinite() || !base.isFinite()) return null
+    val delta = value - base
+    val threshold = if (decimals == 0) 0.5 else 0.05
+    if (kotlin.math.abs(delta) < threshold) return "持平"
+    val arrow = if (delta > 0) "↑" else "↓"
+    val amount = String.format(java.util.Locale.ROOT, "%.${decimals}f", kotlin.math.abs(delta))
+    return arrow + amount + suffix
 }
 
 private fun comparisonValue(value: Double?, unit: String, missing: String = "缺失"): String =

@@ -45,5 +45,6 @@ MochiLinearGauge(used, range = 0f..128f, label = "存储空间", valueSuffix = "
 ```
 
 - `MochiGauge`：开口朝下的 270° 弧（基于 `MochiProgressRing` 的 `sweep`），弧内侧一圈刻度，中间显示数值和单位，开口两边标最小值和最大值
+- 需要连续色阶等渐变弧时给 `MochiGauge` / `MochiProgressRing` 传 `progressBrush`（轨道色可用 `trackColor` 覆盖）；`numberColor` / `labelColor` 覆盖中心文字颜色，`valueText` 用固定文字（如「--」）代替计数器；这些参数默认关闭，不传时行为不变
 - `MochiLinearGauge`：圆头的容量条，上面一行是标题和当前值，下面两端标最小值和最大值
 - 两种仪表的值变化时，弧或填充用弹簧过渡，数字按计数器滚动

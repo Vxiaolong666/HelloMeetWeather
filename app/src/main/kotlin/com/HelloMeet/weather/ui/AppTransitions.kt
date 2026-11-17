@@ -15,6 +15,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntOffset
+import android.os.Bundle
+import android.view.View
+import androidx.core.app.ActivityOptionsCompat
 import ui.feice.mochi.anim.MochiSprings
 import ui.feice.mochi.navigation.MochiNavDefaults
 import ui.feice.mochi.navigation.MochiNavSpec
@@ -50,6 +53,91 @@ internal object AppTransitions {
      */
     fun pushFrom(style: PageTransitionStyle, dest: AppScreen, cityKey: String?): String? =
         if (style == PageTransitionStyle.APP) dest.navSourceKey(cityKey) ?: CORNER_KEY else null
+
+    /**
+     * 设置链路里有登记来源行（`MochiSettingsNavRow` / `mochiNavSource`）的 route。
+     * 其余 route（关于、公告、公告详情、天气效果预览等）没有承载卡片，
+     * 「打开应用式」下必须兜底成 [CORNER_KEY]，否则整页会从左右两侧进入 / 退出。
+     */
+    private val settingsRoutesWithSource = setOf(
+        "settings.weatherSource", "settings.locationEngine", "settings.providers",
+        "settings.telemetry", "settings.lifeIndex", "settings.modules",
+        "settings.graphics", "settings.theme", "settings.tabbar", "settings.hdr",
+        "settings.glass", "settings.pressGlow", "settings.transition", "settings.automation",
+        "settings.widgets",
+    )
+
+    /** 设置页 push / setTopSource 的唯一来源 key 入口，规则与 [pushFrom] 一致。 */
+    fun settingsPushFrom(style: PageTransitionStyle, route: String): String? =
+        if (style != PageTransitionStyle.APP) null
+        else if (route in settingsRoutesWithSource) mochiSettingsSourceKey(route) else CORNER_KEY
+
+    /**
+     * 独立 Activity（小组件 / 通知栏设置页）从来源卡片展开进入。「打开应用式」且动画开启时，
+     * 用被点入口行的可见边界做 clipReveal（[bounds] 为相对 [source] 的 left/top/right/bottom）；
+     * 其余样式退回系统转场；无动画返回 null，调用方再配 `overridePendingTransition(0, 0)`
+     * 关掉系统默认的左右侧滑。
+     */
+    fun activityEnterOptions(
+        source: View?,
+        bounds: IntArray?,
+        style: PageTransitionStyle,
+        motionEnabled: Boolean,
+    ): Bundle? {
+        if (!motionEnabled || style == PageTransitionStyle.NONE) return null
+        if (style != PageTransitionStyle.APP || source == null || source.width <= 0) return null
+        if (bounds != null && bounds.size >= 4 && bounds[2] > bounds[0] && bounds[3] > bounds[1]) {
+            return ActivityOptionsCompat.makeClipRevealAnimation(
+                source,
+                bounds[0], bounds[1],
+                bounds[2] - bounds[0], bounds[3] - bounds[1],
+            ).toBundle()
+        }
+        return ActivityOptionsCompat.makeScaleUpAnimation(source, 0, 0, source.width, source.height).toBundle()
+    }
+
+    /**
+     * 独立 Activity 的窗口进出动画：「无动画」返回 (0, 0) 关掉系统左右侧滑；「侧推」返回 null 用
+     * 系统默认（本就是侧滑，符合设置）；打开应用式 / 交叉淡变 / 景深用淡入淡出，不再从左右两侧。
+     */
+    private fun activityWindowAnim(style: PageTransitionStyle, motionEnabled: Boolean): Pair<Int, Int>? =
+        if (!motionEnabled || style == PageTransitionStyle.NONE) 0 to 0
+        else if (style == PageTransitionStyle.SLIDE) null
+        else android.R.anim.fade_in to android.R.anim.fade_out
+
+    /**
+     * 从设置入口打开独立 Activity 的唯一入口：打开应用式从被点行做 clipReveal，其余样式按
+     * [activityWindowAnim] 套窗口动画，无动画彻底关掉。调用方只负责给出来源行矩形。
+     */
+    fun launchActivity(
+        context: android.content.Context,
+        intent: android.content.Intent,
+        source: View?,
+        bounds: IntArray?,
+        style: PageTransitionStyle,
+        motionEnabled: Boolean,
+    ) {
+        val options = activityEnterOptions(source, bounds, style, motionEnabled)
+        context.startActivity(intent, options)
+        if (options == null) {
+            activityWindowAnim(style, motionEnabled)?.let { anim ->
+                (context as? android.app.Activity)?.overridePendingTransition(anim.first, anim.second)
+            }
+        }
+    }
+
+    /**
+     * 在独立 Activity 的 [finish] 里调用，按当前「应用转场」全局设置关掉 / 替换系统默认的左右侧滑。
+     * 读全局 [MochiTransitionConfig]（MainActivity 根部已按偏好同步），冷启动时它是「打开应用式」缺省。
+     */
+    fun applyActivityExit(activity: android.app.Activity) {
+        val anim = activityWindowAnim(
+            MochiTransitionConfig.style,
+            MochiTransitionConfig.motionEnabled &&
+                runCatching { android.animation.ValueAnimator.areAnimatorsEnabled() }.getOrDefault(true),
+        )
+        if (anim != null) activity.overridePendingTransition(anim.first, anim.second)
+    }
 
     /**
      * 「应用转场」是全站页面转场的唯一契约：弹簧、下层页缩放、压暗都按当前样式生成，

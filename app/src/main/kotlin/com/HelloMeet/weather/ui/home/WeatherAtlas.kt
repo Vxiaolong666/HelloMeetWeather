@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.HelloMeet.weather.model.*
 import com.HelloMeet.weather.R
 import com.HelloMeet.weather.ui.DisplayPrefs
+import com.HelloMeet.weather.data.AtlasContent
 import com.HelloMeet.weather.data.ReleaseFeatures
 import com.HelloMeet.weather.ui.MochiPageFrame
 import com.HelloMeet.weather.ui.Text
@@ -86,9 +87,16 @@ internal fun WeatherAtlas(
     val showStars = ReleaseFeatures.starPhotography && prefs.showSkyPhotography && AtlasPage.STARS in availablePages
     val showRadar = ReleaseFeatures.radar && prefs.showSpacetime
     val showCoast = ReleaseFeatures.coastalWeather && prefs.showCoastWeather && AtlasPage.COAST in availablePages
-    Column(modifier.fillMaxWidth().padding(horizontal = if (vista) LocalZhishengChrome.current.pagePadding else 20.dp)
-        .then(if (vista) Modifier.zhishengPanel() else Modifier),
-        verticalArrangement = Arrangement.spacedBy(if (vista) 0.dp else 16.dp)) {
+    // 「气象视界」内部分两组：天空与星空（霞光 + 星空 / 雷达）、海岸。
+    // 组内顺序固定，组间顺序由「模块布局 → 气象视界内容」的拖拽结果决定。
+    val showSkyGroup = showGlow || showStars || showRadar
+    val atlasGroups = prefs.atlasContentOrder.filter { item ->
+        when (item) {
+            AtlasContent.SKY -> showSkyGroup
+            AtlasContent.COAST -> showCoast
+        }
+    }
+    val skyGroup: @Composable () -> Unit = {
         if (showGlow) {
             AtlasTile("霞光时刻", "SOLAR", onClick = { onScenePage(AtlasPage.GLOW) }, navSourceKey = "glow") {
                 val glow = scene?.sky?.glow
@@ -98,7 +106,7 @@ internal fun WeatherAtlas(
                 VistaGlowSummary(glow, zone)
                 AtlasStale(scene?.sky?.stale == true)
             }
-            if (vista && (showStars || showRadar || showCoast || prefs.showSpacetime)) AtlasGroupDivider()
+            if (vista && (showStars || showRadar)) AtlasGroupDivider()
         }
         if (showStars || showRadar) BoxWithConstraints(Modifier.fillMaxWidth()) {
             val pair = showStars && showRadar
@@ -143,8 +151,9 @@ internal fun WeatherAtlas(
                 if (showRadar) radar(Modifier.fillMaxWidth())
             }
         }
-        if (vista && (showStars || showRadar) && (showCoast || prefs.showSpacetime)) AtlasGroupDivider()
-        if (showCoast) AtlasTile("海岸气象", "COAST", onClick = { onScenePage(AtlasPage.COAST) }, navSourceKey = "coast") {
+    }
+    val coastGroup: @Composable () -> Unit = {
+        AtlasTile("海岸气象", "COAST", onClick = { onScenePage(AtlasPage.COAST) }, navSourceKey = "coast") {
             val coast = scene?.coast
             if (coast != null) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -162,7 +171,18 @@ internal fun WeatherAtlas(
                 AtlasCaption("海浪 / 潮位 / 海温")
             }
         }
-        if (vista && showCoast && prefs.showSpacetime) AtlasGroupDivider()
+    }
+    Column(modifier.fillMaxWidth().padding(horizontal = if (vista) LocalZhishengChrome.current.pagePadding else 20.dp)
+        .then(if (vista) Modifier.zhishengPanel() else Modifier),
+        verticalArrangement = Arrangement.spacedBy(if (vista) 0.dp else 16.dp)) {
+        atlasGroups.forEachIndexed { index, item ->
+            if (index > 0 && vista) AtlasGroupDivider()
+            when (item) {
+                AtlasContent.SKY -> skyGroup()
+                AtlasContent.COAST -> coastGroup()
+            }
+        }
+        if (vista && atlasGroups.isNotEmpty() && prefs.showSpacetime) AtlasGroupDivider()
         if (prefs.showSpacetime) AtlasEntry("天气回看", "ARCHIVE", onHistoryClick, navSourceKey = "history") {
             val yesterday = weather.yesterday
             AtlasCaption(if (yesterday?.low != null && yesterday.high != null)

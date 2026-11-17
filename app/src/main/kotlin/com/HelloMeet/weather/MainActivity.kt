@@ -68,6 +68,7 @@ import kotlinx.coroutines.awaitCancellation
 import com.HelloMeet.weather.data.UsageStatistics
 import com.HelloMeet.weather.data.ServiceDiagnostics
 import com.HelloMeet.weather.data.UpdateNotices
+import com.HelloMeet.weather.data.updateNoticeKey
 import com.HelloMeet.weather.ui.AppUpdateDialog
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -129,14 +130,17 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
 import ui.feice.mochi.anim.MochiSprings
 import ui.feice.mochi.navigation.MochiNavHost
+import ui.feice.mochi.navigation.MochiNavSpec
 import ui.feice.mochi.navigation.rememberMochiNavigator
 import ui.feice.mochi.theme.MochiDefaults
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import com.HelloMeet.weather.ui.systemAnimationsEnabled
 import com.HelloMeet.weather.ui.updateOpeningSpec
 import com.HelloMeet.weather.ui.WhatsNewPreferenceFile
 import com.HelloMeet.weather.ui.WhatsNewSeenKey
 import com.HelloMeet.weather.ui.WhatsNewVersion
+import com.HelloMeet.weather.ui.FirstRunOnboarding
 import com.HelloMeet.weather.ui.InitialLocationSetupHost
 import com.HelloMeet.weather.ui.theme.ZhishengWeatherTheme
 import com.HelloMeet.weather.data.InterfaceStyle
@@ -253,6 +257,9 @@ class MainActivity : ComponentActivity() {
                 var locationProviderWizard by rememberSaveable { mutableStateOf<com.HelloMeet.weather.ui.ProviderWizardKind?>(null) }
                 var locationSetupDismissedForSession by rememberSaveable { mutableStateOf(false) }
                 var choosingInitialCity by rememberSaveable { mutableStateOf(false) }
+                // 首次引导一旦开始就由它自己结束：定位成功会写回「地点已设置」，
+                // 但引导页还要带用户走完后面的设置，不能跟着状态一起消失。
+                var firstRunOnboardingActive by rememberSaveable { mutableStateOf(false) }
                 // 返回首页的唯一入口：左上角返回按钮、系统返回键 / 手势、应用内右滑、
                 // 搜索页选城 / 返回、快捷方式，以及库导航自己退回根，都写回同一个 screen。
                 // 关闭动画不在各入口单独处理，统一由 MochiNavHost 按当前「应用转场」设置执行。
@@ -274,14 +281,6 @@ class MainActivity : ComponentActivity() {
                 val locationSetupHoldsStartup =
                     (initialLocationSetupRequired != false && screen == AppScreen.HOME) ||
                         showLocationSetupAgain || choosingInitialCity
-                LaunchedEffect(initialLocationSetupRequired, startupPromptsSuppressed, screen,
-                    locationSetupDismissedForSession) {
-                    if (initialLocationSetupRequired == true && !startupPromptsSuppressed &&
-                        screen == AppScreen.HOME && !locationSetupDismissedForSession) {
-                        // 默认使用系统定位：不弹「先选一个天气地点」引导，直接静默申请权限并定位。
-                        locateImmediately = true
-                    }
-                }
                 val initialWhatsNew = remember { shouldShowWhatsNew() }
                 var showWhatsNew by rememberSaveable(key = "notes_$WhatsNewVersion") { mutableStateOf(initialWhatsNew) }
                 val previousNotesVersion = remember {
@@ -298,6 +297,11 @@ class MainActivity : ComponentActivity() {
                 var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
                 var automaticUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
                 val notices = remember { UpdateNotices(this@MainActivity) }
+                // 首页检查更新模块的状态：tick 每次手动检查 +1；ignoredUpdateKey 让忽略立即生效（无需等落盘）。
+                var updateCheckTick by remember { mutableIntStateOf(0) }
+                var updateChecking by remember { mutableStateOf(true) }
+                var updateError by remember { mutableStateOf<String?>(null) }
+                var ignoredUpdateKey by remember { mutableStateOf<String?>(null) }
                 val statistics = remember { UsageStatistics(this@MainActivity) }
                 val diagnosticsEnabled by SettingsRepository.serviceDiagnostics.collectAsState(initial = false)
                 LaunchedEffect(diagnosticsEnabled) {
@@ -318,6 +322,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val uiState by vm.uiState.collectAsState()
+                // 读出首次地点状态的那一刻决定是否进入引导；之后定位成功把状态写成 false 也不再收回。
+                LaunchedEffect(initialLocationSetupRequired) {
+                    if (initialLocationSetupRequired == true) firstRunOnboardingActive = true
+                }
                 LaunchedEffect(initialLocationSetupRequired, uiState.selectedCity?.locationKey, uiState.locating) {
                     if (initialLocationSetupRequired == false && uiState.selectedCity != null && !uiState.locating) {
                         // An explicit city from search or a widget also completes
@@ -430,25 +438,44 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // 静默检测更新；提示由上方主页空闲和版本提醒策略决定。
-                // 检测不自动下载。
-                LaunchedEffect(Unit) {
-                    for (attempt in 0..2) {
-                        val result = if (attempt == 0) AppUpdate.check() else AppUpdate.check(refresh = true)
-                        when (result) {
+                // 启动时静默检测更新（失败 10 秒后重试，共 3 次）；首页模块的「检查更新」通过
+                // updateCheckTick 触发同一条流程，改为单次强制刷新并展示失败原因。检测不自动下载。
+                LaunchedEffect(updateCheckTick) {
+                    val manual = updateCheckTick > 0
+                    updateChecking = true
+                    updateError = null
+                    if (manual) {
+                        // 首页手动检查：单次强制刷新，失败直接展示原因。
+                        when (val result = AppUpdate.check(refresh = true)) {
                             is AppUpdateCheck.Available -> {
                                 availableUpdate = result.info
-                                break
+                                updateError = null
                             }
                             AppUpdateCheck.UpToDate -> {
                                 availableUpdate = null
-                                break
+                                updateError = null
                             }
-                            is AppUpdateCheck.Failed -> {
-                                if (attempt < 2) delay(10_000)
+                            is AppUpdateCheck.Failed -> updateError = result.message
+                        }
+                    } else {
+                        for (attempt in 0..2) {
+                            val result = if (attempt == 0) AppUpdate.check() else AppUpdate.check(refresh = true)
+                            when (result) {
+                                is AppUpdateCheck.Available -> {
+                                    availableUpdate = result.info
+                                    break
+                                }
+                                AppUpdateCheck.UpToDate -> {
+                                    availableUpdate = null
+                                    break
+                                }
+                                is AppUpdateCheck.Failed -> {
+                                    if (attempt < 2) delay(10_000) else updateError = result.message
+                                }
                             }
                         }
                     }
+                    updateChecking = false
                 }
 
                 // 常亮屏幕（设置项）
@@ -620,18 +647,29 @@ class MainActivity : ComponentActivity() {
                             screen = AppScreen.MOCHI_SETTINGS
                         },
                     ) {
+                    // 引导里「手动选择城市」是覆盖在首页上的整页引导：如果照常播转场，
+                    // 退场的首页会从引导底下露出来闪一下。这段跳转用瞬时规格，搜索页直接盖上来。
+                    val instantNavSpec = remember {
+                        MochiNavSpec(
+                            open = snap(), close = snap(), cancel = snap(),
+                            push = snap(), openMove = snap(), closeMove = snap(),
+                        )
+                    }
                     MochiNavHost(
                         nav,
-                        spec = mochiNavSpecFor(uiPrefs, motionEnabled),
+                        spec = if (choosingInitialCity) instantNavSpec else mochiNavSpecFor(uiPrefs, motionEnabled),
                         // 「无动画」时系统预测性返回与应用内右滑一起关掉：
                         // 否则手指仍会跟手拖出一段返回动画。
-                        predictiveBack = transitionsEnabled && uiPrefs.predictiveBack && uiPrefs.swipeBack,
+                        // 引导里手动选城时也关掉：搜索页是盖在首页上的，预测返回的预览会露出底下的首页。
+                        predictiveBack = transitionsEnabled && uiPrefs.predictiveBack &&
+                            uiPrefs.swipeBack && !choosingInitialCity,
                         // 台风页整页是原生地图：地图横向拖动与应用内右滑返回互相抢事件，
                         // 台风页停用应用内右滑返回；顶栏返回按钮与系统返回键照常退出。
                         // 48 小时天气 / 多日天气预报 / 富逐日详情的图表卡片也是横向滑动：
                         // 全屏右滑返回会与图表的横向拖动抢事件，导致图表无法左右滑动，
                         // 同样停用应用内右滑返回（见 noSwipeBackScreens）。
-                        swipeBackEnabled = transitionsEnabled && uiPrefs.swipeBack &&
+                        // 引导里手动选城时同样关掉应用内右滑：拖到一半会露出下面盖着的首页。
+                        swipeBackEnabled = transitionsEnabled && uiPrefs.swipeBack && !choosingInitialCity &&
                             AppScreen.fromRoute(nav.current) !in noSwipeBackScreens,
                         // 首页天空是不间断动画、雷达页是原生地图视图：整页录进离屏图层给浮层玻璃
                         // 取样会每帧重录（原生视图甚至可能取样崩溃）。浮层玻璃退回各页自己的
@@ -695,6 +733,22 @@ class MainActivity : ComponentActivity() {
                             AtlasPage.COAST -> AppScreen.SCENE_COAST
                             AtlasPage.DARK -> screen
                         }
+                    },
+                    updateInfo = availableUpdate?.takeIf { info ->
+                        val key = updateNoticeKey(info)
+                        key != ignoredUpdateKey && !notices.isDismissed(info)
+                    },
+                    updateChecking = updateChecking,
+                    updateError = updateError,
+                    ignoredUpdateVersion = availableUpdate?.takeIf { info ->
+                        val key = updateNoticeKey(info)
+                        key == ignoredUpdateKey || notices.isDismissed(info)
+                    }?.versionName,
+                    onCheckUpdate = { updateCheckTick++ },
+                    onOpenUpdate = { automaticUpdate = it },
+                    onIgnoreUpdate = { info ->
+                        ignoredUpdateKey = updateNoticeKey(info)
+                        scope.launch(Dispatchers.IO) { notices.dismiss(info) }
                     },
                                 )
                             }
@@ -958,12 +1012,54 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                // 首次安装：完整引导页负责申请权限、定位并带走一遍基本设置。
+                // 是否显示只看引导自己的开关，不跟随「地点已设置」状态，避免定位成功后跳到一半就消失。
+                // 引导层独立包一层 Mochi 主题，外观页切换深浅色时整层立即跟着换色。
+                MochiAppTheme(
+                    colors = rememberMochiColorScheme(),
+                    systemBarAppearance = false,
+                ) {
+                    FirstRunOnboarding(
+                        viewModel = vm,
+                        // 用库导航的当前路由而不是 screen 决定显隐：screen 先变、push 下一帧才发生，
+                        // 中间那一帧首页会从引导底下露出来。
+                        // 手动选城时搜索页虽然已经推入，但要等首帧排版稳定后才开始（瞬时）转场；
+                        // 这段等待里进度还是 0，撤掉引导就会露出首页，所以等它真正铺满（不再转场）再撤。
+                        visible = firstRunOnboardingActive &&
+                            !standbyVisible && openingSpec == null &&
+                            !showWhatsNew && !autoOpeningPending && locationProviderWizard == null &&
+                            (
+                                nav.current == AppScreen.HOME.route ||
+                                    (choosingInitialCity && nav.current == AppScreen.SEARCH.route &&
+                                        nav.isTransitioning)
+                            ),
+                        onComplete = {
+                            firstRunOnboardingActive = false
+                            locateImmediately = false
+                            showLocationSetupAgain = false
+                            locationSetupDismissedForSession = true
+                            markInitialLocationHandled()
+                        },
+                        onChooseCity = {
+                            scope.launch {
+                                SettingsRepository.setLocationEnabled(false)
+                                com.HelloMeet.weather.data.SecretStore.setSharedPlaceConsent(false)
+                            }
+                            // 引导保持开启：从搜索页选好城市回到首页后，会接着停在定位这一步。
+                            locateImmediately = false
+                            showLocationSetupAgain = false
+                            locationSetupDismissedForSession = true
+                            choosingInitialCity = true
+                            screen = AppScreen.SEARCH
+                            markInitialLocationHandled()
+                        },
+                    )
+                }
                 InitialLocationSetupHost(
                     viewModel = vm,
                     activity = this@MainActivity,
-                    visible = ((initialLocationSetupRequired == true && !locationSetupDismissedForSession) ||
-                        showLocationSetupAgain) && screen == AppScreen.HOME &&
-                        (!startupPromptsSuppressed || showLocationSetupAgain) && !standbyVisible && openingSpec == null &&
+                    visible = showLocationSetupAgain && screen == AppScreen.HOME &&
+                        !standbyVisible && openingSpec == null &&
                         !showWhatsNew && !autoOpeningPending && locationProviderWizard == null,
                     startImmediately = locateImmediately,
                     firstRun = initialLocationSetupRequired == true,
@@ -993,10 +1089,18 @@ class MainActivity : ComponentActivity() {
                         markInitialLocationHandled()
                     },
                 )
-                locationProviderWizard?.let { kind ->
-                    com.HelloMeet.weather.ui.MochiProviderWizard(kind) {
+                // 首次定位引导里的服务接入向导是叠在首页上的整页（非库导航），进入 / 退出统一走
+                // AppTransitions.contentTransform：打开应用式从小容器展开、缩回；无动画时立即切换。
+                AnimatedContent(
+                    targetState = locationProviderWizard,
+                    transitionSpec = {
+                        AppTransitions.contentTransform(motionEnabled, appStyle, uiPrefs.swipeBack)
+                    },
+                    label = "location-provider-wizard",
+                ) { wizardKind ->
+                    if (wizardKind != null) com.HelloMeet.weather.ui.MochiProviderWizard(wizardKind) {
                         locationProviderWizard = null
-                        val ready = if (kind == com.HelloMeet.weather.ui.ProviderWizardKind.AMAP)
+                        val ready = if (wizardKind == com.HelloMeet.weather.ui.ProviderWizardKind.AMAP)
                             com.HelloMeet.weather.data.SecretStore.amapRuntime.ready else com.HelloMeet.weather.data.SecretStore.baiduRuntime.ready
                         if (ready) scope.launch {
                             SettingsRepository.setDeveloperMode(true)
@@ -1031,6 +1135,7 @@ class MainActivity : ComponentActivity() {
                     AppUpdateDialog(initialInfo = info,
                         onDeclineVersion = {
                             automaticUpdate = null
+                            ignoredUpdateKey = updateNoticeKey(info)
                             scope.launch(Dispatchers.IO) { notices.dismiss(info) }
                         },
                         onClose = { automaticUpdate = null })

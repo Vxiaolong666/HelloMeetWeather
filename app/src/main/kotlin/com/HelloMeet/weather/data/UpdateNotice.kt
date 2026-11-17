@@ -19,4 +19,6 @@ internal class UpdateNotices(context: android.content.Context) {
         val key = updateNoticeKey(info) ?: return
         prefs.edit().putStringSet("dismissed", prefs.getStringSet("dismissed", emptySet()).orEmpty() + key).commit()
     }
+    fun isDismissed(info: AppUpdateInfo): Boolean =
+        updateNoticeKey(info)?.let { it in prefs.getStringSet("dismissed", emptySet()).orEmpty() } ?: false
 }

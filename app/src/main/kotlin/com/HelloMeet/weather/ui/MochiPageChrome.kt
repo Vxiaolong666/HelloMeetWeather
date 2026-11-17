@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -37,6 +38,7 @@ import com.HelloMeet.weather.R
 import com.HelloMeet.weather.ui.components.PhosphorIcon
 import com.HelloMeet.weather.ui.theme.LocalZhishengPalette
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import ui.feice.mochi.basic.MochiBarButton
@@ -113,33 +115,37 @@ internal fun MochiSettingsScaffold(
     contentSpacing: Dp = MochiListDefaults.SectionSpacing,
     actions: (@Composable RowScope.() -> Unit)? = null,
     onRefresh: (suspend () -> Unit)? = null,
+    overlay: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
     val toast = LocalMochiToast.current
     val navigator = MochiNavigator.current
-    MochiLazyCompactTitleScaffold(
-        title = title,
-        modifier = modifier,
-        subtitle = subtitle,
-        navigationIcon = { MochiBackButton(onClick = onBack, history = ::mochiSettingsRouteTitle) },
-        actions = actions ?: if (showSave) {
-            {
-                MochiBarButton(
-                    "保存",
-                    onClick = {
-                        toast?.show("保存成功", icon = { tint ->
-                            PhosphorIcon(R.drawable.ph_check, null, Modifier.size(20.dp), tint)
-                        })
-                        if (onBack != null) onBack() else navigator?.pop()
-                    },
-                    navId = if (navigator != null) MochiSettingsSaveNavId else null,
-                )
-            }
-        } else null,
-        contentSpacing = contentSpacing,
-        onRefresh = onRefresh,
-        content = content,
-    )
+    Box(Modifier.fillMaxSize()) {
+        MochiLazyCompactTitleScaffold(
+            title = title,
+            modifier = modifier,
+            subtitle = subtitle,
+            navigationIcon = { MochiBackButton(onClick = onBack, history = ::mochiSettingsRouteTitle) },
+            actions = actions ?: if (showSave) {
+                {
+                    MochiBarButton(
+                        "保存",
+                        onClick = {
+                            toast?.show("保存成功", icon = { tint ->
+                                PhosphorIcon(R.drawable.ph_check, null, Modifier.size(20.dp), tint)
+                            })
+                            if (onBack != null) onBack() else navigator?.pop()
+                        },
+                        navId = if (navigator != null) MochiSettingsSaveNavId else null,
+                    )
+                }
+            } else null,
+            contentSpacing = contentSpacing,
+            onRefresh = onRefresh,
+            content = content,
+        )
+        overlay()
+    }
 }
 
 /**
@@ -171,9 +177,9 @@ internal fun MochiPageFrame(
                 contentSpacing = contentSpacing,
                 actions = actions,
                 onRefresh = onRefresh,
+                overlay = overlay,
                 content = content,
             )
-            overlay()
         }
     }
 }
@@ -326,6 +332,8 @@ internal fun MochiConfirmDialog(
     )
 }
 
+private const val BetaDialogExitMillis = 420L
+
 /**
  * Beta 功能提示：照 demo 的 DemoNotice，主按钮走 [MochiDialogAction.holdToConfirm]
  * 长按确认（内部是 MochiHoldButton），「不再提示」用库圆形勾选圈 [MochiCheckbox]。
@@ -343,18 +351,35 @@ internal fun MochiBetaNoticeDialog(
     visible: Boolean = true,
 ) {
     var dontShow by rememberSaveable { mutableStateOf(false) }
+    // 库的 MochiDialog 在点任何按钮后都会回调 onDismissRequest；只有「继续使用」按住确认才算开启，
+    // 点「取消」不能把功能打开，这里用 confirmed 区分。
+    var confirmed by rememberSaveable { mutableStateOf(false) }
+    // 点「取消」后本页一直保持关闭：不能像以前那样在页面退场动画中途把标志复位，
+    // 否则整页还在做转场、对话框会重新弹一次。
+    var cancelled by remember { mutableStateOf(false) }
     val haptics = rememberMochiHaptics()
+    // 每次真正弹出时重置确认标记；取消标记不在这里复位，否则页面退场途中对话框会再弹一次。
+    LaunchedEffect(visible) { if (visible) confirmed = false }
+    LaunchedEffect(cancelled) {
+        if (cancelled) {
+            // 先让对话框自己播完退场动画，再执行返回，避免和页面退场叠在一起。
+            delay(BetaDialogExitMillis)
+            onCancel()
+        }
+    }
     MochiDialog(
-        visible = visible,
+        visible = visible && !cancelled,
         onDismissRequest = {
-            if (dontShow) onNeverShowAgain()
-            onDismiss()
+            if (confirmed) {
+                if (dontShow) onNeverShowAgain()
+                onDismiss()
+            }
         },
         title = title,
         message = message,
         actions = persistentListOf(
-            MochiDialogAction("继续使用", MochiDialogActionRole.Primary, holdToConfirm = true),
-            MochiDialogAction("取消", MochiDialogActionRole.Cancel) { onCancel() },
+            MochiDialogAction("继续使用", MochiDialogActionRole.Primary, holdToConfirm = true) { confirmed = true },
+            MochiDialogAction("取消", MochiDialogActionRole.Cancel) { cancelled = true },
         ),
         dismissOnBack = false,
         dismissOnOutsideTap = false,

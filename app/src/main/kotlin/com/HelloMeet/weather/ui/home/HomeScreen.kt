@@ -109,6 +109,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.produceState
 import com.HelloMeet.weather.data.CachedWeather
+import com.HelloMeet.weather.data.AppUpdateInfo
 import com.HelloMeet.weather.model.City
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -357,6 +358,13 @@ fun HomeScreen(
     onCityManagerClick: () -> Unit = {},
     onScenePage: (AtlasPage) -> Unit = {},
     dismissCitiesRequest: Int = 0,
+    updateInfo: AppUpdateInfo? = null,
+    updateChecking: Boolean = false,
+    updateError: String? = null,
+    ignoredUpdateVersion: String? = null,
+    onCheckUpdate: () -> Unit = {},
+    onOpenUpdate: (AppUpdateInfo) -> Unit = {},
+    onIgnoreUpdate: (AppUpdateInfo) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val sidebar = rememberMochiSidebarState()
@@ -564,6 +572,13 @@ fun HomeScreen(
                             onYesterdayClick = { openCityDetail(onYesterdayClick) },
                             onFeatureHubClick = { openCityDetail(onFeatureHubClick) },
                             onScenePage = { page -> openCityDetail { onScenePage(page) } },
+                            updateInfo = updateInfo,
+                            updateChecking = updateChecking,
+                            updateError = updateError,
+                            ignoredUpdateVersion = ignoredUpdateVersion,
+                            onCheckUpdate = onCheckUpdate,
+                            onOpenUpdate = onOpenUpdate,
+                            onIgnoreUpdate = onIgnoreUpdate,
                             outfitState = outfitState,
                             onOutfitOpen = { request -> openCityDetail { outfitRequest = request } },
                         )
@@ -675,6 +690,13 @@ internal fun HomeCityPage(
     onFeatureHubClick: () -> Unit = {},
     onScenePage: (AtlasPage) -> Unit = {},
     onOpenDailyDay: (Long) -> Unit = {},
+    updateInfo: AppUpdateInfo? = null,
+    updateChecking: Boolean = false,
+    updateError: String? = null,
+    ignoredUpdateVersion: String? = null,
+    onCheckUpdate: () -> Unit = {},
+    onOpenUpdate: (AppUpdateInfo) -> Unit = {},
+    onIgnoreUpdate: (AppUpdateInfo) -> Unit = {},
     outfitState: OutfitUiState = rememberOutfitUiState(),
     onOutfitOpen: ((OutfitDialogRequest) -> Unit)? = null,
 ) {
@@ -765,6 +787,14 @@ internal fun HomeCityPage(
                     onFeatureHubClick = onFeatureHubClick,
                     onScenePage = onScenePage,
                     onOpenDailyDay = onOpenDailyDay,
+                    updateInfo = updateInfo,
+                    updateChecking = updateChecking,
+                    updateError = updateError,
+                    ignoredUpdateVersion = ignoredUpdateVersion,
+                    onCheckUpdate = onCheckUpdate,
+                    onOpenUpdate = onOpenUpdate,
+                    onIgnoreUpdate = onIgnoreUpdate,
+                    showUpdateCard = selected,
                     outfitState = outfitState,
                     onOutfitOpen = onOutfitOpen,
                 )
@@ -859,6 +889,7 @@ fun SimulatedWeatherSurface(
                         prefs = prefs,
                         staleAgeMillis = null,
                         listState = listState,
+                        showUpdateCard = false,
                     )
                     }
                 }
@@ -1293,6 +1324,14 @@ private fun WeatherContent(
     onYesterdayClick: () -> Unit = {},
     onFeatureHubClick: () -> Unit = {},
     onScenePage: (AtlasPage) -> Unit = {},
+    updateInfo: AppUpdateInfo? = null,
+    updateChecking: Boolean = false,
+    updateError: String? = null,
+    ignoredUpdateVersion: String? = null,
+    onCheckUpdate: () -> Unit = {},
+    onOpenUpdate: (AppUpdateInfo) -> Unit = {},
+    onIgnoreUpdate: (AppUpdateInfo) -> Unit = {},
+    showUpdateCard: Boolean = true,
     outfitState: OutfitUiState = rememberOutfitUiState(),
     onOutfitOpen: ((OutfitDialogRequest) -> Unit)? = null,
 ) {
@@ -1326,8 +1365,9 @@ private fun WeatherContent(
     val showTy = showTyphoon && com.HelloMeet.weather.data.ReleaseFeatures.typhoon
     val showFeatures = prefs.showFeatures
     val showOutfit = prefs.showOutfit
-    val showAtlas = if (isPhosphorVista) prefs.showSpacetime || vistaScenePages(sceneWeather, prefs).isNotEmpty()
-    else prefs.showSpacetime || prefs.showSkyPhotography || prefs.showCoastWeather
+    // 「气象视界」整块关掉时，内部天空/海岸开关一律不再起作用，
+    // 只按主开关决定整块是否出现，避免关了主开关还残留入口。
+    val showAtlas = prefs.showSpacetime
     val vista = isPhosphorVista
     val vistaBlocks = vistaHomeBlocks(buildSet {
         add(VistaHomeBlock.METADATA)
@@ -1501,6 +1541,22 @@ private fun WeatherContent(
                     HomeModule.OUTFIT -> showOutfit
                 }
                 if (visible) addHomeModule(module)
+            }
+        }
+        if (showUpdateCard) {
+            item(key = "home_update") {
+                Stagger(nextStagger(), entered) { m ->
+                    HomeUpdateCard(
+                        modifier = m,
+                        info = updateInfo,
+                        checking = updateChecking,
+                        error = updateError,
+                        ignoredVersion = ignoredUpdateVersion,
+                        onCheck = onCheckUpdate,
+                        onOpen = onOpenUpdate,
+                        onIgnore = onIgnoreUpdate,
+                    )
+                }
             }
         }
         item { Stagger(nextStagger(), entered) { m -> Footer(data, m) } }
@@ -3544,7 +3600,7 @@ private fun DailyExpanded(d: DailyWeather, windUnit: String) {
         d.windGust?.takeIf { it.isFinite() && it >= 0 }?.let { Fmt.wind(it, windUnit) }
             ?.let { add(DailyFact(R.drawable.ph_wind, "阵风", it)) }
         d.aqi?.takeIf { it in 0..1000 }
-            ?.let { add(DailyFact(R.drawable.ph_leaf, "AQI", it.toString(), aqiTint)) }
+            ?.let { add(DailyFact(R.drawable.ph_leaf, "空气质量", it.toString(), aqiTint)) }
         d.humidity?.takeIf { it.isFinite() && it in 0.0..100.0 }
             ?.let { add(DailyFact(R.drawable.ph_drop, "湿度", "${it.toInt()}%")) }
         d.cloudCover?.takeIf { it.isFinite() && it in 0.0..100.0 }
@@ -4042,7 +4098,7 @@ internal fun AqiCard(aqi: AqiInfo, modifier: Modifier, onClick: () -> Unit = {})
                         fontWeight = FontWeight.Medium, color = aqiColor(aqi.value))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(Fmt.aqiLevelLabel(aqi.value, aqi.level), style = MaterialTheme.typography.titleMedium, color = aqiColor(aqi.value))
-                        Text(if (aqi.estimated) "AQI · 估算" else Fmt.aqiBasisLabel(aqi.standard),
+                        Text(if (aqi.estimated) "空气质量 · 估算" else Fmt.aqiBasisLabel(aqi.standard).replace("AQI", "空气质量"),
                             style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary)
                     }
                     aqi.primary?.takeIf { it.isNotBlank() && !stackedPrimary }?.let {
@@ -4110,7 +4166,7 @@ internal fun AqiCard(aqi: AqiInfo, modifier: Modifier, onClick: () -> Unit = {})
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        if (aqi.estimated) "AQI · 估算" else Fmt.aqiBasisLabel(aqi.standard) + " // AIR QUALITY INDEX",
+                        if (aqi.estimated) "空气质量 · 估算" else Fmt.aqiBasisLabel(aqi.standard).replace("AQI", "空气质量") + " // AIR QUALITY INDEX",
                         style = MaterialTheme.typography.labelSmall,
                         color = ZhishengTextTertiary,
                         letterSpacing = 0.7.sp,
@@ -4635,6 +4691,102 @@ private fun FeatureCard(modifier: Modifier, onClick: () -> Unit = {}) {
             )
         }
     }
+}
+
+/**
+ * 首页底部的检查更新模块：应用启动时自动检查一次，发现新版本可查看详情或忽略该版本。
+ */
+@Composable
+private fun HomeUpdateCard(
+    modifier: Modifier,
+    info: AppUpdateInfo?,
+    checking: Boolean,
+    error: String?,
+    ignoredVersion: String?,
+    onCheck: () -> Unit,
+    onOpen: (AppUpdateInfo) -> Unit,
+    onIgnore: (AppUpdateInfo) -> Unit,
+) {
+    val current = "v${com.HelloMeet.weather.BuildConfig.VERSION_NAME}"
+    val title: String
+    val subtitle: String
+    when {
+        checking -> {
+            title = "正在检查更新"
+            subtitle = "$current · 正在连接发布渠道，请稍候"
+        }
+        info != null -> {
+            title = "发现新版本 v${info.versionName}"
+            subtitle = info.notes.lineSequence().map(String::trim).firstOrNull { it.isNotEmpty() }
+                ?: "当前 $current，可查看详情后手动安装"
+        }
+        ignoredVersion != null -> {
+            title = "已忽略 $ignoredVersion"
+            subtitle = "当前 $current · 该版本不再提醒，可手动重新检查"
+        }
+        error != null -> {
+            title = "检查更新失败"
+            subtitle = error
+        }
+        else -> {
+            title = "已是最新版本"
+            subtitle = "当前 $current · 应用启动时会自动检查"
+        }
+    }
+    val accent = if (info != null || error != null) ZhishengOrange else ZhishengTextTertiary
+    HudCard(modifier = modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painterResource(R.drawable.ph_arrow_clockwise),
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleSmall, color = ZhishengText)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ZhishengTextTertiary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (info != null) {
+                    UpdateTextAction("忽略该版本", ZhishengTextTertiary) { onIgnore(info) }
+                    UpdateTextAction("查看更新", ZhishengMint) { onOpen(info) }
+                } else {
+                    UpdateTextAction(
+                        label = if (checking) "检查中…" else "检查更新",
+                        color = if (checking) ZhishengTextTertiary else ZhishengMint,
+                        enabled = !checking,
+                        onClick = onCheck,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateTextAction(label: String, color: Color, enabled: Boolean = true, onClick: () -> Unit) {
+    Text(
+        label,
+        style = MaterialTheme.typography.labelMedium,
+        color = if (enabled) color else color.copy(alpha = 0.5f),
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = label, onClick = onClick)
+            .padding(vertical = 6.dp, horizontal = 2.dp),
+    )
 }
 
 internal fun hourlyWindLabel(hour: HourlyWeather): String? {
