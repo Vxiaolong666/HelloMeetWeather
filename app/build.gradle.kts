@@ -41,9 +41,9 @@ android {
         applicationId = "com.HelloMeet.weather"
         minSdk = 26
         targetSdk = 34
-        // 1.0 正式版：功能与界面稳定后的首个正式发行版本。
-        versionCode = 20261185
-        versionName = "1.0"
+        // 1.2.1：首次启动引导、定位服务日志与首页检查更新模块。
+        versionCode = 20261186
+        versionName = "1.2.1"
         resValue("string", "shortcut_target_package", "com.HelloMeet.weather")
 
         // 发行渠道面向实体手机；去掉仅供 Intel 模拟器使用的 x86/x86_64 MapLibre 库。

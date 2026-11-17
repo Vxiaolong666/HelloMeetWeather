@@ -16,7 +16,7 @@ class ChangelogTest {
         val versions = parseChangelog(markdown)
 
         assertTrue("至少解析出三个历史版本", versions.size >= 3)
-        assertEquals("1.0", versions.first().version)
+        assertEquals("1.2.1", versions.first().version)
         assertTrue(versions.all { it.itemCount > 0 })
         assertTrue(versions.any { version -> version.groups.any { it.title != null } })
     }

@@ -1,7 +1,7 @@
 {
-  "versionCode": 20261185,
-  "versionName": "1.0",
-  "apkUrl": "https://github.com/Vxiaolong666/HelloMeetWeather/releases/download/v1.0/ZhishengWeather-v1.0.apk",
-  "pageUrl": "https://github.com/Vxiaolong666/HelloMeetWeather/releases/tag/v1.0",
-  "notes": "遇见天气 1.0 正式版：应用更名与三款新图标、空气质量全国排名、48 小时与 15 日天气详情、统一页面转场，以及全新的检查更新与历史更新日志。"
+  "versionCode": 20261186,
+  "versionName": "1.2.1",
+  "apkUrl": "https://github.com/Vxiaolong666/HelloMeetWeather/releases/download/v1.2.1/ZhishengWeather-v1.2.1.apk",
+  "pageUrl": "https://github.com/Vxiaolong666/HelloMeetWeather/releases/tag/v1.2.1",
+  "notes": "遇见天气 1.2.1：全新首次启动引导、定位服务日志与诊断增强、首页检查更新模块（启动自动检查，可忽略版本）、搜索自定义天气地点，以及天气来源比较、AQI 仪表盘与转场的优化和修复。"
 }

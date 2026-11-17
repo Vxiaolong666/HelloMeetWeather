@@ -47,8 +47,8 @@ import com.HelloMeet.weather.ui.theme.LocalZhishengPalette
 import com.HelloMeet.weather.ui.theme.isPhosphorVista
 import kotlinx.coroutines.launch
 
-internal const val WhatsNewVersion = "1.0"
-internal val WhatsNewVersionRange = "BETA 14 → 1.0"
+internal const val WhatsNewVersion = "1.2.1"
+internal val WhatsNewVersionRange = "1.0 → 1.2.1"
 internal const val WhatsNewPreferenceFile = "zhisheng_whats_new"
 internal const val WhatsNewSeenKey = "last_seen_version"
 

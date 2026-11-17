@@ -8,18 +8,17 @@ internal data class ReleaseNotesSection(
     val id: String, val category: ReleaseNotesCategory, val title: String, val notes: List<ReleaseNote>,
 )
 
-/** Implementation changes since public beta14. Keep the current release summary short. */
+/** Implementation changes since public v1.0. Keep the current release summary short. */
 internal val WhatsNewSections = listOf(
     ReleaseNotesSection("release", ReleaseNotesCategory.EXPERIENCE, "本次更新", listOf(
-        ReleaseNote("应用更名", "应用名称改为「遇见天气」，包名迁移到 com.HelloMeet.weather，启动图标提供默认、多彩、简约三款。"),
-        ReleaseNote("页面转场", "霞光、星空拍摄、海岸气象改为路由页，首页天气回看、雷达、降水与城市管理统一从来源卡片展开与缩回。"),
-        ReleaseNote("检查更新", "检查更新改为全新卡片页面，显示版本说明、下载进度与百分比，失败可直接重试。"),
-        ReleaseNote("更新日志", "关于页新增当前版本更新与历史更新日志两个独立入口，历史版本随包内置、离线可查。"),
+        ReleaseNote("首次引导", "全新首次启动引导：欢迎、定位、外观、动效、偏好与完成六步流程，可随时跳过。"),
+        ReleaseNote("检查更新", "首页新增检查更新模块：启动自动检查，发现新版本可直接查看或忽略该版本。"),
+        ReleaseNote("定位日志", "设置 → 位置服务新增定位服务日志，记录每次定位与逆地理请求、失败原因与结果。"),
     )),
     ReleaseNotesSection("weather", ReleaseNotesCategory.WEATHER, "天气与空气", listOf(
-        ReleaseNote("全国排名", "新增生态环境部空气质量全国排名，按城市上级匹配并显示全国排名与百分比。"),
-        ReleaseNote("天气详情", "新增 48 小时天气页与未来 15 日逐日详情，八类指标支持渐变图表与选点交互。"),
-        ReleaseNote("公告", "公告列表支持下拉刷新，正文支持 Markdown 与 HTML 混排及图片预览。"),
+        ReleaseNote("定位更稳", "坐标转换失败时自动回退原始坐标；高德逆地理字段解析与街道级诊断更准确。"),
+        ReleaseNote("来源比较", "天气来源比较改为统一对话框，用指标卡直观展示各来源的数值差异。"),
+        ReleaseNote("空气详情", "天气详情 AQI 仪表盘改用连续色阶渐变弧，读数与等级更清晰。"),
     )),
 )
 
