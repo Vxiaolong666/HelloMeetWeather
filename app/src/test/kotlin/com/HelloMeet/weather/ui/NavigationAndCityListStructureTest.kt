@@ -1,6 +1,7 @@
 package com.HelloMeet.weather.ui
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -59,5 +60,36 @@ class NavigationAndCityListStructureTest {
         assertTrue(search.contains("title = \"添加地点\""))
         // 返回按钮由库标题脚手架统一渲染并带无障碍标签；这里只校验动作仍然接上。
         assertTrue(search.contains("onBack = { dismissKeyboard(); onBack() }"))
+    }
+
+    @Test
+    fun citySelectionUsesLibraryThemeRevealInsteadOfHandDrawnMask() {
+        val activity = File(projectDir, "src/main/kotlin/com/HelloMeet/weather/MainActivity.kt").readText()
+
+        assertTrue(activity.contains("rememberMochiThemeRevealState()"))
+        assertTrue(activity.contains("MochiThemeRevealHost(cityReveal"))
+        assertTrue(activity.contains("cityReveal.reveal("))
+        assertTrue(activity.contains("origin = Offset(rect.center.x, rect.center.y)"))
+        assertFalse(activity.contains("CityExpandRequest"))
+        assertFalse(activity.contains("cityExpand"))
+    }
+
+    @Test
+    fun homeTopBarCityManagerEntryUsesTheSameReveal() {
+        val activity = File(projectDir, "src/main/kotlin/com/HelloMeet/weather/MainActivity.kt").readText()
+        val entry = activity.substringAfter("onCityManagerClick = {")
+            .substringBefore("onScenePage =")
+
+        assertTrue(entry.contains("cityReveal.reveal(change = change)"))
+
+        // 独立城市管理页里「当前定位」和「已添加城市」两组卡片共用同一段点击处理，
+        // 都优先走 onSelectAt → cityReveal.reveal，动画不能按分组分叉。
+        val list = File(projectDir, "src/main/kotlin/com/HelloMeet/weather/ui/home/CityWeatherList.kt").readText()
+        val groups = list.substringAfter("val groups = listOf(")
+            .substringBefore("CompositionLocalProvider")
+        assertTrue(groups.contains("\"当前定位\""))
+        assertTrue(groups.contains("\"已添加城市\""))
+        assertEquals(1, groups.split("val at = onSelectAt").size - 1)
+        assertFalse(groups.contains("if (label == \"当前定位\")"))
     }
 }

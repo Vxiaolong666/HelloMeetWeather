@@ -1,37 +1,28 @@
 package com.HelloMeet.weather.ui
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.HelloMeet.weather.R
 import com.HelloMeet.weather.ui.components.PhosphorIcon
 import com.HelloMeet.weather.ui.theme.LocalZhishengPalette
+import kotlinx.collections.immutable.persistentListOf
+import ui.feice.mochi.basic.MochiDialog
+import ui.feice.mochi.basic.MochiDialogAction
+import ui.feice.mochi.basic.MochiDialogActionRole
 
 /** CHANGELOG.md 中的单个版本。 */
 internal data class ChangelogVersion(
@@ -96,9 +87,15 @@ private fun String.stripInlineMarkdown(): String =
 
 @Composable
 fun ChangelogDialog(onClose: () -> Unit) {
-    Dialog(
+    MochiDialog(
+        visible = true,
         onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        title = "更新日志",
+        maxWidth = 420.dp,
+        dismissOnOutsideTap = true,
+        actions = persistentListOf(
+            MochiDialogAction("知道了", MochiDialogActionRole.Primary),
+        ),
     ) {
         ChangelogDialogContent(onClose)
     }
@@ -114,70 +111,25 @@ internal fun ChangelogDialogContent(onClose: () -> Unit) {
         }.getOrDefault(emptyList())
     }
     var expanded by remember(versions) { mutableStateOf(versions.firstOrNull()?.version) }
-    val shape = RoundedCornerShape(18.dp)
 
-    Box(
-        Modifier.fillMaxSize().clickable(role = Role.Button, onClick = onClose),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            Modifier
-                .padding(horizontal = 16.dp, vertical = 20.dp)
-                .widthIn(max = 540.dp)
-                .fillMaxWidth()
-                .fillMaxHeight(.9f)
-                .clip(shape)
-                .background(p.surface)
-                .border(1.dp, p.cardBorder.copy(alpha = .7f), shape)
-                .pointerInput(Unit) { detectTapGestures(onTap = {}) },
+    if (versions.isEmpty()) {
+        Text(
+            "暂无更新日志",
+            color = p.textSecondary,
+            fontSize = 13.sp,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+        )
+    } else {
+        LazyColumn(
+            Modifier.heightIn(max = 420.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 22.dp, end = 10.dp, top = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "更新日志", color = p.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f).semantics { heading() },
+            items(versions, key = { it.version }) { item ->
+                ChangelogVersionBlock(
+                    item = item,
+                    expanded = expanded == item.version,
+                    onToggle = { expanded = if (expanded == item.version) null else item.version },
                 )
-                Box(
-                    Modifier.size(48.dp).clip(RoundedCornerShape(24.dp))
-                        .clickable(role = Role.Button, onClick = onClose),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PhosphorIcon(R.drawable.ph_x, "关闭更新日志", Modifier.size(21.dp), p.textSecondary)
-                }
-            }
-            HorizontalDivider(color = p.cardBorder.copy(alpha = .65f))
-            if (versions.isEmpty()) {
-                Text(
-                    "暂无更新日志",
-                    color = p.textSecondary, fontSize = 13.sp,
-                    modifier = Modifier.fillMaxWidth().padding(22.dp),
-                )
-            } else {
-                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 14.dp)) {
-                    items(versions, key = { it.version }) { item ->
-                        ChangelogVersionBlock(
-                            item = item,
-                            expanded = expanded == item.version,
-                            onToggle = { expanded = if (expanded == item.version) null else item.version },
-                        )
-                    }
-                }
-            }
-            HorizontalDivider(color = p.cardBorder.copy(alpha = .65f))
-            Button(
-                onClick = onClose,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp).heightIn(min = 50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = p.text, contentColor = p.surface),
-            ) {
-                Text(
-                    "知道了", fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center, modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(12.dp))
-                PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(20.dp), p.surface)
             }
         }
     }

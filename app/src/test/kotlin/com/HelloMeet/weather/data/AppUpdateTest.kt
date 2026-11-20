@@ -254,6 +254,11 @@ class AppUpdateTest {
         assertTrue(dialog.contains("pageActionLabel"))
         assertTrue(dialog.contains("\"立即更新\""))
         assertTrue(activity.contains("AppUpdate.check()"))
+        assertTrue(dialog.contains("MochiDialog("))
+        assertTrue(dialog.contains("MochiDialogAction("))
+        assertTrue(dialog.contains("maxWidth = 420.dp"))
+        assertTrue(dialog.contains("closeOnClick = closeAfterPrimary"))
+        assertFalse(dialog.contains("androidx.compose.ui.window.Dialog"))
     }
 
     @Test

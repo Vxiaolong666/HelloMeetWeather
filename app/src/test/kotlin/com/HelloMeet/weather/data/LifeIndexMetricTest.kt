@@ -16,9 +16,9 @@ class LifeIndexMetricTest {
         val stored = LifeIndexMetric.selectionKey(selected)
 
         val restored = LifeIndexMetric.selectionFrom(stored)
-        assertTrue(selected.all { it in restored })
-        // 旧存档不包含新增的指数类型，升级后默认开启。
-        assertTrue(LifeIndexMetric.MORNING_EXERCISE in restored)
+        // 存储里的选择必须原样还原：用户关闭的新增项不能在读取时被补回来。
+        assertEquals(selected, restored)
+        assertTrue(LifeIndexMetric.MORNING_EXERCISE !in restored)
         assertTrue(stored.startsWith(LifeIndexMetric.CAR_WASH.key))
     }
 

@@ -6,6 +6,10 @@ package ui.feice.mochi.demo.pages
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,7 +43,7 @@ import ui.feice.mochi.demo.common.tile
  */
 @Composable
 fun DialogPage(entry: CatalogEntry, modifier: Modifier = Modifier) {
-    // 0 = 没开，1 = 两个按钮，2 = 三个按钮，3 = 一个按钮
+    // 0 = 没开，1 = 两个按钮，2 = 三个按钮，3 = 一个按钮，4 = 宽版长内容
     var open by rememberSaveable { mutableIntStateOf(0) }
     var last by remember { mutableStateOf<String?>(null) }
     var outside by rememberSaveable { mutableStateOf(false) }
@@ -58,6 +62,9 @@ fun DialogPage(entry: CatalogEntry, modifier: Modifier = Modifier) {
                     }
                     MochiButton(onClick = { open = 3 }, modifier = Modifier.fillMaxWidth(), style = MochiButtonStyle.Tonal) {
                         Text("只有一个按钮")
+                    }
+                    MochiButton(onClick = { open = 4 }, modifier = Modifier.fillMaxWidth(), style = MochiButtonStyle.Tonal) {
+                        Text("宽版长内容（maxWidth）")
                     }
                 }
             }
@@ -117,4 +124,19 @@ fun DialogPage(entry: CatalogEntry, modifier: Modifier = Modifier) {
         dismissOnOutsideTap = outside,
         actions = persistentListOf(MochiDialogAction("好", MochiDialogActionRole.Primary) { last = "好" }),
     )
+    MochiDialog(
+        visible = open == 4,
+        onDismissRequest = close,
+        title = "更新说明",
+        message = "更新日志、版本说明这类内容较长的对话框，可以把 maxWidth 从 320dp 调到 420dp，读起来没那么窄。",
+        maxWidth = 420.dp,
+        dismissOnOutsideTap = outside,
+        actions = persistentListOf(MochiDialogAction("知道了", MochiDialogActionRole.Primary) { last = "知道了" }),
+    ) {
+        Column(Modifier.heightIn(max = 200.dp).verticalScroll(rememberScrollState())) {
+            repeat(8) { i ->
+                Text("第 ${i + 1} 条更新内容：修复若干问题，优化若干体验。", modifier = Modifier.padding(vertical = 6.dp))
+            }
+        }
+    }
 }

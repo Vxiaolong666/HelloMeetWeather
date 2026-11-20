@@ -200,24 +200,12 @@ enum class LifeIndexMetric(val key: String, val cn: String, val en: String) {
     companion object {
         private const val NONE = "__none__"
         val defaultSelection: Set<LifeIndexMetric> = entries.toSet()
-        // 旧存档只可能含这 16 个 key。升级后新增类型默认开启，
-        // 既不覆盖用户主动取消过的旧项，也不会让指数突然消失。
-        private val legacyKeys = setOf(
-            "car_wash", "sports", "dress", "fishing", "uv", "travel", "allergy", "comfort",
-            "cold", "air_pollution", "air_conditioner", "sunglasses", "makeup", "drying",
-            "traffic", "sunscreen",
-        )
-
         fun selectionFrom(raw: String?): Set<LifeIndexMetric> = when {
             raw == null -> defaultSelection
             raw == NONE -> emptySet()
-            else -> {
-                val parsed = raw.split(',')
-                    .mapNotNull { key -> entries.firstOrNull { it.key == key.trim() } }
-                    .toMutableSet()
-                parsed.addAll(entries.filter { it.key !in legacyKeys })
-                parsed.toSet()
-            }
+            else -> raw.split(',')
+                .mapNotNull { key -> entries.firstOrNull { it.key == key.trim() } }
+                .toSet()
         }
 
         fun selectionKey(selection: Set<LifeIndexMetric>): String =

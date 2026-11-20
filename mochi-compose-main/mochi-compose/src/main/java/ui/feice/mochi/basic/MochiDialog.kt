@@ -149,6 +149,7 @@ public object MochiDialogDefaults {
  * - 出现时从稍大一点缩放到位、淡入，后面的页面压暗；消失时淡出、略微缩小
  * - 圆角卡片，标题和说明靠左；按钮是胶囊：两个时并排，其余竖排；按钮离卡片边 [MochiDialogDefaults.ButtonInset]，
  *   卡片圆角 = 按钮半高 + 它，按钮和卡片同心
+ * - 卡片最大宽度取 [maxWidth]（默认 [MochiDialogDefaults.MaxWidth]）；长内容对话框可传更宽，仍受屏幕宽度限制
  * - 和标签栏一样的高光 / 形变：按钮按下放大、发光、跟手，并排的两个按钮之间拉出融球颈；
  *   整张卡片被手指带着轻微挪动，边缘接到按钮的环境光
  * - 预见式返回：返回手势拖动时卡片跟着缩小、朝手势那侧偏一点，后面的压暗变浅；松手关闭，取消则弹回
@@ -173,6 +174,7 @@ public fun MochiDialog(
     dismissOnOutsideTap: Boolean = false,
     dismissOnBack: Boolean = true,
     colors: MochiDialogColors = MochiDialogDefaults.colors(),
+    maxWidth: Dp = MochiDialogDefaults.MaxWidth,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val currentOnDismiss by rememberUpdatedState(onDismissRequest)
@@ -274,7 +276,7 @@ public fun MochiDialog(
                 Box(
                     modifier
                         .padding(horizontal = 36.dp)
-                        .widthIn(max = MochiDialogDefaults.MaxWidth)
+                        .widthIn(max = maxWidth)
                         .fillMaxWidth()
                         .onGloballyPositioned {
                             val b = it.boundsInRoot()

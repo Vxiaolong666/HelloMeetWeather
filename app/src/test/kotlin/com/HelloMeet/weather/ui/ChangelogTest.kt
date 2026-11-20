@@ -27,4 +27,18 @@ class ChangelogTest {
 
         assertFalse(entries.any { "**" in it || "](" in it || '`' in it })
     }
+
+    @Test
+    fun `history dialog uses the shared component library shell`() {
+        val dialog = sequenceOf(
+            File("src/main/kotlin/com/HelloMeet/weather/ui/ChangelogDialog.kt"),
+            File("app/src/main/kotlin/com/HelloMeet/weather/ui/ChangelogDialog.kt"),
+        ).first { it.isFile }.readText()
+
+        assertTrue(dialog.contains("MochiDialog("))
+        assertTrue(dialog.contains("MochiDialogAction(\"知道了\""))
+        assertTrue(dialog.contains("maxWidth = 420.dp"))
+        assertTrue(dialog.contains("parseChangelog("))
+        assertFalse(dialog.contains("androidx.compose.ui.window.Dialog"))
+    }
 }

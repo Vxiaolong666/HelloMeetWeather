@@ -135,6 +135,7 @@ import kotlinx.collections.immutable.persistentListOf
 import ui.feice.mochi.basic.MochiDialog
 import ui.feice.mochi.basic.MochiDialogAction
 import ui.feice.mochi.basic.MochiDialogActionRole
+import ui.feice.mochi.basic.MochiEmptyState
 import ui.feice.mochi.navigation.MochiSidebarLayout
 import ui.feice.mochi.navigation.MochiSidebarSectionHeader
 import ui.feice.mochi.navigation.MochiSidebarStyle
@@ -356,8 +357,10 @@ fun HomeScreen(
     onYesterdayClick: () -> Unit = {},
     onFeatureHubClick: () -> Unit = {},
     onCityManagerClick: () -> Unit = {},
+    onCityDrawerAddCity: () -> Unit = onSearchClick,
     onScenePage: (AtlasPage) -> Unit = {},
     dismissCitiesRequest: Int = 0,
+    reopenCitiesRequest: Int = 0,
     updateInfo: AppUpdateInfo? = null,
     updateChecking: Boolean = false,
     updateError: String? = null,
@@ -406,6 +409,10 @@ fun HomeScreen(
         weatherContentScrolling = false
         cityDeckVisible = false
         if (sidebar.isOpen) sidebar.close()
+    }
+    // 从侧边栏抽屉进入搜索页后返回：把抽屉重新展开，直接回到添加城市时所在的位置。
+    LaunchedEffect(reopenCitiesRequest) {
+        if (reopenCitiesRequest > 0) sidebar.open()
     }
 
     BackHandler(enabled = cityDeckVisible) {
@@ -493,10 +500,7 @@ fun HomeScreen(
                 onRemove = viewModel::removeCity,
                 onLocate = viewModel::locateCurrentCity,
                 onClearLocateMessage = viewModel::clearLocateMessage,
-                onAddCity = {
-                    // Keep the city page in place beneath search; Back returns to this list.
-                    onSearchClick()
-                },
+                onAddCity = { onCityDrawerAddCity() },
             )
         },
     ) {
@@ -3524,28 +3528,65 @@ internal fun VistaDailyOverview(
     var expanded by rememberSaveable { mutableStateOf<Long?>(null) }
     HudCard(modifier, navSourceKey = "daily_forecast") {
         Column {
-
             days.forEachIndexed { index, day ->
                 val open = expanded == day.dateMillis
-                Column(Modifier.fillMaxWidth().vistaClick(if (open) "收起当日详情" else "展开当日详情") { expanded = if (open) null else day.dateMillis }.padding(vertical = 12.dp)) {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Column(Modifier.width(if (enlarged) 66.dp else 46.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(Fmt.dailyDayLabel(day.dateMillis, utcOffsetSeconds = utcOffsetSeconds), style = MaterialTheme.typography.bodyMedium, color = if (index == 0) ZhishengMint else ZhishengText)
-                            Text(Fmt.dayOfMonth(day.dateMillis, utcOffsetSeconds), style = MaterialTheme.typography.labelSmall, color = ZhishengTextTertiary)
+                Column(
+                    Modifier.fillMaxWidth()
+                        .vistaClick(if (open) "收起当日详情" else "展开当日详情") { expanded = if (open) null else day.dateMillis }
+                        .padding(vertical = 12.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 40.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Column(
+                            Modifier.width(if (enlarged) 60.dp else 46.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                Fmt.dailyDayLabel(day.dateMillis, utcOffsetSeconds = utcOffsetSeconds),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (index == 0) ZhishengMint else ZhishengText,
+                                maxLines = 1,
+                            )
+                            Text(
+                                Fmt.dayOfMonth(day.dateMillis, utcOffsetSeconds),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = ZhishengTextSecondary,
+                                maxLines = 1,
+                            )
                         }
                         WeatherIcon(day.condition, Modifier.size(28.dp))
-                        Text(day.weatherText?.takeIf { it.isNotBlank() } ?: day.condition?.label ?: "天气暂缺", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = ZhishengTextSecondary, maxLines = if (enlarged) 2 else 1, overflow = TextOverflow.Ellipsis)
-                        if (!enlarged) {
-                            Text("${Fmt.temp(day.low, unit) ?: "—"}°", Modifier.width(34.dp), style = MaterialTheme.typography.labelLarge, color = ZhishengTextSecondary, textAlign = TextAlign.End)
-                            Canvas(Modifier.width(42.dp).height(8.dp)) {
-                                val (start, _, width) = tempBarParams(day.low, day.high, low, high, unit)
-                                drawLine(palette.cardBorder.copy(alpha = 0.35f), Offset(0f, center.y), Offset(size.width, center.y), 5.dp.toPx(), StrokeCap.Round)
-                                if (day.low != null && day.high != null) drawLine(vistaTemperatureInk(day.high, palette.isLight), Offset(size.width * start, center.y), Offset(size.width * (start + width), center.y), 5.dp.toPx(), StrokeCap.Round)
-                            }
-                            Text("${Fmt.temp(day.high, unit) ?: "—"}°", Modifier.width(34.dp), style = MaterialTheme.typography.labelLarge, color = ZhishengText, textAlign = TextAlign.End)
+                        Text(
+                            day.weatherText?.takeIf { it.isNotBlank() } ?: day.condition?.label ?: "天气暂缺",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ZhishengTextSecondary,
+                            maxLines = if (enlarged) 2 else 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        // 大字号 / 窄屏 / 华氏度也不省掉温度条：参考图里每条都有低温、
+                        // 区间条和高温，高温 >= 25° 用琥珀色。之前 enlarged 分支把它退化成
+                        // 一行「最低 X° 最高 Y°」文字，正是样式缺失的来源。
+                        Text(
+                            "${Fmt.temp(day.low, unit) ?: "—"}°", Modifier.width(34.dp),
+                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                            color = ZhishengTextSecondary, textAlign = TextAlign.End,
+                        )
+                        Canvas(Modifier.width(42.dp).height(8.dp)) {
+                            val (start, _, width) = tempBarParams(day.low, day.high, low, high, unit)
+                            drawLine(palette.cardBorder.copy(alpha = 0.35f), Offset(0f, center.y), Offset(size.width, center.y), 5.dp.toPx(), StrokeCap.Round)
+                            if (day.low != null && day.high != null) drawLine(vistaTemperatureInk(day.high, palette.isLight), Offset(size.width * start, center.y), Offset(size.width * (start + width), center.y), 5.dp.toPx(), StrokeCap.Round)
                         }
+                        Text(
+                            "${Fmt.temp(day.high, unit) ?: "—"}°", Modifier.width(34.dp),
+                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                            color = ZhishengText, textAlign = TextAlign.End,
+                        )
                     }
-                    if (enlarged) Text("最低 ${Fmt.temp(day.low, unit) ?: "—"}°  最高 ${Fmt.temp(day.high, unit) ?: "—"}°", style = MaterialTheme.typography.bodyMedium, color = ZhishengText)
                     AnimatedVisibility(
                         open,
                         enter = fadeIn(tween(200)) + expandVertically(tween(220)),
@@ -3568,9 +3609,12 @@ internal fun VistaDailyOverview(
                         }
                     }
                 }
-                if (index < days.lastIndex) HorizontalDivider(color = ZhishengCardBorder.copy(alpha = 0.20f))
+                if (index < days.lastIndex) HorizontalDivider(
+                    Modifier.padding(horizontal = 16.dp),
+                    color = ZhishengCardBorder.copy(alpha = 0.20f),
+                )
             }
-            HorizontalDivider(color = ZhishengCardBorder.copy(alpha = 0.20f))
+            HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = ZhishengCardBorder.copy(alpha = 0.20f))
             Box(Modifier.fillMaxWidth()
                 .clickable(role = Role.Button, onClick = onMore).heightIn(min = 48.dp).padding(top = 8.dp),
                 contentAlignment = Alignment.Center) {
@@ -5119,12 +5163,14 @@ private fun CityDrawer(
         MochiSidebarSectionHeader(
             "城市" + if (favoriteCount > 0) " · 已收藏 $favoriteCount/${com.HelloMeet.weather.data.CityRepository.MAX_FAVORITES}" else "",
         )
+        // 城市列表与搜索无结果遮罩叠放：搜索框输入后没有匹配城市时照 demo 显示空状态。
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         if (isPhosphorVista) {
-            CityWeatherList(filtered, Modifier.weight(1f).fillMaxWidth(),
+            CityWeatherList(filtered, Modifier.fillMaxSize(),
                 onAddCity, onSelect, onToggleFavorite, onRemove, active)
         } else {
         LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(vertical = 4.dp),
         ) {
             if (filtered.cities.isEmpty()) {
@@ -5204,6 +5250,20 @@ private fun CityDrawer(
                     }
                 }
             }
+        }
+        }
+        if (query.isNotBlank() && filtered.cities.isEmpty()) {
+            MochiEmptyState(
+                "没有找到「${query}」",
+                modifier = Modifier.align(Alignment.Center),
+                message = "换个关键词，或点右上角 + 添加城市。",
+                icon = {
+                    PhosphorIcon(
+                        R.drawable.ph_magnifying_glass, null, Modifier.size(44.dp),
+                        MochiTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+            )
         }
         }
         // 操作区独立吃掉系统导航栏和额外底部余量；列表再长、屏幕再矮也只压缩中间列表。

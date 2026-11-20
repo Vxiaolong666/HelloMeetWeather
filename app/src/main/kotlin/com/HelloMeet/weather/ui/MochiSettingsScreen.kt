@@ -418,78 +418,26 @@ fun MochiSettingsScreen(
                     "settings.graphics" -> MochiGraphicsSettingsPage(uiPrefs)
                     "settings.automation" -> MochiAutomationSettingsPage()
                     "settings.modules" -> MochiModuleLayoutPage()
-                    "settings.telemetry" -> MochiSecondaryPage("遥测项目", "${telemetryMetrics.size} / ${TelemetryMetric.entries.size} 项显示在首页") {
-                        item {
-                            MochiListSection(header = "逐项开关") {
-                                TelemetryMetric.entries.forEach { metric ->
-                                    MochiListRow(
-                                        title = metric.cn,
-                                        subtitle = metric.en,
-                                        leading = { PhosphorIcon(telemetryMetricIcon(metric), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
-                                        trailing = {
-                                            MochiSettingSwitch(metric in telemetryMetrics) { checked ->
-                                                val next = telemetryMetrics.toMutableSet().apply {
-                                                    if (checked) add(metric) else remove(metric)
-                                                }
-                                                scope.launch { SettingsRepository.setTelemetryMetrics(next) }
-                                            }
-                                        },
-                                    )
-                                }
-                                MochiListRow(
-                                    title = "全选",
-                                    enabled = telemetryMetrics.size != TelemetryMetric.entries.size,
-                                    onClick = {
-                                        scope.launch { SettingsRepository.setTelemetryMetrics(TelemetryMetric.defaultSelection) }
-                                    },
-                                )
-                                MochiListRow(
-                                    title = "清空",
-                                    enabled = telemetryMetrics.isNotEmpty(),
-                                    onClick = {
-                                        scope.launch { SettingsRepository.setTelemetryMetrics(emptySet()) }
-                                    },
-                                    destructive = true,
-                                )
-                            }
-                        }
-                    }
-                    "settings.lifeIndex" -> MochiSecondaryPage("生活指数项目", "${lifeIndexMetrics.size} / ${LifeIndexMetric.entries.size} 项显示在首页") {
-                        item {
-                            MochiListSection(header = "逐项开关") {
-                                LifeIndexMetric.entries.forEach { metric ->
-                                    MochiListRow(
-                                        title = metric.cn,
-                                        subtitle = metric.en,
-                                        leading = { PhosphorIcon(lifeIndexIcon(metric.en), null, Modifier.size(22.dp), mochiLeadingIconTint()) },
-                                        trailing = {
-                                            MochiSettingSwitch(metric in lifeIndexMetrics) { checked ->
-                                                val next = lifeIndexMetrics.toMutableSet().apply {
-                                                    if (checked) add(metric) else remove(metric)
-                                                }
-                                                scope.launch { SettingsRepository.setLifeIndexMetrics(next) }
-                                            }
-                                        },
-                                    )
-                                }
-                                MochiListRow(
-                                    title = "全选",
-                                    enabled = lifeIndexMetrics.size != LifeIndexMetric.entries.size,
-                                    onClick = {
-                                        scope.launch { SettingsRepository.setLifeIndexMetrics(LifeIndexMetric.defaultSelection) }
-                                    },
-                                )
-                                MochiListRow(
-                                    title = "清空",
-                                    enabled = lifeIndexMetrics.isNotEmpty(),
-                                    onClick = {
-                                        scope.launch { SettingsRepository.setLifeIndexMetrics(emptySet()) }
-                                    },
-                                    destructive = true,
-                                )
-                            }
-                        }
-                    }
+                    "settings.telemetry" -> MochiMetricSelectionPage(
+                        title = "遥测项目",
+                        entries = TelemetryMetric.entries.toList(),
+                        selected = telemetryMetrics,
+                        keyOf = { it.key },
+                        titleOf = { it.cn },
+                        subtitleOf = { it.en },
+                        iconOf = { telemetryMetricIcon(it) },
+                        onApply = { SettingsRepository.setTelemetryMetrics(it) },
+                    )
+                    "settings.lifeIndex" -> MochiMetricSelectionPage(
+                        title = "生活指数项目",
+                        entries = LifeIndexMetric.entries.toList(),
+                        selected = lifeIndexMetrics,
+                        keyOf = { it.key },
+                        titleOf = { it.cn },
+                        subtitleOf = { it.en },
+                        iconOf = { lifeIndexIcon(it.en) },
+                        onApply = { SettingsRepository.setLifeIndexMetrics(it) },
+                    )
                     "settings.widgets" -> MochiSecondaryPage("小组件与通知栏", "选择要预览和配置的样式") {
                         item {
                             MochiListSection(header = "样式", footer = "配置会写入桌面小组件。") {
@@ -664,6 +612,156 @@ private fun MochiSecondaryPage(
         overlay = overlay,
         content = content,
     )
+}
+
+/**
+ * 遥测数据 / 生活指数数据的共用页面：和「模块布局」完全同一套多选契约。
+ * 右上角「编辑 / 保存」切换多选态，底部玻璃操作栏提供全选、已选计数与批量开启 / 关闭；
+ * 非编辑态保留逐项开关，点击立即保存。
+ */
+@Composable
+private fun <T> MochiMetricSelectionPage(
+    title: String,
+    entries: List<T>,
+    selected: Set<T>,
+    keyOf: (T) -> String,
+    titleOf: (T) -> String,
+    subtitleOf: (T) -> String,
+    iconOf: (T) -> Int,
+    onApply: suspend (Set<T>) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val edit = rememberMochiListEditState()
+    val listColors = MochiListDefaults.colors()
+    val hiddenRowColors = MochiListDefaults.colors(
+        container = listColors.container,
+        content = MochiTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        secondary = MochiTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+        accent = MochiTheme.colorScheme.primary.copy(alpha = 0.38f),
+    )
+
+    fun applySelected(value: Boolean) {
+        val chosen = edit.selected.mapNotNull { key -> entries.firstOrNull { keyOf(it) == key } }.toSet()
+        edit.clear()
+        edit.editing = false
+        if (chosen.isEmpty()) return
+        scope.launch {
+            val next = selected.toMutableSet().apply {
+                if (value) addAll(chosen) else removeAll(chosen)
+            }
+            onApply(next)
+        }
+    }
+
+    MochiSecondaryPage(
+        title = title,
+        subtitle = "${selected.size} / ${entries.size} 项显示在首页",
+        showSave = false,
+        actions = {
+            MochiBarButton(
+                if (edit.editing) "保存" else "编辑",
+                onClick = {
+                    if (edit.editing) edit.clear()
+                    edit.editing = !edit.editing
+                },
+                navId = MochiSettingsSaveNavId,
+            )
+        },
+        overlay = {
+            Box(Modifier.fillMaxSize()) {
+                MochiBlurVisibility(
+                    visible = edit.editing,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    MochiBottomToolbar {
+                        MochiBarButton(
+                            if (edit.selected.size == entries.size) "全不选" else "全选",
+                            onClick = {
+                                if (edit.selected.size == entries.size) edit.clear()
+                                else edit.selectAll(entries.map(keyOf))
+                            },
+                        )
+                        Spacer(Modifier.weight(1f))
+                        MochiBlurText(
+                            "已选 ${edit.selected.size} 项",
+                            style = MochiTheme.textStyles.subhead,
+                            color = MochiTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        MochiBarIconButton(
+                            onClick = { applySelected(false) },
+                            enabled = edit.selected.isNotEmpty(),
+                        ) {
+                            PhosphorIcon(
+                                R.drawable.ph_x, "全部关闭", Modifier.size(20.dp),
+                                MochiTheme.colorScheme.onSurface,
+                            )
+                        }
+                        MochiBarIconButton(
+                            onClick = { applySelected(true) },
+                            enabled = edit.selected.isNotEmpty(),
+                        ) {
+                            PhosphorIcon(
+                                R.drawable.ph_check, "全部开启", Modifier.size(20.dp),
+                                MochiTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+    ) {
+        item {
+            MochiBlurText(
+                if (edit.editing) "勾选项目后批量开启或关闭" else "点右上角「编辑」批量操作，逐项开关即时保存",
+                style = MochiTheme.textStyles.subhead,
+                color = MochiTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
+        item {
+            MochiListSection(header = "项目") {
+                entries.forEach { metric ->
+                    val on = metric in selected
+                    val leading: @Composable () -> Unit = {
+                        PhosphorIcon(
+                            iconOf(metric), null, Modifier.size(22.dp),
+                            if (on) mochiLeadingIconTint()
+                            else MochiTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                        )
+                    }
+                    if (edit.editing) {
+                        MochiSelectableRow(
+                            state = edit,
+                            key = keyOf(metric),
+                            title = titleOf(metric),
+                            subtitle = subtitleOf(metric),
+                            value = if (on) "开启" else "已关闭",
+                            leading = leading,
+                            colors = if (on) listColors else hiddenRowColors,
+                        )
+                    } else {
+                        MochiListRow(
+                            title = titleOf(metric),
+                            subtitle = subtitleOf(metric),
+                            leading = leading,
+                            colors = if (on) listColors else hiddenRowColors,
+                            trailing = {
+                                MochiSettingSwitch(on) { checked ->
+                                    val next = selected.toMutableSet().apply {
+                                        if (checked) add(metric) else remove(metric)
+                                    }
+                                    scope.launch { onApply(next) }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (edit.editing) item { Spacer(Modifier.height(88.dp)) }
+    }
 }
 
 /**

@@ -19,6 +19,7 @@ MochiDialog(
 ## Look
 
 - A rounded card with a leading-aligned bold title and message; add an `icon` or custom `content` if needed
+- The card is at most 320dp wide (`MochiDialogDefaults.MaxWidth`); pass `maxWidth = 420.dp` for long content such as release notes, still bounded by the screen width
 - For text entry, put a `MochiDialogTextField` in `content` (see [Text input](textfield.md)): the alert moves up to stay centered above the keyboard, and the keyboard hides when the alert closes
 - Buttons are capsules: side by side when there are two, stacked otherwise. They sit 14dp from the card edge and the card corner is the button's half height (24dp) + 14dp, so they are concentric
 - Button colors follow the role: `Primary` filled, `Default` / `Cancel` gray, `Destructive` gray with red text; all labels semibold

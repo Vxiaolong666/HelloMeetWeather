@@ -21,30 +21,14 @@ import com.HelloMeet.weather.ui.theme.ZhishengBg
 import com.HelloMeet.weather.ui.components.LocalWeatherContinuity
 import com.HelloMeet.weather.ui.components.WeatherContinuity
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.Animatable
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,7 +47,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.awaitCancellation
 import com.HelloMeet.weather.data.UsageStatistics
 import com.HelloMeet.weather.data.ServiceDiagnostics
@@ -128,13 +111,12 @@ import com.HelloMeet.weather.ui.WhatsNewDialog
 import com.HelloMeet.weather.ui.shouldAutoPlayUpdateOpening
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
-import ui.feice.mochi.anim.MochiSprings
+import ui.feice.mochi.effect.content.MochiThemeRevealHost
+import ui.feice.mochi.effect.content.rememberMochiThemeRevealState
 import ui.feice.mochi.navigation.MochiNavHost
 import ui.feice.mochi.navigation.MochiNavSpec
 import ui.feice.mochi.navigation.rememberMochiNavigator
-import ui.feice.mochi.theme.MochiDefaults
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
 import com.HelloMeet.weather.ui.systemAnimationsEnabled
 import com.HelloMeet.weather.ui.updateOpeningSpec
 import com.HelloMeet.weather.ui.WhatsNewPreferenceFile
@@ -145,14 +127,10 @@ import com.HelloMeet.weather.ui.InitialLocationSetupHost
 import com.HelloMeet.weather.ui.theme.ZhishengWeatherTheme
 import com.HelloMeet.weather.data.InterfaceStyle
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 private data class ShortcutCommand(val action: String? = null, val sequence: Long = 0L)
-
-// 问题4：城市管理页选城时的扩散请求——被点卡片的屏幕矩形 + 目标城市 key。
-private data class CityExpandRequest(val rect: Rect, val cityKey: String)
 
 /**
  * 停用全屏「应用内右滑返回」的页面：它们的正文有整片的横向拖动内容，与右滑返回手势
@@ -203,6 +181,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         applyEdgeToEdgeSystemBars()
         setContent {
+            // 城市管理页选城后的「卡片长成整屏首页」复用组件库 demo 同款揭示转场：
+            // 拍下当前画面 → 切城并回首页 → 从卡片中心揭圆形洞露出新页（羽化边缘 + 淡光 +
+            // 贴屏幕圆角收束 + 0.97→1 缩放），与深浅色切换共用一条动画契约。
+            val cityReveal = rememberMochiThemeRevealState()
+            MochiThemeRevealHost(cityReveal, Modifier.fillMaxSize()) {
             ProvideWeatherPresentationClock {
             // 主题模式（v0.0.5）：深色 / 浅色 / 跟随系统三档，切换立即生效
             val themeMode by SettingsRepository.themeMode.collectAsState(initial = initialThemeMode())
@@ -257,6 +240,11 @@ class MainActivity : ComponentActivity() {
                 var locationProviderWizard by rememberSaveable { mutableStateOf<com.HelloMeet.weather.ui.ProviderWizardKind?>(null) }
                 var locationSetupDismissedForSession by rememberSaveable { mutableStateOf(false) }
                 var choosingInitialCity by rememberSaveable { mutableStateOf(false) }
+                // 搜索页的返回目标：「添加城市」可能从城市管理整屏页或首页侧边栏抽屉进入，
+                // 必须退回来源而不是无条件回首页（AGENTS.md §4 统一返回语义）。
+                var searchReturnTo by rememberSaveable { mutableStateOf(AppScreen.HOME) }
+                var searchFromCityDrawer by rememberSaveable { mutableStateOf(false) }
+                var reopenCitiesRequest by rememberSaveable { mutableIntStateOf(0) }
                 // 首次引导一旦开始就由它自己结束：定位成功会写回「地点已设置」，
                 // 但引导页还要带用户走完后面的设置，不能跟着状态一起消失。
                 var firstRunOnboardingActive by rememberSaveable { mutableStateOf(false) }
@@ -266,6 +254,19 @@ class MainActivity : ComponentActivity() {
                 fun returnHome() {
                     if (screen == AppScreen.SEARCH) choosingInitialCity = false
                     screen = AppScreen.HOME
+                }
+                // 搜索页的返回 / 选城统一走这里：回来源页，而不是把导航栈拍回首页。
+                fun leaveSearch() {
+                    val backTo = searchReturnTo
+                    searchReturnTo = AppScreen.HOME
+                    choosingInitialCity = false
+                    if (backTo == AppScreen.CITY_MANAGER && screen == AppScreen.SEARCH) {
+                        screen = AppScreen.CITY_MANAGER
+                    } else {
+                        if (searchFromCityDrawer) reopenCitiesRequest++
+                        searchFromCityDrawer = false
+                        screen = AppScreen.HOME
+                    }
                 }
                 fun markInitialLocationHandled() {
                     scope.launch {
@@ -277,6 +278,17 @@ class MainActivity : ComponentActivity() {
                             android.util.Log.w("ZhishengWeather", "首次地点选择状态暂时未能保存", error)
                         }
                     }
+                }
+                // 三个「添加城市」入口共用一个打开函数，记下来源并照常处理首次定位引导。
+                fun openSearch(from: AppScreen, fromDrawer: Boolean = false) {
+                    if (initialLocationSetupRequired == true) {
+                        choosingInitialCity = true
+                        locationSetupDismissedForSession = true
+                        markInitialLocationHandled()
+                    }
+                    searchReturnTo = from
+                    searchFromCityDrawer = fromDrawer
+                    screen = AppScreen.SEARCH
                 }
                 val locationSetupHoldsStartup =
                     (initialLocationSetupRequired != false && screen == AppScreen.HOME) ||
@@ -486,7 +498,9 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // 系统返回键、侧推手势、左上角返回按钮三处共用同一套返回语义。
-                BackHandler(enabled = screen != AppScreen.HOME) { returnHome() }
+                BackHandler(enabled = screen != AppScreen.HOME) {
+                    if (screen == AppScreen.SEARCH) leaveSearch() else returnHome()
+                }
 
                 val automation by com.HelloMeet.weather.data.AutomationSettingsRepository.settings.collectAsState()
                 LaunchedEffect(automation.remindersEnabled, automation.morningMinute, automation.eveningMinute) {
@@ -531,8 +545,6 @@ class MainActivity : ComponentActivity() {
                 // 应用级导航走库的 MochiNavHost（与设置页内部同一条转场）：
                 // 弹簧、下层页缩放、压暗、侧推与预测性返回都由库给，MainActivity 不再自拼覆盖层动画。
                 val nav = rememberMochiNavigator(AppScreen.HOME.route)
-                // 城市管理页「点城市卡 → 卡片从页面中部扩散长成整屏首页」的请求（问题4）。
-                var cityExpand by remember { mutableStateOf<CityExpandRequest?>(null) }
                 // 富逐日详情由「多日天气预报」页的某张「查看该日完整详情」卡片进入：
                 // 「打开应用式」转场用按天登记的来源 key（与 DailyTrendScreen 的 mochiNavSource
                 // 一致），返回时缩回那张卡片；读 state 所以每次调用取当前选中日。
@@ -554,26 +566,36 @@ class MainActivity : ComponentActivity() {
                         if (nav.current != target) {
                             if (target == AppScreen.HOME.route) nav.popTo(0)
                             else {
-                                // 富逐日详情是唯一嵌套页：从「多日天气预报」进入时保留父页，
-                                // 库栈为 [HOME, DAILY_TREND, 富页]，返回（系统返回 / 返回按钮 /
-                                // 应用内右滑）退到「多日天气预报」而非首页；其余页面仍是
-                                // 「单层覆盖」语义：换覆盖页先回根再推，旧页滑走、新页推进来
-                                // 由库同时进行，不瞬切。
-                                val nested = target == AppScreen.DAILY_TREND_DAY_DETAIL.route &&
-                                    nav.current == AppScreen.DAILY_TREND.route
-                                if (!nested && nav.backStack.size > 1) nav.popTo(0)
-                                // 转场样式为「打开应用式」时，把来源元素（卡片 / 齿轮 / 按天详情卡）
-                                // 的 key 交给库：页面从那张卡长成整页、返回缩回卡片；没有来源卡片的
-                                // 页面兜底成角落哨兵 key，走「从角落小卡展开 / 缩回小卡」；其余样式
-                                // 走库的侧推。来源 key 与各页 mochiNavSource 的登记一一对应（含城市后缀）。
-                                val from = if (dest == AppScreen.DAILY_TREND_DAY_DETAIL) {
-                                    trendDayDetailFrom(currentAppStyle)
+                                // 目标页已经在栈里（「多日预报 → 富逐日详情」「城市管理 → 添加城市」
+                                // 的返回）：直接 popTo 那一项，库按当前转场设置退出上层页，
+                                // 不会先回根露出首页再重新推进来。
+                                val stack = nav.backStack
+                                val existing = stack.indexOf(target)
+                                if (existing >= 0) {
+                                    nav.popTo(existing)
                                 } else {
-                                    AppTransitions.pushFrom(
-                                        currentAppStyle, dest, uiState.selectedCity?.locationKey,
-                                    )
+                                    // 新增的嵌套关系：从城市管理整屏页添加城市时，SEARCH 压在
+                                    // CITY_MANAGER 之上，返回时退到城市管理页；其余页面仍是
+                                    // 「单层覆盖」语义：换覆盖页先回根再推，旧页滑走、新页推进来
+                                    // 由库同时进行，不瞬切。
+                                    val nested = (target == AppScreen.DAILY_TREND_DAY_DETAIL.route &&
+                                        nav.current == AppScreen.DAILY_TREND.route) ||
+                                        (target == AppScreen.SEARCH.route &&
+                                            nav.current == AppScreen.CITY_MANAGER.route)
+                                    if (!nested && stack.size > 1) nav.popTo(0)
+                                    // 转场样式为「打开应用式」时，把来源元素（卡片 / 齿轮 / 按天详情卡）
+                                    // 的 key 交给库：页面从那张卡长成整页、返回缩回卡片；没有来源卡片的
+                                    // 页面兜底成角落哨兵 key，走「从角落小卡展开 / 缩回小卡」；其余样式
+                                    // 走库的侧推。来源 key 与各页 mochiNavSource 的登记一一对应（含城市后缀）。
+                                    val from = if (dest == AppScreen.DAILY_TREND_DAY_DETAIL) {
+                                        trendDayDetailFrom(currentAppStyle)
+                                    } else {
+                                        AppTransitions.pushFrom(
+                                            currentAppStyle, dest, uiState.selectedCity?.locationKey,
+                                        )
+                                    }
+                                    nav.push(target, from = from)
                                 }
-                                nav.push(target, from = from)
                             }
                         }
                     }
@@ -583,6 +605,14 @@ class MainActivity : ComponentActivity() {
                         // 库导航自己退回根（系统返回手势 / 应用内右滑 / 返回按钮触发的 pop）
                         // 也写回统一状态，保证 screen 与导航栈始终一致。
                         if (route == AppScreen.HOME.route && screen != AppScreen.HOME) returnHome()
+                        // 从城市管理页进入的搜索页：库 pop 回到 CITY_MANAGER 后同步 screen，
+                        // 与 UI 返回按钮、系统手势走同一条库返回语义。
+                        else if (route == AppScreen.CITY_MANAGER.route && screen == AppScreen.SEARCH &&
+                            searchReturnTo == AppScreen.CITY_MANAGER) {
+                            searchReturnTo = AppScreen.HOME
+                            searchFromCityDrawer = false
+                            screen = AppScreen.CITY_MANAGER
+                        }
                         // 富逐日详情由「多日天气预报」嵌套进入：库返回退到多日页（而非首页），
                         // 把 screen 同步回去，与 UI 返回按钮走同一条库 pop 语义。
                         else if (route == AppScreen.DAILY_TREND.route && screen == AppScreen.DAILY_TREND_DAY_DETAIL) {
@@ -686,14 +716,9 @@ class MainActivity : ComponentActivity() {
                                     viewModel = vm,
                                     ambienceActive = homeSettled,
                                     dismissCitiesRequest = cityPickedRequest,
-                                    onSearchClick = {
-                                        if (initialLocationSetupRequired == true) {
-                                            choosingInitialCity = true
-                                            locationSetupDismissedForSession = true
-                                            markInitialLocationHandled()
-                                        }
-                                        screen = AppScreen.SEARCH
-                                    },
+                                    reopenCitiesRequest = reopenCitiesRequest,
+                                    onSearchClick = { openSearch(AppScreen.HOME) },
+                                    onCityDrawerAddCity = { openSearch(AppScreen.HOME, fromDrawer = true) },
                                     onLocationSetupClick = {
                                         locateImmediately = true
                                         showLocationSetupAgain = true
@@ -724,7 +749,15 @@ class MainActivity : ComponentActivity() {
                                     onWeatherDetailClick = { screen = AppScreen.WEATHER_DETAIL },
                                     onYesterdayClick = { screen = AppScreen.YESTERDAY_DETAIL },
                                     onFeatureHubClick = { screen = AppScreen.FEATURES },
-                                    onCityManagerClick = { screen = AppScreen.CITY_MANAGER },
+                                    // 「打开应用式」下从顶栏汉堡按钮进入独立城市管理页：复用选城回首页
+                                    // 同一条揭示动画，从按下点揭圆洞露出城市管理页；其余样式直接 push。
+                                    // 省略 origin，MochiThemeRevealHost 会记住按钮的按下位置。
+                                    onCityManagerClick = {
+                                        val change = { screen = AppScreen.CITY_MANAGER }
+                                        if (currentAppStyle == PageTransitionStyle.APP && motionEnabled) {
+                                            cityReveal.reveal(change = change)
+                                        } else change()
+                                    },
                     // 三个场景页（霞光时刻 / 星空拍摄 / 海岸气象）从首页瓦片走统一路由，不再用页内自开窗口覆盖层。
                     onScenePage = { page ->
                         screen = when (page) {
@@ -921,28 +954,26 @@ class MainActivity : ComponentActivity() {
                                             vm.selectCity(key)
                                             returnHome()
                                         },
-                                        // 「打开应用式」下选城：先记下卡片矩形，由应用根部遮罩播扩散变换，
-                                        // 遮罩铺满全屏后再在底下切城回首页；其余样式保持原来的直接切换。
+                                        // 「打开应用式」下选城：拍下当前画面，切城并回首页，
+                                        // 再从卡片中心揭圆洞露出首页（组件库 demo 深浅色切换同款动画）。
+                                        // 其余样式保持原来的直接切换。
                                         onSelectAt = { key, rect ->
-                                            if (currentAppStyle == PageTransitionStyle.APP && motionEnabled) {
-                                                cityExpand = CityExpandRequest(rect, key)
-                                            } else {
+                                            val change = {
                                                 vm.selectCity(key)
                                                 returnHome()
                                             }
+                                            if (currentAppStyle == PageTransitionStyle.APP && motionEnabled) {
+                                                cityReveal.reveal(
+                                                    origin = Offset(rect.center.x, rect.center.y),
+                                                    change = change,
+                                                )
+                                            } else change()
                                         },
                                         onToggleFavorite = { key -> vm.toggleCityFavorite(key) },
                                         onRemove = { key -> vm.removeCity(key) },
                                         onLocate = { vm.locateCurrentCity() },
                                         onClearLocateMessage = { vm.clearLocateMessage() },
-                                        onAddCity = {
-                                            if (initialLocationSetupRequired == true) {
-                                                choosingInitialCity = true
-                                                locationSetupDismissedForSession = true
-                                                markInitialLocationHandled()
-                                            }
-                                            screen = AppScreen.SEARCH
-                                        },
+                                        onAddCity = { openSearch(AppScreen.CITY_MANAGER) },
                                     )
                                     AppScreen.YESTERDAY_DETAIL -> com.HelloMeet.weather.ui.YesterdayDetailScreen(
                                         yesterday = uiState.weather?.yesterday,
@@ -956,54 +987,16 @@ class MainActivity : ComponentActivity() {
                                     AppScreen.SEARCH -> MochiSearchScreen(
                                         onCityPicked = { city: City ->
                                             vm.addCityAndSelect(city)
-                                            cityPickedRequest++
-                                            returnHome()
+                                            // 侧边栏进入的搜索：返回时重新展开抽屉；整屏城市管理进入的：
+                                            // 退回城市列表，不需要关闭抽屉的旧请求。
+                                            if (!searchFromCityDrawer) cityPickedRequest++
+                                            leaveSearch()
                                         },
-                                        onBack = { returnHome() },
+                                        onBack = { leaveSearch() },
                                     )
                         }
                         }
                     }
-                    }
-                }
-                // 问题4：城市管理页「点城市卡 → 卡片从页面中部扩散长成整屏首页」。
-                // 库的 pop 只支持「顶层页缩回下层来源卡」，不支持从顶层页内的来源长成整屏，
-                // 所以「打开应用式」下在应用根部自绘反向容器变换：卡片矩形按与库同一条弹簧
-                // （MochiSprings.smooth(300)）插值铺满全屏，遮罩在底下切城回首页，
-                // 等库的返回动画收尾后遮罩淡出露出首页，两段动画不叠影。
-                cityExpand?.let { request ->
-                    val expand = remember(request) { Animatable(0f) }
-                    val reveal = remember(request) { Animatable(1f) }
-                    BoxWithConstraints(Modifier.fillMaxSize()) {
-                        val density = LocalDensity.current
-                        val screenW = with(density) { maxWidth.toPx() }
-                        val screenH = with(density) { maxHeight.toPx() }
-                        LaunchedEffect(request) {
-                            expand.animateTo(1f, MochiSprings.smooth(300, visibilityThreshold = 0.0005f))
-                            vm.selectCity(request.cityKey)
-                            returnHome()
-                            // returnHome 要等导航协程下一帧才真正 pop，先等动画开始再等它结束；
-                            // 加超时兜底，万一没走到动画也不能把遮罩永远盖在首页上。
-                            withTimeoutOrNull(1200L) {
-                                snapshotFlow { nav.isTransitioning }.first { it }
-                                snapshotFlow { homeSettled }.first { settled -> settled }
-                            }
-                            reveal.animateTo(0f, tween(220))
-                            cityExpand = null
-                        }
-                        val p = expand.value
-                        val left = request.rect.left * (1f - p)
-                        val top = request.rect.top * (1f - p)
-                        val width = request.rect.width + (screenW - request.rect.width) * p
-                        val height = request.rect.height + (screenH - request.rect.height) * p
-                        Box(
-                            Modifier
-                                .offset { IntOffset(left.toInt().coerceAtLeast(0), top.toInt().coerceAtLeast(0)) }
-                                .size(width = (width / density.density).dp, height = (height / density.density).dp)
-                                .pointerInput(request) { detectTapGestures { } }
-                                .clip(RoundedCornerShape(26.dp * (1f - p)))
-                                .background(MochiDefaults.groupedContainer().copy(alpha = reveal.value)),
-                        )
                     }
                 }
                 }
@@ -1155,6 +1148,7 @@ class MainActivity : ComponentActivity() {
                         !showWhatsNew && !locationSetupHoldsStartup && automaticUpdate == null,
                 )
             }
+        }
         }
         }
     }

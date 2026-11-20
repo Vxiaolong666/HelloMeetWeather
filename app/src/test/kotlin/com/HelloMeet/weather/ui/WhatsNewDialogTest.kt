@@ -26,6 +26,11 @@ class WhatsNewDialogTest {
         }
         assertTrue(activity.contains("shouldShowWhatsNew()"))
         assertTrue(activity.contains("markWhatsNewSeen()"))
+        // 外壳统一用组件库对话框：关闭 / 返回手势 / 点外面 / 出现动画都由库负责。
+        assertTrue(dialog.contains("MochiDialog("))
+        assertTrue(dialog.contains("MochiDialogActionRole.Primary"))
+        assertTrue(dialog.contains("maxWidth = 420.dp"))
+        assertFalse(dialog.contains("androidx.compose.ui.window.Dialog"))
     }
 
     @Test fun `categories preserve every release note without duplication`() {

@@ -71,6 +71,9 @@ import com.HelloMeet.weather.ui.theme.isPhosphorVista
 import com.HelloMeet.weather.ui.theme.zhishengCompactPanel
 import com.HelloMeet.weather.ui.theme.zhishengPanel
 import com.HelloMeet.weather.ui.theme.zhishengScreen
+import ui.feice.mochi.basic.MochiButton
+import ui.feice.mochi.basic.MochiButtonStyle
+import ui.feice.mochi.basic.MochiEmptyState
 import ui.feice.mochi.basic.MochiSearchBar
 import ui.feice.mochi.navigation.MochiBackButton
 import ui.feice.mochi.theme.MochiTheme
@@ -275,12 +278,31 @@ internal fun SearchScreenContent(state: SearchUiState, onQueryChanged: (String) 
                     androidx.compose.material3.TextButton(onClick = onSearch, modifier = Modifier.heightIn(min = 48.dp)) { Text("重试", color = ZhishengMint) }
                 }
                 if (state.searching) item { SearchMessage("正在补充在线结果，本地结果可先选择", ZhishengTextSecondary) }
-                if (state.query.isNotBlank() && state.results.isEmpty() && !state.searching && state.failure == null) item {
-                    if (state.region == PlaceRegion.DOMESTIC) {
-                        androidx.compose.material3.TextButton(onClick = { onRegionChanged(PlaceRegion.OVERSEAS) }) { Text("切换海外搜索", color = ZhishengMint) }
+                if (state.query.isNotBlank() && state.results.isEmpty() && !state.searching && state.failure == null) {
+                    // 搜索无结果照组件库 demo 用 MochiEmptyState 做遮罩：模糊淡入、居中图标 + 标题 + 说明 + 一个动作。
+                    item(key = "search-empty") {
+                        MochiEmptyState(
+                            title = "没有找到「${state.query}」",
+                            message = if (!state.onlineAttempted) "本地地名库没有匹配，点「联网搜索」再查一次。"
+                                else "换个城市或区县名，也可以切换搜索范围。",
+                            icon = {
+                                PhosphorIcon(
+                                    R.drawable.ph_magnifying_glass, null, Modifier.size(44.dp),
+                                    MochiTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            action = {
+                                MochiButton(
+                                    onClick = if (state.region == PlaceRegion.DOMESTIC) {
+                                        { onRegionChanged(PlaceRegion.OVERSEAS) }
+                                    } else onSearch,
+                                    style = MochiButtonStyle.Tonal,
+                                ) {
+                                    Text(if (state.region == PlaceRegion.DOMESTIC) "切换海外搜索" else "重新搜索")
+                                }
+                            },
+                        )
                     }
-                    SearchMessage(if (!state.onlineAttempted) "本地未找到，点联网搜索查更多地点"
-                        else "没有找到「${state.query}」，请补充城市或区县名", ZhishengTextSecondary)
                 }
                 items(state.results.size, key = { state.results[it].locationKey }) { index ->
                     val city = state.results[index]

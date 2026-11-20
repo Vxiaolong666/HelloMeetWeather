@@ -1,20 +1,13 @@
 package com.HelloMeet.weather.ui
 
-import android.animation.ValueAnimator
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -23,29 +16,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.HelloMeet.weather.R
 import com.HelloMeet.weather.model.WeatherCondition
 import com.HelloMeet.weather.ui.components.PhosphorIcon
 import com.HelloMeet.weather.ui.components.WeatherIcon
 import com.HelloMeet.weather.ui.theme.LocalZhishengPalette
-import com.HelloMeet.weather.ui.theme.isPhosphorVista
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
+import ui.feice.mochi.basic.MochiDialog
+import ui.feice.mochi.basic.MochiDialogAction
+import ui.feice.mochi.basic.MochiDialogActionRole
 
 internal const val WhatsNewVersion = "1.2.2"
 internal val WhatsNewVersionRange = "1.2.1 → 1.2.2"
@@ -54,9 +46,18 @@ internal const val WhatsNewSeenKey = "last_seen_version"
 
 @Composable
 fun WhatsNewDialog(onClose: () -> Unit) {
-    Dialog(onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        WhatsNewDialogContent(onClose)
+    MochiDialog(
+        visible = true,
+        onDismissRequest = onClose,
+        title = "更新说明",
+        message = WhatsNewVersionRange,
+        maxWidth = 420.dp,
+        dismissOnOutsideTap = true,
+        actions = persistentListOf(
+            MochiDialogAction("知道了，开始使用", MochiDialogActionRole.Primary),
+        ),
+    ) {
+        WhatsNewDialogContent(onClose, animateEntrance = false)
     }
 }
 
@@ -68,130 +69,85 @@ internal fun WhatsNewDialogContent(
     animateEntrance: Boolean = true,
 ) {
     val p = LocalZhishengPalette.current
-    val shape = RoundedCornerShape(if (isPhosphorVista) 30.dp else 18.dp)
-    val motion = remember { runCatching { ValueAnimator.areAnimatorsEnabled() }.getOrDefault(true) }
-    var appeared by remember { mutableStateOf(!animateEntrance || !motion) }
-    LaunchedEffect(Unit) { appeared = true }
-    val entrance by animateFloatAsState(if (appeared) 1f else 0f,
-        tween(if (motion && animateEntrance) 240 else 0), label = "releaseNotesEntrance")
     var category by rememberSaveable { mutableStateOf(initialCategory) }
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     val largeText = LocalDensity.current.fontScale >= 1.4f
-    Box(Modifier.fillMaxSize().pointerInput(onClose) { detectTapGestures(onTap = { onClose() }) }) {
-    BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp, vertical = 20.dp),
-        contentAlignment = Alignment.Center) {
-        val compactHeader = largeText || maxHeight < 420.dp
-        val shortWindow = maxHeight < 420.dp
-        Column(Modifier.widthIn(max = 540.dp).fillMaxWidth().heightIn(max = maxHeight)
-            .graphicsLayer {
-                alpha = entrance
-                scaleX = .98f + .02f * entrance; scaleY = scaleX
-                translationY = (1f - entrance) * 10.dp.toPx()
-            }
-            .clip(shape).background(p.surface)
-            .border(1.dp, p.cardBorder.copy(alpha = .7f), shape)
-            .pointerInput(Unit) { detectTapGestures(onTap = {}) }) {
-            Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 10.dp, top = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                if (!largeText) {
-                    Text("遇见天气", color = p.textSecondary, fontSize = 13.sp, fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                }
-                Text(if ("beta" in WhatsNewVersion.lowercase()) "BETA ${WhatsNewVersion.substringAfter("beta")}" else "v$WhatsNewVersion", color = p.cyan, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(p.cyan.copy(alpha = .07f))
-                        .padding(horizontal = 9.dp, vertical = 6.dp))
-                if (largeText) Spacer(Modifier.weight(1f))
-                Box(Modifier.size(48.dp).clip(RoundedCornerShape(24.dp))
-                    .clickable(role = Role.Button, onClick = onClose), contentAlignment = Alignment.Center) {
-                    PhosphorIcon(R.drawable.ph_x, "关闭更新说明", Modifier.size(21.dp), p.textSecondary)
+    val shortWindow = LocalConfiguration.current.screenHeightDp < 420
+    val compactHeader = largeText || shortWindow
+    // 外壳（标题 / 关闭 / 按钮 / 出现动画 / 点外关闭）统一由 MochiDialog 负责；
+    // 这里只保留版本特色正文：渐变头图、分类、更新条目，供预览单独复用。
+    Column(Modifier.fillMaxWidth().heightIn(max = 430.dp).verticalScroll(scroll)) {
+        Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(
+            listOf(p.surface, p.cyan.copy(alpha = .035f))))) {
+            Canvas(Modifier.matchParentSize()) {
+                repeat(3) { i ->
+                    val path = Path().apply {
+                        moveTo(size.width * .66f + i * 22.dp.toPx(), -20.dp.toPx())
+                        cubicTo(size.width * .42f, size.height * .7f,
+                            size.width * 1.03f, size.height * .36f, size.width * 1.08f, size.height * 1.3f)
+                    }
+                    drawPath(path, p.cyan.copy(alpha = .065f), style = Stroke(1.dp.toPx()))
                 }
             }
-            Column(Modifier.weight(1f, fill = false).verticalScroll(scroll)) {
-                Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(
-                    listOf(p.surface, p.cyan.copy(alpha = .035f))))) {
-                    Canvas(Modifier.matchParentSize()) {
-                        repeat(3) { i ->
-                            val path = Path().apply {
-                                moveTo(size.width * .66f + i * 22.dp.toPx(), -20.dp.toPx())
-                                cubicTo(size.width * .42f, size.height * .7f,
-                                    size.width * 1.03f, size.height * .36f, size.width * 1.08f, size.height * 1.3f)
-                            }
-                            drawPath(path, p.cyan.copy(alpha = .065f), style = Stroke(1.dp.toPx()))
-                        }
-                    }
-                    if (shortWindow) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Text("更新说明", color = p.text, fontSize = 22.sp, lineHeight = 30.sp,
-                                fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.SansSerif,
-                                modifier = Modifier.weight(1f).semantics { heading() })
-                            Text(WhatsNewVersionRange, color = p.cyan, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                        }
-                    } else {
-                    Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 20.dp, top = 16.dp, bottom = 22.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("更新说明", color = p.text, fontSize = 28.sp, lineHeight = 36.sp,
-                                fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.SansSerif,
-                                modifier = Modifier.semantics { heading() })
-                            Spacer(Modifier.height(10.dp))
-                            Text(WhatsNewVersionRange, color = p.cyan, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-                        }
-                        if (!compactHeader) {
-                            Spacer(Modifier.width(10.dp))
-                            WeatherIcon(WeatherCondition.PARTLY_CLOUDY, Modifier.size(76.dp).clearAndSetSemantics {})
-                        }
-                    }
-                    }
+            if (shortWindow) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("更新说明", color = p.text, fontSize = 22.sp, lineHeight = 30.sp,
+                        fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.SansSerif,
+                        modifier = Modifier.weight(1f).semantics { heading() })
+                    Text(WhatsNewVersionRange, color = p.cyan, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
-                val contentCategories = ReleaseNotesCategory.entries.filter { it != ReleaseNotesCategory.ALL && releaseNotesFor(it).isNotEmpty() }
-                val tabs = if (contentCategories.size > 1) ReleaseNotesCategory.entries.filter { it == ReleaseNotesCategory.ALL || releaseNotesFor(it).isNotEmpty() } else listOf(ReleaseNotesCategory.ALL)
-                if (tabs.size > 1) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 22.dp, vertical = if (shortWindow) 10.dp else 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    tabs.forEach { item ->
-                        val active = category == item
-                        Box(Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp))
-                                .background(if (active) p.text else p.cardBorder.copy(alpha = .22f))
-                                .semantics { selected = active }
-                                .clickable(role = Role.Tab) {
-                                    category = item
-                                    scope.launch { scroll.scrollTo(0) }
-                                }.padding(horizontal = 13.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
-                            Text(item.label, fontSize = 12.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                                fontFamily = FontFamily.SansSerif, color = if (active) p.surface else p.textSecondary)
-                        }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 20.dp, top = 16.dp, bottom = 22.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("更新说明", color = p.text, fontSize = 28.sp, lineHeight = 36.sp,
+                            fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.SansSerif,
+                            modifier = Modifier.semantics { heading() })
+                        Spacer(Modifier.height(10.dp))
+                        Text(WhatsNewVersionRange, color = p.cyan, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                     }
-                }
-                Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(26.dp)) {
-                    releaseNotesFor(category).forEach { section -> ReleaseSection(section) }
-                    Text("谢谢你把每一个小问题告诉我们。", color = p.textTertiary, fontSize = 12.sp,
-                        lineHeight = 19.sp, fontFamily = FontFamily.SansSerif,
-                        modifier = Modifier.padding(bottom = 20.dp))
-                }
-            }
-            HorizontalDivider(color = p.cardBorder.copy(alpha = .65f))
-            Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = if (shortWindow) 10.dp else 14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Button(onClick = onClose, shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = p.text, contentColor = p.surface),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 13.dp)) {
-                    Text(if (compactHeader) "知道了" else "知道了，开始使用", fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Medium,
-                        fontFamily = FontFamily.SansSerif, color = p.surface, textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f))
-                    Spacer(Modifier.width(12.dp))
-                    PhosphorIcon(R.drawable.ph_arrow_right, null, Modifier.size(20.dp), p.surface)
-                }
-                if (!shortWindow) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(if (scroll.canScrollForward) (if (compactHeader) "向上滑动看更新" else "向上滑动，看看完整更新")
-                        else "设置里可再次查看", fontSize = 11.sp, lineHeight = 17.sp,
-                        fontFamily = FontFamily.SansSerif, color = p.textTertiary)
+                    if (!compactHeader) {
+                        Spacer(Modifier.width(10.dp))
+                        WeatherIcon(WeatherCondition.PARTLY_CLOUDY, Modifier.size(76.dp).clearAndSetSemantics {})
+                    }
                 }
             }
         }
-    }
+        val contentCategories = ReleaseNotesCategory.entries.filter { it != ReleaseNotesCategory.ALL && releaseNotesFor(it).isNotEmpty() }
+        val tabs = if (contentCategories.size > 1) ReleaseNotesCategory.entries.filter { it == ReleaseNotesCategory.ALL || releaseNotesFor(it).isNotEmpty() } else listOf(ReleaseNotesCategory.ALL)
+        if (tabs.size > 1) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+            .padding(horizontal = 22.dp, vertical = if (shortWindow) 10.dp else 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            tabs.forEach { item ->
+                val active = category == item
+                Box(Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp))
+                        .background(if (active) p.text else p.cardBorder.copy(alpha = .22f))
+                        .semantics { selected = active }
+                        .clickable(role = Role.Tab) {
+                            category = item
+                            scope.launch { scroll.scrollTo(0) }
+                        }.padding(horizontal = 13.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+                    Text(item.label, fontSize = 12.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                        fontFamily = FontFamily.SansSerif, color = if (active) p.surface else p.textSecondary)
+                }
+            }
+        }
+        Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(26.dp)) {
+            releaseNotesFor(category).forEach { section -> ReleaseSection(section) }
+            Text("谢谢你把每一个小问题告诉我们。", color = p.textTertiary, fontSize = 12.sp,
+                lineHeight = 19.sp, fontFamily = FontFamily.SansSerif,
+                modifier = Modifier.padding(bottom = 20.dp))
+        }
+        if (!shortWindow) {
+            Text(
+                if (scroll.canScrollForward) (if (compactHeader) "向上滑动看更新" else "向上滑动，看看完整更新")
+                else "设置里可再次查看",
+                fontSize = 11.sp, lineHeight = 17.sp, fontFamily = FontFamily.SansSerif,
+                color = p.textTertiary,
+                modifier = Modifier.padding(start = 22.dp, bottom = 16.dp),
+            )
+        }
     }
 }
 

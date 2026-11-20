@@ -19,6 +19,7 @@ MochiDialog(
 ## 样子
 
 - 圆角卡片，标题（加粗）和说明靠左，可以加 `icon` 和自定义 `content`
+- 卡片最大宽度默认 320dp（`MochiDialogDefaults.MaxWidth`）；更新日志、版本说明这类长内容传 `maxWidth = 420.dp` 稍宽一点，仍受屏幕宽度限制
 - 要输入文字时在 `content` 里放 `MochiDialogTextField`（见[文字输入](textfield.md)）：键盘弹出时对话框被顶到键盘上方居中，关掉时键盘一起收起
 - 按钮是胶囊：两个时并排，其余竖排。按钮离卡片边 14dp，卡片圆角 = 按钮半高（24dp）+ 14dp，按钮和卡片同心
 - 按钮配色按角色：`Primary` 主色实心、`Default` / `Cancel` 灰色、`Destructive` 灰色红字；文字都加粗
