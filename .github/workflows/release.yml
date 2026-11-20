@@ -37,8 +37,8 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          cp app/build/outputs/apk/publicRelease/app-publicRelease.apk "dist/ZhishengWeather-v${VERSION}.apk"
-          sha256sum "dist/ZhishengWeather-v${VERSION}.apk" | tee dist/SHA256.txt
+          cp app/build/outputs/apk/publicRelease/app-publicRelease.apk "dist/HelloMeetWeather-v${VERSION}.apk"
+          sha256sum "dist/HelloMeetWeather-v${VERSION}.apk" | tee dist/SHA256.txt
 
       - name: Release notes // 从 CHANGELOG 提取本篇
         run: |
