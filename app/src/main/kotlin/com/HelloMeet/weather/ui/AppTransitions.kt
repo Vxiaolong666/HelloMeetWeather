@@ -56,7 +56,7 @@ internal object AppTransitions {
 
     /**
      * 设置链路里有登记来源行（`MochiSettingsNavRow` / `mochiNavSource`）的 route。
-     * 其余 route（关于、公告、公告详情、天气效果预览等）没有承载卡片，
+     * 其余 route（关于、公告、公告详情等）没有承载卡片，
      * 「打开应用式」下必须兜底成 [CORNER_KEY]，否则整页会从左右两侧进入 / 退出。
      */
     private val settingsRoutesWithSource = setOf(
@@ -64,7 +64,7 @@ internal object AppTransitions {
         "settings.telemetry", "settings.lifeIndex", "settings.modules",
         "settings.graphics", "settings.theme", "settings.tabbar", "settings.hdr",
         "settings.glass", "settings.pressGlow", "settings.transition", "settings.automation",
-        "settings.widgets",
+        "settings.widgets", "settings.atmosphere",
     )
 
     /** 设置页 push / setTopSource 的唯一来源 key 入口，规则与 [pushFrom] 一致。 */

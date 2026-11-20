@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -96,6 +97,7 @@ import ui.feice.mochi.basic.MochiTabItem
 import ui.feice.mochi.basic.Text
 import ui.feice.mochi.effect.content.MochiBlurText
 import ui.feice.mochi.effect.content.MochiBlurVisibility
+import ui.feice.mochi.effect.content.MochiCounterText
 import ui.feice.mochi.effect.overscroll.ProvideMochiOverscroll
 import ui.feice.mochi.list.MochiListCard
 import ui.feice.mochi.list.MochiListDefaults
@@ -190,8 +192,9 @@ fun MochiSettingsScreen(
     var showCurrentNotes by rememberSaveable { mutableStateOf(false) }
     var showChangelog by rememberSaveable { mutableStateOf(false) }
     val toast = LocalMochiToast.current
-    // 三段设置页改用库的底部悬浮标签栏；状态自带跨重建保存。
-    val tabState = rememberMochiTabScaffoldState(initialSection.coerceIn(0, 2))
+    // 四段设置页改用库的底部悬浮标签栏；状态自带跨重建保存。
+    // 「关于」从独立二级页改为第 4 个 TAB（原先顶栏 info 按钮也改为切到该标签）。
+    val tabState = rememberMochiTabScaffoldState(initialSection.coerceIn(0, 3))
     val tabs = remember {
         persistentListOf(
             MochiTabItem("数据与位置") { tint ->
@@ -202,6 +205,9 @@ fun MochiSettingsScreen(
             },
             MochiTabItem("外观与设备") { tint ->
                 PhosphorIcon(R.drawable.ph_sparkle, null, Modifier.size(22.dp), tint)
+            },
+            MochiTabItem("关于") { tint ->
+                PhosphorIcon(R.drawable.ph_info, null, Modifier.size(22.dp), tint)
             },
         )
     }
@@ -264,7 +270,17 @@ fun MochiSettingsScreen(
                                 collapseOnScroll = uiPrefs.tabCollapse,
                             ) { index ->
                                 CompositionLocalProvider(LocalMochiMaterials provides materials.page) {
-                                    MochiLazyCompactTitleScaffold(
+                                    // 「关于」是第 4 个标签：AboutPage 自带库顶栏与 MochiBackButton，
+                                    // 直接作为这一页的内容，不再套外层「设置」标题栏（避免两层栏）。
+                                    if (index == 3) {
+                                        AboutPage(
+                                            onBack = onBack,
+                                            onOpenNotices = { openSettingsPage("settings.notice") },
+                                            onCheckUpdate = { showUpdateCheck = true },
+                                            onOpenCurrentNotes = { showCurrentNotes = true },
+                                            onOpenChangelog = { showChangelog = true },
+                                        )
+                                    } else MochiLazyCompactTitleScaffold(
                             title = "设置",
                             subtitle = when (index) {
                                 0 -> "数据与位置"
@@ -273,7 +289,7 @@ fun MochiSettingsScreen(
                             },
                             navigationIcon = { MochiBackButton(onClick = onBack) },
                             actions = {
-                                MochiBarIconButton(onClick = { openSettingsPage("settings.about") }) {
+                                MochiBarIconButton(onClick = { tabState.select(3) }) {
                                     PhosphorIcon(R.drawable.ph_info, null, Modifier.size(22.dp), MochiTheme.colorScheme.onSurface)
                                 }
                             },
@@ -365,13 +381,6 @@ fun MochiSettingsScreen(
                     }
                         }
                     }
-                    "settings.about" -> AboutPage(
-                        onBack = { nav.pop() },
-                        onOpenNotices = { openSettingsPage("settings.notice") },
-                        onCheckUpdate = { showUpdateCheck = true },
-                        onOpenCurrentNotes = { showCurrentNotes = true },
-                        onOpenChangelog = { showChangelog = true },
-                    )
                     "settings.notice" -> NoticePage(
                         onBack = { nav.pop() },
                         onOpen = { notice ->
@@ -1185,9 +1194,22 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiDataSection(
                         if (it >= 1000f) "约 %.1f km".format(it / 1000f) else "约 ${it.toInt().coerceAtLeast(1)} 米"
                     }
                     // 记录时的定位年龄 + 之后过去的时间，展示「此刻离这次定位多久」。
-                    val fixAge = fix?.let {
-                        it.fixAgeSeconds + ((System.currentTimeMillis() - it.timeMillis) / 1000L).coerceAtLeast(0L)
+                    // 参考 demo 的数字计时器（MochiCounterText + LaunchedEffect delay(1000)）：
+                    // 基值是这次定位出现时的年龄，之后每秒 tick++，秒数持续递增并滚动刷新。
+                    val fixKey = fix?.timeMillis
+                    val baseAge = remember(fixKey) {
+                        fix?.let {
+                            it.fixAgeSeconds + ((System.currentTimeMillis() - it.timeMillis) / 1000L).coerceAtLeast(0L)
+                        }
                     }
+                    var tick by remember(fixKey) { mutableLongStateOf(0L) }
+                    LaunchedEffect(fixKey) {
+                        while (fixKey != null) {
+                            delay(1_000)
+                            tick++
+                        }
+                    }
+                    val fixAge = baseAge?.let { it + tick }
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1229,7 +1251,27 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiDataSection(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 if (accuracy != null) MochiLocationFact(R.drawable.ph_crosshair, accuracy)
-                                if (fixAge != null) MochiLocationFact(R.drawable.ph_clock, "$fixAge 秒前的位置")
+                                if (fixAge != null) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        PhosphorIcon(R.drawable.ph_clock, null, Modifier.size(14.dp), MochiTheme.colorScheme.onSurfaceVariant)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            MochiCounterText(
+                                                fixAge,
+                                                style = MochiTheme.textStyles.footnote,
+                                                color = MochiTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Text(
+                                                " 秒前的位置",
+                                                style = MochiTheme.textStyles.footnote,
+                                                color = MochiTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                         if (notice != null) {
@@ -1431,8 +1473,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mochiAppearanceSectio
                         else "主页与澄空小组件跟随城市日照变化；关闭恢复原来的天空",
                         trailing = { MochiSettingSwitch(livingSky, onLivingSky) })
                 }
-                MochiListRow(title = "天气效果预览", subtitle = "天气场景与一天的天空",
-                    chevron = true, onClick = onAtmosphereLab)
+                // 标准范例：登记来源行，push/from 用同一个 key，页面从这一行长成整屏、返回缩回。
+                MochiSettingsNavRow(route = "settings.atmosphere", title = "天气效果预览",
+                    subtitle = "天气场景与一天的天空", onPush = onPush)
                 if (!isPhosphorVista) MochiListRow(title = "CRT 扫描线", subtitle = "整屏细横纹，终端质感",
                     trailing = { MochiSettingSwitch(scanlines, onScanlines) })
             }

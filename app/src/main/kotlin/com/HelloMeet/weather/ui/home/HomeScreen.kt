@@ -532,8 +532,11 @@ fun HomeScreen(
                         scrollEnabled = ambienceActive && !cityDeckVisible && !sidebar.isOpen) },
                     modifier = Modifier.fillMaxSize(),
                 ) { city, pager ->
-                    // Changing configuration/coordinates destroys the preview before the next frame.
-                    androidx.compose.runtime.key(city.locationKey, city.latitude, city.longitude, previewRevision) {
+                    // 配置变更（数据源等）用 previewRevision 重建整页并清掉预览；坐标刷新不进 key——
+                    // 当前定位城市的 locationKey 稳定但 GPS 坐标会小幅变动，若把坐标放进 key 会反复
+                    // 销毁整页，重置 WeatherContent 的 entered 并重播五天等卡片的交错入场/退场动画
+                    // （手动添加城市坐标固定所以正常）。坐标变化的数据刷新由下方 produceState(city) 负责。
+                    androidx.compose.runtime.key(city.locationKey, previewRevision) {
                         val selected = city.locationKey == uiState.selectedCity?.locationKey
                         val liveWeather = uiState.weather.takeIf { selected }
                         val preview by produceState<CachedWeather?>(null, city, previewRevision) {
@@ -1545,17 +1548,20 @@ private fun WeatherContent(
         }
         if (showUpdateCard) {
             item(key = "home_update") {
-                Stagger(nextStagger(), entered) { m ->
-                    HomeUpdateCard(
-                        modifier = m,
-                        info = updateInfo,
-                        checking = updateChecking,
-                        error = updateError,
-                        ignoredVersion = ignoredUpdateVersion,
-                        onCheck = onCheckUpdate,
-                        onOpen = onOpenUpdate,
-                        onIgnore = onIgnoreUpdate,
-                    )
+                // 检查更新卡片没有 SectionTitle 提供上下留白，单独补一段与上方卡片的间距。
+                Box(Modifier.padding(top = 24.dp)) {
+                    Stagger(nextStagger(), entered) { m ->
+                        HomeUpdateCard(
+                            modifier = m,
+                            info = updateInfo,
+                            checking = updateChecking,
+                            error = updateError,
+                            ignoredVersion = ignoredUpdateVersion,
+                            onCheck = onCheckUpdate,
+                            onOpen = onOpenUpdate,
+                            onIgnore = onIgnoreUpdate,
+                        )
+                    }
                 }
             }
         }
