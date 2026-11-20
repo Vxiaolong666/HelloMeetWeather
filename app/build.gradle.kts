@@ -41,9 +41,9 @@ android {
         applicationId = "com.HelloMeet.weather"
         minSdk = 26
         targetSdk = 34
-        // 1.2.1：首次启动引导、定位服务日志与首页检查更新模块。
-        versionCode = 20261186
-        versionName = "1.2.1"
+        // 1.2.2：设置页四段式标签栏、转场与动画修复、定位秒数动态刷新。
+        versionCode = 20261187
+        versionName = "1.2.2"
         resValue("string", "shortcut_target_package", "com.HelloMeet.weather")
 
         // 发行渠道面向实体手机；去掉仅供 Intel 模拟器使用的 x86/x86_64 MapLibre 库。
