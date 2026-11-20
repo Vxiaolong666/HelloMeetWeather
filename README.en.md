@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Vxiaolong666/HelloMeetWeather/releases/latest"><img alt="Download latest" src="https://img.shields.io/badge/Download-1.2.2_Stable-FF6F1E?style=for-the-badge&labelColor=10151C"/></a>
+  <a href="https://github.com/Vxiaolong666/HelloMeetWeather/releases/latest"><img alt="Download latest" src="https://img.shields.io/badge/Download-1.2.31_Stable-FF6F1E?style=for-the-badge&labelColor=10151C"/></a>
   <a href="CHANGELOG.md"><img alt="Changelog" src="https://img.shields.io/badge/Changelog-CHANGELOG-31C9DB?style=for-the-badge&labelColor=10151C"/></a>
   <a href="https://afdian.com/a/hellowather"><img alt="Sponsor" src="https://img.shields.io/badge/Sponsor-Afdian-FF6F1E?style=for-the-badge&labelColor=10151C"/></a>
 </p>

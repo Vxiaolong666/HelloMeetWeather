@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Vxiaolong666/HelloMeetWeather/releases/latest"><img alt="下载最新版" src="https://img.shields.io/badge/下载-1.2.2_正式版-FF6F1E?style=for-the-badge&labelColor=10151C"/></a>
+  <a href="https://github.com/Vxiaolong666/HelloMeetWeather/releases/latest"><img alt="下载最新版" src="https://img.shields.io/badge/下载-1.2.31_正式版-FF6F1E?style=for-the-badge&labelColor=10151C"/></a>
   <a href="CHANGELOG.md"><img alt="更新日志" src="https://img.shields.io/badge/更新日志-CHANGELOG-31C9DB?style=for-the-badge&labelColor=10151C"/></a>
   <a href="https://afdian.com/a/hellowather"><img alt="赞助" src="https://img.shields.io/badge/赞助-爱发电-FF6F1E?style=for-the-badge&labelColor=10151C"/></a>
 </p>

@@ -39,8 +39,8 @@ import ui.feice.mochi.basic.MochiDialog
 import ui.feice.mochi.basic.MochiDialogAction
 import ui.feice.mochi.basic.MochiDialogActionRole
 
-internal const val WhatsNewVersion = "1.2.2"
-internal val WhatsNewVersionRange = "1.2.1 → 1.2.2"
+internal const val WhatsNewVersion = "1.2.31"
+internal val WhatsNewVersionRange = "1.2.2 → 1.2.31"
 internal const val WhatsNewPreferenceFile = "zhisheng_whats_new"
 internal const val WhatsNewSeenKey = "last_seen_version"
 

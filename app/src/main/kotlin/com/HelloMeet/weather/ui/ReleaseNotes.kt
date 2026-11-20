@@ -8,16 +8,17 @@ internal data class ReleaseNotesSection(
     val id: String, val category: ReleaseNotesCategory, val title: String, val notes: List<ReleaseNote>,
 )
 
-/** Implementation changes since public v1.2.1. Keep the current release summary short. */
+/** Implementation changes since public v1.2.2. Keep the current release summary short. */
 internal val WhatsNewSections = listOf(
     ReleaseNotesSection("release", ReleaseNotesCategory.EXPERIENCE, "本次更新", listOf(
-        ReleaseNote("设置四段式", "设置页改为「数据与位置 / 首页内容 / 外观与设备 / 关于」四个底部标签，关于不再单独开页。"),
-        ReleaseNote("预览转场", "天气效果预览登记来源卡片，进入 / 返回走容器变换，不再从左右两侧滑入。"),
-        ReleaseNote("定位秒数", "「X 秒前的位置」改为每秒动态刷新，数字滚动显示。"),
+        ReleaseNote("统一多选", "遥测数据、生活指数数据页与「模块布局」一致：编辑 / 保存、全选 / 全不选、批量开启 / 关闭。"),
+        ReleaseNote("更新对话框", "检查更新、历史日志、版本特色改用组件库对话框，支持加宽，样式与返回手势统一。"),
+        ReleaseNote("揭示转场", "独立城市管理页选城、首页顶栏进入城市管理，改从触点揭圆洞露出目标页。"),
     )),
     ReleaseNotesSection("weather", ReleaseNotesCategory.WEATHER, "天气与城市", listOf(
-        ReleaseNote("五日动画", "修复当前定位城市模式下五天天气卡片进入 / 退出动画异常，坐标刷新不再重播交错动画。"),
-        ReleaseNote("更新卡片", "首页底部检查更新卡片补齐与上方卡片的间距。"),
+        ReleaseNote("五日样式", "五天天气卡片补齐低温、温度区间条与高温显示，字重与分隔线对齐参考图。"),
+        ReleaseNote("城市搜索", "搜索无结果改用组件库空状态遮罩；从城市管理添加城市后返回城市列表而非首页。"),
+        ReleaseNote("生活指数", "修复开关无法关闭、关了又自动打开的问题。"),
     )),
 )
 
